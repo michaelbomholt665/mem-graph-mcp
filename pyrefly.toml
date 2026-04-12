@@ -1,0 +1,19 @@
+# Pyrefly Configuration
+# Optimized for src-layout projects
+
+[project]
+name = "memory"
+root = "."
+# We only want to check the package source
+src = ["src"]
+
+[check]
+python-version = "3.14"
+venv = ".venv"
+venv-path = "."
+# Since we explicitly type everything, we use strict mode
+strict = true
+
+# Mock or ignore some common stubs if needed
+# [tool.pyrefly.stubs]
+# fastmcp = ["FastMCP"]

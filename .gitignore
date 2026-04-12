@@ -1,0 +1,38 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+.mypy_cache/
+.ruff_cache/
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# agent
+.copilot-backups/
+.github/
+
+#database
+data/
+
+# misc.
+diagrams/
+*.pdf
+*.png
+*.svg
+*.dot
+logs/
+*.txt
+mypy.md
+mcp_guide.md
+.env
+session_handover.md
+test_routes.py
