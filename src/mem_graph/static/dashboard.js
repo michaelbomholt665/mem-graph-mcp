@@ -5,6 +5,7 @@
     styles: {},
     selectedNodeId: null,
     refreshHandle: null,
+    pendingNodeId: null,
   };
 
   const elements = {};
@@ -276,6 +277,12 @@
           elements.detailsEmpty.classList.remove('is-hidden');
           elements.detailsEmpty.textContent = 'Select a node from the graph or search results to inspect it.';
         }
+      } else if (state.pendingNodeId) {
+        const exists = snapshot.nodes.some((node) => node.id === state.pendingNodeId);
+        if (exists) {
+          await selectNode(state.pendingNodeId, true);
+        }
+        state.pendingNodeId = null;
       }
     } catch (error) {
       setStatus(error.message || 'Failed to load the graph snapshot.');
@@ -312,6 +319,9 @@
   }
 
   async function initialize() {
+    const params = new URLSearchParams(globalThis.location.search);
+    state.pendingNodeId = params.get('node');
+
     elements.projectId = qs('project-id');
     elements.searchInput = qs('search-input');
     elements.searchButton = qs('search-button');

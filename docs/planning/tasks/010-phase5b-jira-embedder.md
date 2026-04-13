@@ -39,15 +39,15 @@ Existing files to edit:
 
 ## Tasklist
 
-- [ ] Decide whether to wrap the existing embeddings layer or isolate Jira matching behind a service adapter so the repo only has one semantic-search contract.
-- [ ] Implement a Jira embedder service with lazy model loading, TTL-based unload, and explicit handling for missing Jira credentials.
-- [ ] Add read-only Jira API fetch support with bounded queries and sane defaults for JQL and result limits.
-- [ ] Implement code-matching helpers for ticket-to-code and code-to-ticket lookups, including snippet extraction for explainability.
-- [ ] Add tool endpoints for fetching issues, finding code for a ticket, and finding tickets for a file.
-- [ ] Persist Jira issue nodes and code-link edges into the graph with stable identifiers.
-- [ ] Add a sample-data loader or fixture path so the integration can be tested without a live Jira dependency on every run.
-- [ ] Add tests for lazy loading, TTL unload logic, API result shaping, and semantic match ranking.
-- [ ] Document required environment variables, expected thresholds, and what “read-only” means for this integration.
+- [x] Decide whether to wrap the existing embeddings layer or isolate Jira matching behind a service adapter so the repo only has one semantic-search contract.
+- [x] Implement a Jira embedder service with lazy model loading, TTL-based unload, and explicit handling for missing Jira credentials.
+- [x] Add read-only Jira API fetch support with bounded queries and sane defaults for JQL and result limits.
+- [x] Implement code-matching helpers for ticket-to-code and code-to-ticket lookups, including snippet extraction for explainability.
+- [x] Add tool endpoints for fetching issues, finding code for a ticket, and finding tickets for a file.
+- [x] Persist Jira issue nodes and code-link edges into the graph with stable identifiers.
+- [x] Add a sample-data loader or fixture path so the integration can be tested without a live Jira dependency on every run.
+- [x] Add tests for lazy loading, TTL unload logic, API result shaping, and semantic match ranking.
+- [x] Document required environment variables, expected thresholds, and what “read-only” means for this integration.
 
 ## Out Of Scope
 
@@ -57,10 +57,10 @@ Existing files to edit:
 
 ## Done When
 
-- [ ] Jira issues can be fetched through a tool surface and linked to code files.
-- [ ] The embedder only loads when needed and can be released after inactivity.
-- [ ] Graph edges exist for downstream dashboard and agent use.
-- [ ] The task does not block server startup when Jira is unconfigured.
+- [x] Jira issues can be fetched through a tool surface and linked to code files.
+- [x] The embedder only loads when needed and can be released after inactivity.
+- [x] Graph edges exist for downstream dashboard and agent use.
+- [x] The task does not block server startup when Jira is unconfigured.
 
 ## References
 

@@ -137,6 +137,15 @@ TEXT_EMBED_MODEL: str = os.getenv(
 EMBED_DIM: int = int(os.getenv("OLLAMA_EMBED_DIM", "768"))
 EMBED_CACHE_SIZE: int = int(os.getenv("MEM_GRAPH_EMBED_CACHE_SIZE", "512"))
 
+JIRA_URL: str = os.getenv("JIRA_URL", "").rstrip("/")
+JIRA_USERNAME: str = os.getenv("JIRA_USERNAME", "")
+JIRA_TOKEN: str = os.getenv("JIRA_TOKEN", "")
+JIRA_PROJECT_KEY: str = os.getenv("JIRA_PROJECT_KEY", "")
+JIRA_MATCH_THRESHOLD: float = float(os.getenv("JIRA_MATCH_THRESHOLD", "0.72"))
+JIRA_MAX_RESULTS: int = int(os.getenv("JIRA_MAX_RESULTS", "25"))
+JIRA_EMBEDDER_TTL_SECONDS: int = int(os.getenv("JIRA_EMBEDDER_TTL_SECONDS", "300"))
+FILE_TREE_DEFAULT_ROOT: str = os.getenv("MEM_GRAPH_FILE_TREE_ROOT", "")
+
 
 # Feature flags for runtime path selection
 # When True, prefer FastMCP native task and confirmation features (if available)

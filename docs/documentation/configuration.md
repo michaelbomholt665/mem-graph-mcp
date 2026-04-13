@@ -34,20 +34,41 @@ export MCP_TRANSPORT=http
 export LADYBUG_DB_PATH=/var/data/syntx_memory.lbug
 ```
 
-### Ollama Integration
+### Embeddings and Ollama Integration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Model name for text embeddings |
-| `OLLAMA_EMBED_DIM` | `768` | Embedding vector dimensions (note: schema uses 1536) |
-
-**Note:** The default embedding dimension (768) conflicts with the schema's 1536-dimension requirement. This should be set to `1536` for compatibility.
+| `OLLAMA_CODE_EMBED_MODEL` | `hf.co/jinaai/jina-embeddings-v4-text-code-GGUF:Q5_K_M` | Code-oriented embedding model used for code files and Jira code-linking |
+| `OLLAMA_TEXT_EMBED_MODEL` | `hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF:F16` | Text-oriented embedding model used for memory, tasks, decisions, and notes |
+| `OLLAMA_EMBED_DIM` | `768` | Embedding vector dimensions used by the schema bootstrap and validation checks |
+| `MEM_GRAPH_EMBED_CACHE_SIZE` | `512` | In-process LRU cache size for generated embeddings |
 
 **Example:**
 ```bash
-export OLLAMA_EMBED_MODEL=nomic-embed-text
-export OLLAMA_EMBED_DIM=1536
+export OLLAMA_CODE_EMBED_MODEL=hf.co/jinaai/jina-embeddings-v4-text-code-GGUF:Q5_K_M
+export OLLAMA_TEXT_EMBED_MODEL=hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF:F16
+export OLLAMA_EMBED_DIM=768
 ```
+
+### Jira Integration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JIRA_URL` | _unset_ | Base Jira URL, for example `https://jira.example.com` |
+| `JIRA_USERNAME` | _unset_ | Optional Jira username or email for Basic auth |
+| `JIRA_TOKEN` | _unset_ | Jira API token or bearer token |
+| `JIRA_PROJECT_KEY` | _unset_ | Default project key used when no JQL is provided |
+| `JIRA_MATCH_THRESHOLD` | `0.72` | Default semantic score threshold for Jira-to-code matching |
+| `JIRA_MAX_RESULTS` | `25` | Maximum number of issues returned by Jira read tools |
+| `JIRA_EMBEDDER_TTL_SECONDS` | `300` | Idle timeout before the in-process code index is released |
+
+The Jira tools are read-only. If these values are not configured, the server still starts normally and the Jira tools return a configuration error only when called.
+
+### File Explorer
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MEM_GRAPH_FILE_TREE_ROOT` | current working directory | Default root path for the `/file-tree` explorer when no project repo path or explicit root is provided |
 
 ## Configuration Loading
 

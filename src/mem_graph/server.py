@@ -37,6 +37,7 @@ Tools are split into two tiers:
         audit      — audit_package, map_codebase, triage_violations, decision_review,
                                  orchestrate_codebase
     filesystem — file_read, file_write, file_edit, file_delete, file_search, file_grep
+        integrations — jira_fetch_issues, jira_find_code_for_ticket, jira_find_tickets_for_file
 
 FastMCP 3.0 Upgrades
 ---------------------
@@ -82,9 +83,9 @@ from .providers.openapi import build_openapi_provider
 from .services.summarizer import start_worker, stop_worker
 from .services.task_queue import task_queue
 from .resources.prompts import PROMPT_REGISTRY, get_sub_agent_instructions
-from .tools import background, graph
+from .tools import background, graph, integrations
 from .tools.agents import audit, diagrams, map as map_tool, orchestrator, triage
-from .tools.filesystem import filesystem
+from .tools.filesystem import filesystem, status as filesystem_status, tree as filesystem_tree
 from .tools.memory import conversation, memory, notes
 from .tools.work import decisions, projects, tasks, violations
 
@@ -105,7 +106,7 @@ _STATIC_DIR = _BASE_DIR / "static"
 
 # Consolidated namespaces
 _LAZY_NAMESPACES: frozenset[str] = frozenset(
-    {"memory", "work", "notes", "audit", "filesystem", "background", "graph"}
+    {"memory", "work", "notes", "audit", "filesystem", "background", "graph", "integrations"}
 )
 
 # Legacy namespace → canonical replacement
@@ -263,7 +264,7 @@ mcp = FastMCP(
         "TOOL DISCOVERY: Only core tools are visible at startup. "
         "Call tools_activate(namespace=<name>) to unlock a group of "
         "specialised tools for your current session. "
-        "Available namespaces: memory, work, notes, audit, filesystem, background, graph.\n"
+        "Available namespaces: memory, work, notes, audit, filesystem, background, graph, integrations.\n"
         "Call tools_search(query='...') if you're unsure which namespace to use."
     ),
     lifespan=lifespan,
@@ -301,6 +302,7 @@ mcp.mount(triage.mcp)
 mcp.mount(filesystem.mcp)
 mcp.mount(background.mcp)
 mcp.mount(graph.mcp)
+mcp.mount(integrations.mcp)
 
 # Skills directory provider — drop .py files into skills/ to add tools on restart
 mcp.add_provider(SkillsProvider("skills"))
@@ -397,7 +399,7 @@ async def tools_activate(
         Field(
             description=(
                 "Namespace to activate for this session. "
-                "One of: memory, work, notes, audit, filesystem, background, graph."
+                "One of: memory, work, notes, audit, filesystem, background, graph, integrations."
             )
         ),
     ],
@@ -419,6 +421,7 @@ async def tools_activate(
     filesystem — file_read, file_write, file_edit, file_delete, file_search, file_grep
     background — get_task_status, cancel_task
     graph      — get_graph_snapshot, get_node_details, search_graph
+    integrations — jira_fetch_issues, jira_find_code_for_ticket, jira_find_tickets_for_file
     """
     # Handle deprecated namespace aliases
     if namespace in _DEPRECATED_NAMESPACES:
@@ -779,6 +782,54 @@ def _dashboard_styles(request: Request) -> JSONResponse:  # noqa: ARG001
     return JSONResponse({"styles": graph.graph_queries.load_node_styles()})
 
 
+def _file_tree(request: Request) -> FileResponse:  # noqa: ARG001
+    return FileResponse(_STATIC_DIR / "file-tree.html")
+
+
+def _file_tree_js(request: Request) -> FileResponse:  # noqa: ARG001
+    return FileResponse(_STATIC_DIR / "file-tree.js", media_type="text/javascript")
+
+
+def _file_tree_css(request: Request) -> FileResponse:  # noqa: ARG001
+    return FileResponse(_STATIC_DIR / "file-tree.css", media_type="text/css")
+
+
+def _query_flag(value: str | None, default: bool) -> bool:
+    if value is None:
+        return default
+    return value.lower() not in {"0", "false", "no", "off"}
+
+
+async def _file_tree_data(request: Request) -> JSONResponse:
+    payload = await filesystem_tree.get_file_tree(
+        root_path=request.query_params.get("root_path"),
+        project_id=request.query_params.get("project_id"),
+        include_hidden=_query_flag(request.query_params.get("include_hidden"), False),
+        include_graph_metadata=_query_flag(
+            request.query_params.get("include_graph_metadata"),
+            True,
+        ),
+        max_depth=int(request.query_params.get("max_depth", 8)),
+    )
+    status_code = 400 if isinstance(payload, dict) and "error" in payload else 200
+    if hasattr(payload, "model_dump"):
+        return JSONResponse(payload.model_dump(), status_code=status_code)
+    return JSONResponse(payload, status_code=status_code)
+
+
+async def _file_tree_violations(request: Request) -> JSONResponse:
+    payload = await filesystem_status.get_file_violations(
+        file_path=request.query_params.get("file_path", ""),
+        root_path=request.query_params.get("root_path"),
+        project_id=request.query_params.get("project_id"),
+        include_resolved=_query_flag(request.query_params.get("include_resolved"), True),
+    )
+    status_code = 400 if isinstance(payload, dict) and "error" in payload else 200
+    if hasattr(payload, "model_dump"):
+        return JSONResponse(payload.model_dump(), status_code=status_code)
+    return JSONResponse(payload, status_code=status_code)
+
+
 _TRANSPORT = os.getenv("MCP_TRANSPORT", "http")
 
 
@@ -810,7 +861,7 @@ def _run_http() -> None:
             log_level="warning",
         )
         logger.info(
-            "Starting server %r (HTTP: /mcp, SSE: /sse, Health: /health, Dashboard: /dashboard) on %s:%s",
+            "Starting server %r (HTTP: /mcp, SSE: /sse, Health: /health, Dashboard: /dashboard, Files: /file-tree) on %s:%s",
             mcp.name,
             _HOST,
             _PORT,
@@ -840,6 +891,11 @@ def build_http_app(*, with_lifespan: bool = True) -> Starlette:
         Route("/dashboard/api/node/{node_id}", _dashboard_node, methods=["GET"]),
         Route("/dashboard/api/search", _dashboard_search, methods=["GET"]),
         Route("/dashboard/api/styles", _dashboard_styles, methods=["GET"]),
+        Route("/file-tree", _file_tree, methods=["GET"]),
+        Route("/file-tree.js", _file_tree_js, methods=["GET"]),
+        Route("/file-tree.css", _file_tree_css, methods=["GET"]),
+        Route("/file-tree/api/tree", _file_tree_data, methods=["GET"]),
+        Route("/file-tree/api/violations", _file_tree_violations, methods=["GET"]),
     ]
 
     return Starlette(

@@ -30,5 +30,13 @@
   "CodeSymbol": {
     "color": "#2a9d8f",
     "size": 13
+  },
+  "CodeFile": {
+    "color": "#457b9d",
+    "size": 14
+  },
+  "JiraIssue": {
+    "color": "#0f766e",
+    "size": 16
   }
 }

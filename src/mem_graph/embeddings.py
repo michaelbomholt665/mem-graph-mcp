@@ -87,12 +87,28 @@ async def embeddings_generate(text: str) -> list[float]:
     return await _cached_embed_async(text, "document")
 
 
+async def embeddings_code(text: str) -> list[float]:
+    """Return a code-aware embedding vector for indexed source content."""
+    if _embed_override is not None:
+        return _validate(_embed_override(text), text)
+
+    return await _cached_embed_async(text, "code")
+
+
 async def embeddings_query(text: str) -> list[float]:
     """Return a search-optimised embedding for a query string."""
     if _embed_override is not None:
         return _validate(_embed_override(text), text)
 
     return await _cached_embed_async(text, "query")
+
+
+async def embeddings_code_query(text: str) -> list[float]:
+    """Return a code-aware query embedding for text-to-code matching."""
+    if _embed_override is not None:
+        return _validate(_embed_override(text), text)
+
+    return await _cached_embed_async(text, "code_query")
 
 
 async def embeddings_documents(texts: list[str]) -> list[list[float]]:
@@ -130,7 +146,7 @@ def embed_dim() -> int:
 async def _cached_embed_async(text: str, input_type: str) -> list[float]:
     """Return a cached embedding for text or generate a new one via Pydantic AI."""
     # Use code embedder for audits/triage/mapping (document), text for others (query/doc)
-    is_code = input_type == "code"
+    is_code = input_type in {"code", "code_query"}
     model_name = _CODE_MODEL if is_code else _TEXT_MODEL
     key_type = input_type
     
@@ -139,7 +155,7 @@ async def _cached_embed_async(text: str, input_type: str) -> list[float]:
         return cached
 
     embedder = _CODE_EMBEDDER if is_code else _TEXT_EMBEDDER
-    if key_type == "query":
+    if key_type in {"query", "code_query"}:
         result = await embedder.embed_query(text, settings=_SETTINGS)
     else:
         result = await embedder.embed(text, input_type="document", settings=_SETTINGS)
@@ -152,7 +168,7 @@ async def _cached_embed_async(text: str, input_type: str) -> list[float]:
 
 def _cached_embed_sync(text: str, input_type: str) -> list[float]:
     """Return a cached embedding for text or generate a new one via Pydantic AI sync."""
-    is_code = input_type == "code"
+    is_code = input_type in {"code", "code_query"}
     model_name = _CODE_MODEL if is_code else _TEXT_MODEL
     key_type = input_type
     
@@ -161,7 +177,7 @@ def _cached_embed_sync(text: str, input_type: str) -> list[float]:
         return cached
 
     embedder = _CODE_EMBEDDER if is_code else _TEXT_EMBEDDER
-    if key_type == "query":
+    if key_type in {"query", "code_query"}:
         result = embedder.embed_query_sync(text, settings=_SETTINGS)
     else:
         result = embedder.embed_sync(text, input_type="document", settings=_SETTINGS)

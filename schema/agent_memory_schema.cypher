@@ -190,6 +190,39 @@ CREATE NODE TABLE IF NOT EXISTS CodeSymbol (
 );
 
 // ---------------------------------------------------------------------------
+// CodeFile — file-level code artifact for semantic linking and explorer metadata
+// ---------------------------------------------------------------------------
+CREATE NODE TABLE IF NOT EXISTS CodeFile (
+    id         STRING PRIMARY KEY,
+    path       STRING,
+    name       STRING,
+    language   STRING,
+    size_bytes INT64,
+    content_hash STRING,
+    summary    STRING,
+    embedding  FLOAT[1536],
+    indexed_at TIMESTAMP DEFAULT current_timestamp(),
+    updated_at TIMESTAMP DEFAULT current_timestamp()
+);
+
+// ---------------------------------------------------------------------------
+// JiraIssue — external work item ingested from Jira for code traceability
+// ---------------------------------------------------------------------------
+CREATE NODE TABLE IF NOT EXISTS JiraIssue (
+    id          STRING PRIMARY KEY,
+    issue_key   STRING,
+    title       STRING,
+    description STRING,
+    status      STRING,
+    assignee    STRING,
+    url         STRING,
+    source_hash STRING,
+    embedding   FLOAT[1536],
+    created_at  TIMESTAMP,
+    synced_at   TIMESTAMP DEFAULT current_timestamp()
+);
+
+// ---------------------------------------------------------------------------
 // Tag — reusable label node for many-to-many tagging
 // ---------------------------------------------------------------------------
 CREATE NODE TABLE IF NOT EXISTS Tag (
@@ -207,6 +240,8 @@ CREATE REL TABLE IF NOT EXISTS HAS_TASK      (FROM Project  TO Task,          as
 CREATE REL TABLE IF NOT EXISTS HAS_DECISION  (FROM Project  TO Decision,      assigned_at TIMESTAMP DEFAULT current_timestamp());
 CREATE REL TABLE IF NOT EXISTS HAS_NOTE      (FROM Project  TO Note,          assigned_at TIMESTAMP DEFAULT current_timestamp());
 CREATE REL TABLE IF NOT EXISTS HAS_VIOLATION (FROM Project  TO Violation,     assigned_at TIMESTAMP DEFAULT current_timestamp());
+CREATE REL TABLE IF NOT EXISTS HAS_FILE      (FROM Project  TO CodeFile,      assigned_at TIMESTAMP DEFAULT current_timestamp());
+CREATE REL TABLE IF NOT EXISTS HAS_JIRA_ISSUE (FROM Project TO JiraIssue,     assigned_at TIMESTAMP DEFAULT current_timestamp());
 
 // Backend containment
 CREATE REL TABLE IF NOT EXISTS BACKEND_TASK      (FROM Backend TO Task,      assigned_at TIMESTAMP DEFAULT current_timestamp());
@@ -257,6 +292,10 @@ CREATE REL TABLE IF NOT EXISTS SYMBOL_TASK      (FROM CodeSymbol TO Task);
 CREATE REL TABLE IF NOT EXISTS SYMBOL_VIOLATION (FROM CodeSymbol TO Violation);
 CREATE REL TABLE IF NOT EXISTS SYMBOL_DECISION  (FROM CodeSymbol TO Decision);
 
+// Jira ↔ code traceability
+CREATE REL TABLE IF NOT EXISTS IMPLEMENTS (FROM JiraIssue TO CodeFile, score DOUBLE, snippet STRING, linked_at TIMESTAMP DEFAULT current_timestamp());
+CREATE REL TABLE IF NOT EXISTS MENTIONS   (FROM JiraIssue TO CodeFile, score DOUBLE, snippet STRING, linked_at TIMESTAMP DEFAULT current_timestamp());
+
 // Tagging (Note, Task, Memory, Violation share Tag nodes)
 CREATE REL TABLE IF NOT EXISTS TAGGED (
     FROM Note      TO Tag,
@@ -281,6 +320,8 @@ CALL CREATE_VECTOR_INDEX('Conversation','idx_conv_emb',       'embedding',  metr
 CALL CREATE_VECTOR_INDEX('Message',     'idx_message_emb',    'embedding',  metric := 'cosine');
 CALL CREATE_VECTOR_INDEX('Memory',      'idx_memory_emb',     'embedding',  metric := 'cosine');
 CALL CREATE_VECTOR_INDEX('CodeSymbol',  'idx_symbol_emb',     'embedding',  metric := 'cosine');
+CALL CREATE_VECTOR_INDEX('CodeFile',    'idx_codefile_emb',   'embedding',  metric := 'cosine');
+CALL CREATE_VECTOR_INDEX('JiraIssue',   'idx_jira_issue_emb', 'embedding',  metric := 'cosine');
 
 
 // =============================================================================
@@ -293,6 +334,8 @@ CALL CREATE_FTS_INDEX('Task',       'fts_task_desc',       ['description', 'titl
 CALL CREATE_FTS_INDEX('Decision',   'fts_decision_rat',    ['rationale', 'title']);
 CALL CREATE_FTS_INDEX('Violation',  'fts_violation_desc',  ['description']);
 CALL CREATE_FTS_INDEX('CodeSymbol', 'fts_symbol_name',     ['name', 'signature']);
+CALL CREATE_FTS_INDEX('CodeFile',   'fts_codefile_path',   ['path', 'name', 'summary']);
+CALL CREATE_FTS_INDEX('JiraIssue',  'fts_jira_issue_text', ['issue_key', 'title', 'description']);
 
 
 // =============================================================================

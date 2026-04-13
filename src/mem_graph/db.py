@@ -47,7 +47,7 @@ SCHEMA_PATH = (
     Path(__file__).parent.parent.parent / "schema" / "agent_memory_schema.cypher"
 )
 DB_PATH = os.getenv("LADYBUG_DB_PATH", "./data/syntx_memory.lbug")
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 _KNOWN_EMBED_PROVIDERS = (
     "ollama",
@@ -262,6 +262,8 @@ def _ensure_vector_indexes(conn: lb.Connection) -> None:
         ("Message", "idx_message_emb", "embedding"),
         ("Memory", "idx_memory_emb", "embedding"),
         ("CodeSymbol", "idx_symbol_emb", "embedding"),
+        ("CodeFile", "idx_codefile_emb", "embedding"),
+        ("JiraIssue", "idx_jira_issue_emb", "embedding"),
     ]
 
     for table, index_name, prop in indexes:
@@ -289,6 +291,8 @@ def _ensure_fts_indexes(conn: lb.Connection) -> None:
         ("Decision",   "fts_decision_rat",   ["rationale", "title"]),
         ("Violation",  "fts_violation_desc", ["description"]),
         ("CodeSymbol", "fts_symbol_name",    ["name", "signature"]),
+        ("CodeFile",   "fts_codefile_path",  ["path", "name", "summary"]),
+        ("JiraIssue",  "fts_jira_issue_text", ["issue_key", "title", "description"]),
     ]
 
     for table, index_name, props in fts_indexes:

@@ -6,7 +6,7 @@ This document provides a comprehensive architectural overview of the Syntx Memor
 ## System Overview
 The Syntx Memory MCP Server is a Model Context Protocol (MCP) implementation designed to provide persistent memory and contextual awareness for AI agents. It combines a graph database backend with specialized tools for capturing and recalling various types of work artifacts.
 
-Recent additions include an in-memory background task queue for long-running audit workflows and a lightweight HTTP dashboard for visual graph inspection.
+Recent additions include an in-memory background task queue for long-running audit workflows, a lightweight HTTP dashboard for visual graph inspection, a file explorer surface, and a read-only Jira embedder that links issues to code files.
 
 ### High-Level Components
 ```
@@ -126,6 +126,42 @@ sequenceDiagram
    Server-->>Browser: JSON snapshot
 ```
 
+### File Explorer Flow
+```mermaid
+sequenceDiagram
+   participant Browser as Browser
+   participant Server as HTTP Routes
+   participant Files as Filesystem Tools
+   participant DB as Ladybug DB
+
+   Browser->>Server: GET /file-tree
+   Server-->>Browser: HTML + JS + CSS
+   Browser->>Server: GET /file-tree/api/tree
+   Server->>Files: get_file_tree(...)
+   Files->>DB: read Violation + CodeFile metadata
+   DB-->>Files: file-level status rows
+   Files-->>Server: FileTreeNode
+   Server-->>Browser: JSON tree
+```
+
+### Jira Linking Flow
+```mermaid
+sequenceDiagram
+   participant Client as MCP Client
+   participant Tool as Jira Tools
+   participant Jira as Jira REST API
+   participant Service as JiraCodeEmbedder
+   participant DB as Ladybug DB
+
+   Client->>Tool: jira_fetch_issues / jira_find_code_for_ticket
+   Tool->>Service: fetch or normalize issue
+   Service->>Jira: GET /rest/api/3/search
+   Jira-->>Service: issue payloads
+   Service->>DB: upsert JiraIssue + CodeFile nodes + link edges
+   DB-->>Service: persisted graph state
+   Service-->>Tool: ranked matches or issue list
+```
+
 ### Conversation Capture Flow
 [← src/mem-graph/tools/conversation.py:46-102 - conversation_start]
 [← src/mem-graph/tools/conversation.py:105-191 - conversation_append]
@@ -196,8 +232,11 @@ Environment variables loaded from `.env` or system:
 - `MCP_PORT` - Server port (default: 9100)
 - `MCP_TRANSPORT` - Transport protocol (http/stdio, default: http)
 - `LADYBUG_DB_PATH` - Database file path (default: ./data/syntx_memory.lbug)
-- `OLLAMA_EMBED_MODEL` - Embedding model name (default: nomic-embed-text)
+- `OLLAMA_CODE_EMBED_MODEL` / `OLLAMA_TEXT_EMBED_MODEL` - Embedding model names for code and text paths
 - `OLLAMA_EMBED_DIM` - Embedding dimension (default: 768)
+- `JIRA_URL`, `JIRA_USERNAME`, `JIRA_TOKEN` - Read-only Jira integration credentials
+- `JIRA_PROJECT_KEY`, `JIRA_MATCH_THRESHOLD`, `JIRA_MAX_RESULTS`, `JIRA_EMBEDDER_TTL_SECONDS` - Jira matching and fetch controls
+- `MEM_GRAPH_FILE_TREE_ROOT` - Default root path for the file explorer when no explicit root or project repo_path is supplied
 
 ### Development Dependencies
 - **pytest** - Testing framework

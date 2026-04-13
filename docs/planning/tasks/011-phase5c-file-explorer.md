@@ -38,15 +38,15 @@ Existing files to edit:
 
 ## Tasklist
 
-- [ ] Add filesystem tree models that can represent directories, files, violation counts, violation types, and last-audited timestamps.
-- [ ] Implement `get_file_tree` with hidden-file filtering, stable sort order, and optional graph-enriched metadata.
-- [ ] Implement `get_file_violations` so the explorer can show file-level details without duplicating audit logic in the UI.
-- [ ] Add a static file-explorer page with hierarchical navigation and a details pane for violations.
-- [ ] Implement explorer JavaScript for expand/collapse, selection state, and loading file-specific violation details.
-- [ ] Add styling that keeps large trees usable and makes violation badges visually obvious.
-- [ ] Mount the file-explorer routes in the server and keep them aligned with the dashboard route conventions.
-- [ ] Add tests for tree building, ordering, hidden-file exclusion, and violation aggregation.
-- [ ] Document the intended relationship between the file explorer and the graph dashboard.
+- [x] Add filesystem tree models that can represent directories, files, violation counts, violation types, and last-audited timestamps.
+- [x] Implement `get_file_tree` with hidden-file filtering, stable sort order, and optional graph-enriched metadata.
+- [x] Implement `get_file_violations` so the explorer can show file-level details without duplicating audit logic in the UI.
+- [x] Add a static file-explorer page with hierarchical navigation and a details pane for violations.
+- [x] Implement explorer JavaScript for expand/collapse, selection state, and loading file-specific violation details.
+- [x] Add styling that keeps large trees usable and makes violation badges visually obvious.
+- [x] Mount the file-explorer routes in the server and keep them aligned with the dashboard route conventions.
+- [x] Add tests for tree building, ordering, hidden-file exclusion, and violation aggregation.
+- [x] Document the intended relationship between the file explorer and the graph dashboard.
 
 ## Out Of Scope
 
@@ -56,10 +56,10 @@ Existing files to edit:
 
 ## Done When
 
-- [ ] The explorer renders a hierarchical tree with directories first and files second.
-- [ ] Violation badges and last-audited metadata are visible when present.
-- [ ] Selecting a file shows detailed violation information.
-- [ ] The implementation can coexist with the dashboard without route or asset conflicts.
+- [x] The explorer renders a hierarchical tree with directories first and files second.
+- [x] Violation badges and last-audited metadata are visible when present.
+- [x] Selecting a file shows detailed violation information.
+- [x] The implementation can coexist with the dashboard without route or asset conflicts.
 
 ## References
 

@@ -15,7 +15,7 @@ As documented in server.md, tools are split into:
 1. **Core Tools** (always visible): discovery, search, and common work-management functions
 2. **Lazy Namespaces** (session-activated): specialized tool groups requiring explicit activation
 
-Current lazy namespaces are `memory`, `work`, `notes`, `audit`, `filesystem`, `background`, and `graph`.
+Current lazy namespaces are `memory`, `work`, `notes`, `audit`, `filesystem`, `background`, `graph`, and `integrations`.
 
 ## Tool Categories
 
@@ -148,6 +148,28 @@ Provides a queue-agnostic polling surface for long-running audit operations.
 - `cancel_task(task_id)` - Cancel queued work and request cancellation of running work
 
 Background task state is in-memory only and is cleared on server shutdown.
+
+### Filesystem Explorer Tools (`src/mem_graph/tools/filesystem/tree.py`, `src/mem_graph/tools/filesystem/status.py`)
+Backs the static file explorer and exposes file-tree metadata over MCP.
+
+**Key Tools:**
+- `get_file_tree(root_path, project_id, include_hidden, include_graph_metadata, max_depth)` - Build a hierarchical file tree with directories first and graph-enriched metadata
+- `get_file_violations(file_path, root_path, project_id, include_resolved)` - Return file-level violation details and last-audited information
+
+The explorer page is served separately from MCP at `/file-tree` with JSON endpoints under `/file-tree/api/*`.
+
+### Integrations Tools (`src/mem_graph/tools/integrations/jira.py`)
+Provides read-only Jira ingestion and semantic ticket-to-code linking.
+
+**Key Tools:**
+- `jira_fetch_issues(jql, limit, project_id)` - Fetch Jira issues with bounded JQL and persist them into the graph
+- `jira_find_code_for_ticket(issue_key, root_path, project_id, limit, threshold)` - Match a Jira issue to likely code files and persist code links
+- `jira_find_tickets_for_file(file_path, root_path, project_id, limit, threshold)` - Find persisted Jira issues related to a specific file
+
+**Read-only Contract:**
+- Only Jira search/read endpoints are used
+- The integration never writes back to Jira
+- Missing Jira credentials do not block server startup; the tools return a configuration error when invoked unconfigured
 
 ### Graph Tools (`src/mem_graph/tools/graph/graph_queries.py`)
 Backs the lightweight dashboard and graph-aware MCP clients.
