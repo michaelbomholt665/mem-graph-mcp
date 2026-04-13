@@ -4,16 +4,18 @@
 This document explains the Syntx Memory MCP Tools component - the collection of specialized functional modules that provide capabilities for memory storage, task management, conversation capture, decision recording, and more. Each tool is implemented as a FastMCP sub-server with specific responsibilities.
 
 ## Overview
-Tools are organized in `src/mem-graph/tools/` as individual Python modules, each exposing a FastMCP instance (`mcp`) that gets mounted into the main server. Tools follow a consistent pattern:
-- Database access via `get_conn()` from `src/mem-graph/db.py`
-- Embedding generation via `embed()` from `src/mem-graph/embeddings.py`
+Tools are organized in `src/mem_graph/tools/` as individual Python modules, each exposing a FastMCP instance (`mcp`) that gets mounted into the main server. Tools follow a consistent pattern:
+- Database access via `db_get_connection()` from `src/mem_graph/db.py`
+- Embedding generation via `embeddings_generate()` from `src/mem_graph/embeddings.py`
 - UUID-based identification using `uuid.uuid4()`
 - Timestamp handling with timezone-aware UTC datetimes
 
 ### Two-Tier Visibility System
 As documented in server.md, tools are split into:
-1. **Core Tools** (always visible): Basic memory, task, and discovery functions
-2. **Lazy Namespaces** (session-activated): Specialized tool groups requiring explicit activation
+1. **Core Tools** (always visible): discovery, search, and common work-management functions
+2. **Lazy Namespaces** (session-activated): specialized tool groups requiring explicit activation
+
+Current lazy namespaces are `memory`, `work`, `notes`, `audit`, `filesystem`, `background`, and `graph`.
 
 ## Tool Categories
 
@@ -127,11 +129,38 @@ Tracks policy violations, smells, and audit findings with lifecycle management.
 - `violation_search(query, limit)` - Semantic search over violations
 - `violation_list()` - List violations
 
-### Audit Tools (`src/mem-graph/tools/audit.py`)
+### Audit Tools (`src/mem_graph/tools/agents/`)
 Interfaces with the autonomous Audit Agent for package codebase audits.
 
-**Key Tool:**
-- `audit_package(package_path, guide_file_path, registry_file_path)` - Run automated audit
+**Key Tools:**
+- `audit_package(package_path, project_id, ...)` - Queue or run an automated audit
+- `map_codebase(package_path, known_features, ...)` - Queue or run codebase cartography
+- `triage_violations(project_id, raw_findings)` - Queue or run violation triage
+- `orchestrate_codebase(package_path, project_id, subagent_name, ...)` - Queue or run batched analysis
+
+For ordinary MCP callers these heavy tools enqueue in-memory work and return a `task_id` immediately. For SEP-1686-aware clients the same tools also support FastMCP `task=True` execution.
+
+### Background Tools (`src/mem_graph/tools/background/task_status.py`)
+Provides a queue-agnostic polling surface for long-running audit operations.
+
+**Key Tools:**
+- `get_task_status(task_id)` - Retrieve normalized queue state, progress, and terminal result data
+- `cancel_task(task_id)` - Cancel queued work and request cancellation of running work
+
+Background task state is in-memory only and is cleared on server shutdown.
+
+### Graph Tools (`src/mem_graph/tools/graph/graph_queries.py`)
+Backs the lightweight dashboard and graph-aware MCP clients.
+
+**Key Tools:**
+- `get_graph_snapshot(project_id, node_types, depth, max_nodes)` - Return a bounded graph view for visualization
+- `get_node_details(node_id)` - Return a node plus neighboring relationships
+- `search_graph(query, project_id, node_types, limit)` - Perform bounded text search across visible graph nodes
+
+**Stable Resources:**
+- `graph://snapshot`
+- `graph://nodes/{node_id}`
+- `graph://styles`
 
 ## Tool Discovery Mechanisms
 
@@ -177,11 +206,18 @@ async def tool_name(
 ### Tags for Visibility
 Lazy namespace tools use tags for session-based visibility:
 ```python
-@mcp.tool(tags={"namespace:conversation"})
-async def conversation_start(...) -> dict:
-    # Only visible after tools_activate(namespace="conversation")
+@mcp.tool(tags={"namespace:background"})
+async def get_task_status(...) -> dict:
+  # Only visible after tools_activate(namespace="background")
     return {"result": "value"}
 ```
+
+### Background Task Pattern
+Heavy tools follow a shared invocation pattern:
+1. Ordinary tool call → queue work in the in-memory `TaskQueue` and return a `task_id`
+2. Poll `get_task_status(task_id)` until the task reaches a terminal state
+3. Optionally call `cancel_task(task_id)` while the task is queued or running
+4. SEP-1686 clients may instead execute the same tool in FastMCP task mode (`task=True`)
 
 ## Orchestration Examples
 
@@ -211,7 +247,7 @@ async def conversation_start(...) -> dict:
 - Validation failures return error dicts (e.g., invalid namespace in tools_activate)
 
 ## Dependencies
-- Database layer: `src/mem-graph/db.py`
-- Embedding service: `src/mem-graph/embeddings.py`
+- Database layer: `src/mem_graph/db.py`
+- Embedding service: `src/mem_graph/embeddings.py`
 - External services: Ollama (for embeddings and summarization)
 - Ladybug graph database (for data storage)

@@ -55,6 +55,7 @@ import logging
 import os
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated, Any, AsyncGenerator, Literal, cast
 
 import anyio
@@ -71,7 +72,7 @@ from mcp.types import Icon
 from pydantic import Field
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 import uvicorn
 
@@ -79,7 +80,9 @@ from .db import db_close_engine, db_get_connection, db_init_engine
 from .logging import logging_setup_engine
 from .providers.openapi import build_openapi_provider
 from .services.summarizer import start_worker, stop_worker
+from .services.task_queue import task_queue
 from .resources.prompts import PROMPT_REGISTRY, get_sub_agent_instructions
+from .tools import background, graph
 from .tools.agents import audit, diagrams, map as map_tool, orchestrator, triage
 from .tools.filesystem import filesystem
 from .tools.memory import conversation, memory, notes
@@ -97,9 +100,13 @@ logger = logging.getLogger(__name__)
 
 _HOST = os.getenv("MCP_HOST", "127.0.0.1")
 _PORT = int(os.getenv("MCP_PORT", "9100"))
+_BASE_DIR = Path(__file__).resolve().parent
+_STATIC_DIR = _BASE_DIR / "static"
 
 # Consolidated namespaces
-_LAZY_NAMESPACES: frozenset[str] = frozenset({"memory", "work", "notes", "audit", "filesystem"})
+_LAZY_NAMESPACES: frozenset[str] = frozenset(
+    {"memory", "work", "notes", "audit", "filesystem", "background", "graph"}
+)
 
 # Legacy namespace → canonical replacement
 _DEPRECATED_NAMESPACES: dict[str, str] = {
@@ -220,9 +227,17 @@ async def lifespan(server: FastMCP) -> AsyncGenerator[None, None]:  # noqa: ARG0
 
     await to_thread.run_sync(db_init_engine)
     start_worker()
+    await task_queue.startup()
     await _load_openapi_providers()
     logger.info("mem-graph server ready.")
     yield
+    pending = await task_queue.shutdown()
+    if pending["queued_cancelled"] or pending["running_cancelled"]:
+        logger.warning(
+            "background task queue cleared on shutdown queued=%s running=%s",
+            pending["queued_cancelled"],
+            pending["running_cancelled"],
+        )
     await stop_worker()
     await to_thread.run_sync(db_close_engine)
     logger.info("mem-graph server shut down cleanly.")
@@ -248,7 +263,7 @@ mcp = FastMCP(
         "TOOL DISCOVERY: Only core tools are visible at startup. "
         "Call tools_activate(namespace=<name>) to unlock a group of "
         "specialised tools for your current session. "
-        "Available namespaces: memory, work, notes, audit, filesystem.\n"
+        "Available namespaces: memory, work, notes, audit, filesystem, background, graph.\n"
         "Call tools_search(query='...') if you're unsure which namespace to use."
     ),
     lifespan=lifespan,
@@ -284,6 +299,8 @@ mcp.mount(map_tool.mcp)
 mcp.mount(orchestrator.mcp)
 mcp.mount(triage.mcp)
 mcp.mount(filesystem.mcp)
+mcp.mount(background.mcp)
+mcp.mount(graph.mcp)
 
 # Skills directory provider — drop .py files into skills/ to add tools on restart
 mcp.add_provider(SkillsProvider("skills"))
@@ -380,7 +397,7 @@ async def tools_activate(
         Field(
             description=(
                 "Namespace to activate for this session. "
-                "One of: memory, work, notes, audit, filesystem."
+                "One of: memory, work, notes, audit, filesystem, background, graph."
             )
         ),
     ],
@@ -397,8 +414,11 @@ async def tools_activate(
                  memory_store, memory_manage
     work       — task_*, decision_*, project_*, violation_*
     notes      — note_create, note_search, note_list
-    audit      — audit_package, map_codebase, triage_violations, decision_review
+    audit      — audit_package, map_codebase, triage_violations, decision_review,
+                 orchestrate_codebase, autopilot_remediate
     filesystem — file_read, file_write, file_edit, file_delete, file_search, file_grep
+    background — get_task_status, cancel_task
+    graph      — get_graph_snapshot, get_node_details, search_graph
     """
     # Handle deprecated namespace aliases
     if namespace in _DEPRECATED_NAMESPACES:
@@ -704,6 +724,61 @@ async def _health(request: Request) -> JSONResponse:  # noqa: ARG001
     return JSONResponse({"status": overall, **status}, status_code=http_status)
 
 
+def _dashboard(request: Request) -> FileResponse:  # noqa: ARG001
+    return FileResponse(_STATIC_DIR / "dashboard.html")
+
+
+def _dashboard_js(request: Request) -> FileResponse:  # noqa: ARG001
+    return FileResponse(_STATIC_DIR / "dashboard.js", media_type="text/javascript")
+
+
+def _dashboard_css(request: Request) -> FileResponse:  # noqa: ARG001
+    return FileResponse(_STATIC_DIR / "dashboard.css", media_type="text/css")
+
+
+async def _dashboard_graph(request: Request) -> JSONResponse:
+    node_types_raw = request.query_params.get("node_types")
+    node_types = (
+        [item for item in node_types_raw.split(",") if item]
+        if node_types_raw
+        else None
+    )
+    snapshot = await graph.graph_queries.get_graph_snapshot(
+        project_id=request.query_params.get("project_id"),
+        node_types=node_types,
+        depth=int(request.query_params.get("depth", 2)),
+        max_nodes=int(request.query_params.get("max_nodes", 240)),
+    )
+    return JSONResponse(snapshot.model_dump())
+
+
+async def _dashboard_node(request: Request) -> JSONResponse:
+    details = await graph.graph_queries.get_node_details(request.path_params["node_id"])
+    if not isinstance(details, dict):
+        return JSONResponse(details.model_dump())
+    return JSONResponse(details, status_code=404 if "error" in details else 200)
+
+
+async def _dashboard_search(request: Request) -> JSONResponse:
+    node_types_raw = request.query_params.get("node_types")
+    node_types = (
+        [item for item in node_types_raw.split(",") if item]
+        if node_types_raw
+        else None
+    )
+    results = await graph.graph_queries.search_graph(
+        query=request.query_params.get("query", ""),
+        project_id=request.query_params.get("project_id"),
+        node_types=node_types,
+        limit=int(request.query_params.get("limit", 20)),
+    )
+    return JSONResponse([result.model_dump() for result in results])
+
+
+def _dashboard_styles(request: Request) -> JSONResponse:  # noqa: ARG001
+    return JSONResponse({"styles": graph.graph_queries.load_node_styles()})
+
+
 _TRANSPORT = os.getenv("MCP_TRANSPORT", "http")
 
 
@@ -723,21 +798,7 @@ def run() -> None:
 
 
 def _run_http() -> None:
-    app_http = mcp.http_app(transport="streamable-http", path="/mcp")
-    app_sse = mcp.http_app(transport="sse", path="/sse")
-
-    @asynccontextmanager
-    async def combined_lifespan(app_instance: Starlette) -> AsyncGenerator[None, None]:
-        async with app_http.router.lifespan_context(app_instance):
-            async with app_sse.router.lifespan_context(app_instance):
-                yield
-
-    health_route = Route("/health", _health, methods=["GET"])
-
-    app = Starlette(
-        routes=[health_route] + app_http.router.routes + app_sse.router.routes,
-        lifespan=combined_lifespan,
-    )
+    app = build_http_app()
 
     async def serve() -> None:
         config = uvicorn.Config(
@@ -749,7 +810,7 @@ def _run_http() -> None:
             log_level="warning",
         )
         logger.info(
-            "Starting server %r (HTTP: /mcp, SSE: /sse, Health: /health) on %s:%s",
+            "Starting server %r (HTTP: /mcp, SSE: /sse, Health: /health, Dashboard: /dashboard) on %s:%s",
             mcp.name,
             _HOST,
             _PORT,
@@ -758,3 +819,30 @@ def _run_http() -> None:
         await server.serve()
 
     anyio.run(serve)
+
+
+def build_http_app(*, with_lifespan: bool = True) -> Starlette:
+    app_http = mcp.http_app(transport="streamable-http", path="/mcp")
+    app_sse = mcp.http_app(transport="sse", path="/sse")
+
+    @asynccontextmanager
+    async def combined_lifespan(app_instance: Starlette) -> AsyncGenerator[None, None]:
+        async with app_http.router.lifespan_context(app_instance):
+            async with app_sse.router.lifespan_context(app_instance):
+                yield
+
+    web_routes = [
+        Route("/health", _health, methods=["GET"]),
+        Route("/dashboard", _dashboard, methods=["GET"]),
+        Route("/dashboard.js", _dashboard_js, methods=["GET"]),
+        Route("/dashboard.css", _dashboard_css, methods=["GET"]),
+        Route("/dashboard/api/graph", _dashboard_graph, methods=["GET"]),
+        Route("/dashboard/api/node/{node_id}", _dashboard_node, methods=["GET"]),
+        Route("/dashboard/api/search", _dashboard_search, methods=["GET"]),
+        Route("/dashboard/api/styles", _dashboard_styles, methods=["GET"]),
+    ]
+
+    return Starlette(
+        routes=web_routes + app_http.router.routes + app_sse.router.routes,
+        lifespan=combined_lifespan if with_lifespan else None,
+    )

@@ -4,7 +4,7 @@
 This document explains the Syntx Memory MCP Server component - the foundation that provides the Model Context Protocol (MCP) server interface, handles tool discovery, manages lazy namespace activation, and orchestrates HTTP/SSE transport mechanisms.
 
 ## Overview
-The server is implemented in `src/mem-graph/server.py` and serves as the entry point for all MCP interactions. It uses the FastMCP framework to provide a standardized interface for tools and agents while implementing custom logic for lazy tool loading and session-based namespace activation.
+The server is implemented in `src/mem_graph/server.py` and serves as the entry point for all MCP interactions. It uses the FastMCP framework to provide a standardized interface for tools and agents while implementing custom logic for lazy tool loading, session-based namespace activation, background-task queueing, and dashboard route mounting.
 
 ### Responsibilities
 - Initialize and shutdown database connections via lifespan management
@@ -13,6 +13,8 @@ The server is implemented in `src/mem-graph/server.py` and serves as the entry p
 - Handle HTTP and SSE transport protocols
 - Manage component visibility through tag-based enabling/disabling
 - Ollama model probing and management during startup
+- Manage the in-memory background task queue lifecycle
+- Expose the lightweight graph dashboard and its JSON APIs
 
 ## Architecture Details
 
@@ -20,11 +22,12 @@ The server is implemented in `src/mem-graph/server.py` and serves as the entry p
 The server uses FastMCP's lifespan context manager to handle initialization and cleanup:
 
 1. **Startup** (`lifespan` function):
-   - Calls `init_db()` from `src/mem-graph/db.py` to initialize Ladybug database
+   - Calls `db_init_engine()` from `src/mem_graph/db.py` to initialize Ladybug database
    - Installs and loads vector/fts extensions
    - Runs schema DDL from `schema/agent_memory_schema.cypher`
    - Creates vector indexes for all embeddable node types
    - Probes Ollama availability and pulls required embedding model if missing
+   - Starts the in-memory background task queue
 
 2. **Runtime**:
    - Server mounts all tool sub-servers at initialization
@@ -32,7 +35,8 @@ The server uses FastMCP's lifespan context manager to handle initialization and 
    - Tools remain available for invocation based on their visibility tags
 
 3. **Shutdown** (`lifespan` function cleanup):
-   - Calls `close_db()` to release database connections
+   - Cancels unfinished in-memory queued/running background tasks
+   - Calls `db_close_engine()` to release database connections
 
 ### Tool Discovery and Activation
 The server implements a two-tier tool visibility system:
@@ -46,7 +50,7 @@ The server implements a two-tier tool visibility system:
 - `tools_search` (discovery mechanism)
 
 **Lazy Namespaces (Session-Activated)**:
-- `conversation`, `decision`, `task`, `project`, `memory`, `note`, `violation`, `audit`
+- `memory`, `work`, `notes`, `audit`, `filesystem`, `background`, `graph`
 
 Activation Flow:
 1. Client calls `tools_search(query="...")` to find relevant tools
@@ -63,6 +67,24 @@ All MCP tool invocations follow this pattern:
 5. Handler performs Ladybug Cypher operations
 6. Handler returns structured dict response serialized by FastMCP
 
+### Background Task Flow
+Ordinary calls to `audit_package`, `map_codebase`, `triage_violations`, and `orchestrate_codebase` are queued in an in-memory `TaskQueue` and return a task identifier immediately. Clients poll `get_task_status(task_id)` and may call `cancel_task(task_id)` while the task is queued or running.
+
+The same tools also advertise FastMCP `task=True`, so SEP-1686-capable clients can run them as native FastMCP tasks instead of using the in-process queue.
+
+### Dashboard Routes
+The HTTP app now serves both MCP endpoints and a lightweight graph dashboard:
+- `/dashboard` - dashboard HTML shell
+- `/dashboard.js` - client logic
+- `/dashboard.css` - dashboard styles
+- `/dashboard/api/graph` - graph snapshot JSON
+- `/dashboard/api/node/{node_id}` - node details JSON
+- `/dashboard/api/search` - search JSON
+- `/dashboard/api/styles` - node style metadata JSON
+- `/health` - health endpoint
+- `/mcp` - streamable MCP HTTP transport
+- `/sse` - SSE transport
+
 ### Data Flow
 ```
 Client Request 
@@ -75,9 +97,10 @@ Client Request
 
 ### State Management
 The server maintains minimal internal state:
-- Database connection singleton (managed in `src/mem-graph/db.py`)
+- Database connection singleton (managed in `src/mem_graph/db.py`)
 - Tool visibility tags (managed via FastMCP's provider system)
-- No in-memory caching of tool results - all queries hit database
+- In-memory task queue state for long-running audit operations
+- No general-purpose caching of graph or tool query results - normal reads still hit the database
 
 ### Error Handling
 - Database initialization failures raise RuntimeError during startup
@@ -92,7 +115,7 @@ The server maintains minimal internal state:
 - MCP protocol provides built-in request/response tracing capabilities
 
 ### Code References
-- Main server logic: `src/mem-graph/server.py`
-- Database initialization: `src/mem-graph/db.py`
+- Main server logic: `src/mem_graph/server.py`
+- Database initialization: `src/mem_graph/db.py`
 - Schema definition: `schema/agent_memory_schema.cypher`
-- Tool implementations: `src/mem-graph/tools/*.py`
+- Tool implementations: `src/mem_graph/tools/*.py`

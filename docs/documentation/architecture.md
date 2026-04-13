@@ -6,6 +6,8 @@ This document provides a comprehensive architectural overview of the Syntx Memor
 ## System Overview
 The Syntx Memory MCP Server is a Model Context Protocol (MCP) implementation designed to provide persistent memory and contextual awareness for AI agents. It combines a graph database backend with specialized tools for capturing and recalling various types of work artifacts.
 
+Recent additions include an in-memory background task queue for long-running audit workflows and a lightweight HTTP dashboard for visual graph inspection.
+
 ### High-Level Components
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌────────────────────┐
@@ -32,6 +34,8 @@ The Syntx Memory MCP Server is a Model Context Protocol (MCP) implementation des
 - Implement tool discovery and lazy namespace activation
 - Handle database connection initialization/cleanup
 - Provide Ollama integration for embeddings and summarization
+- Expose the dashboard HTTP routes and graph JSON APIs
+- Coordinate the in-memory background task queue lifecycle
 
 **Key Features:**
 - Two-tier tool visibility (core always visible, namespaces session-activated)
@@ -46,6 +50,7 @@ The Syntx Memory MCP Server is a Model Context Protocol (MCP) implementation des
 - Manage data persistence through Ladybug graph database
 - Expose FastMCP sub-servers that get mounted by main server
 - Handle tool-specific business logic and data validation
+- Provide queue-backed status polling and graph-visualization APIs
 
 **Organization:**
 - Each tool module exposes a `FastMCP` instance named `mcp`
@@ -84,6 +89,41 @@ The Syntx Memory MCP Server is a Model Context Protocol (MCP) implementation des
 6. Result Serialization
    ↓
 7. Client Response (MCP Protocol)
+```
+
+### Background Task Flow
+```mermaid
+sequenceDiagram
+   participant Client as MCP Client
+   participant Tool as Heavy Tool
+   participant Queue as In-Memory TaskQueue
+   participant Worker as Async Worker
+
+   Client->>Tool: audit_package(...)
+   Tool->>Queue: enqueue(tool_name, arguments, worker)
+   Queue-->>Client: task_id + queued status
+   Queue->>Worker: start when capacity is available
+   Worker->>Queue: progress updates
+   Client->>Tool: get_task_status(task_id)
+   Queue-->>Client: queued/running/completed/failed/cancelled
+```
+
+### Dashboard Flow
+```mermaid
+sequenceDiagram
+   participant Browser as Browser
+   participant Server as HTTP Routes
+   participant Graph as Graph Tools
+   participant DB as Ladybug DB
+
+   Browser->>Server: GET /dashboard
+   Server-->>Browser: HTML + JS + CSS
+   Browser->>Server: GET /dashboard/api/graph
+   Server->>Graph: get_graph_snapshot(...)
+   Graph->>DB: label + relationship queries
+   DB-->>Graph: nodes + edges
+   Graph-->>Server: GraphSnapshot
+   Server-->>Browser: JSON snapshot
 ```
 
 ### Conversation Capture Flow
@@ -248,6 +288,14 @@ All MCP communications use JSON-RPC 2.0 format:
 
 ### Tool Interface
 Tools receive parameters as defined by their function signatures and return dict objects that get automatically serialized to MCP results.
+
+### Dashboard HTTP Surface
+- `/dashboard` - static dashboard shell
+- `/dashboard.js` and `/dashboard.css` - dashboard assets
+- `/dashboard/api/graph` - bounded graph snapshot JSON
+- `/dashboard/api/node/{node_id}` - node details JSON
+- `/dashboard/api/search` - bounded graph search JSON
+- `/dashboard/api/styles` - stable node-style metadata
 
 ## Deployment Architecture
 

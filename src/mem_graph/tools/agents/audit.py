@@ -27,8 +27,11 @@ from pydantic import Field
 
 from ...agents.audit.audit_agent import DEFAULT_RULES, AuditDependencies, audit_agent
 from ...models.audit import AuditReport
+from ...services.task_queue import task_queue
 from ...services.report_writer import write_report
 from ...services.violation_writer import write_violations
+from ..background.progress import ContextProgressReporter, ProgressReporter, report_step
+from ..background.task_status import build_task_submission
 
 mcp = FastMCP("audit", instructions="Perform package codebase audits.")
 logger = logging.getLogger(__name__)
@@ -84,74 +87,127 @@ async def audit_package(
     Pass ``peer_review=True`` to have the findings reviewed by the client LLM
     before they are returned.
     """
+    if ctx is not None and ctx.is_background_task:
+        reporter = ContextProgressReporter(ctx)
+        return await _audit_package_worker(
+            package_path=package_path,
+            project_id=project_id,
+            report_output_path=report_output_path,
+            persist_violations=persist_violations,
+            file_extension=file_extension,
+            peer_review=peer_review,
+            reporter=reporter,
+            ctx=ctx,
+        )
+
+    task = await task_queue.enqueue(
+        tool_name="audit_package",
+        arguments={
+            "package_path": package_path,
+            "project_id": project_id,
+            "report_output_path": report_output_path,
+            "persist_violations": persist_violations,
+            "file_extension": file_extension,
+            "peer_review": peer_review,
+        },
+        session_id=ctx.session_id if ctx is not None else None,
+        runner=lambda reporter: _audit_package_worker(
+            package_path=package_path,
+            project_id=project_id,
+            report_output_path=report_output_path,
+            persist_violations=persist_violations,
+            file_extension=file_extension,
+            peer_review=peer_review,
+            reporter=reporter,
+            ctx=ctx,
+        ),
+    )
+    return build_task_submission(task)
+
+
+async def _audit_package_worker(
+    *,
+    package_path: str,
+    project_id: str,
+    report_output_path: str | None,
+    persist_violations: bool,
+    file_extension: str,
+    peer_review: bool,
+    reporter: ProgressReporter,
+    ctx: Context | None,
+) -> dict:
     if not os.path.exists(package_path):
         return {"error": f"Package path not found: {package_path}"}
 
-    await _report_progress_init(ctx, package_path)
+    await report_step(
+        reporter,
+        5,
+        100,
+        "prepare",
+        f"Validating inputs and loading audit skills for {package_path}.",
+    )
 
     skills_content = await _load_skills()
     deps = _build_deps(package_path, file_extension, skills_content)
 
-    await _report_progress_running(ctx)
-
+    await report_step(
+        reporter,
+        20,
+        100,
+        "audit",
+        "Running the audit agent across the selected source files.",
+    )
     report = await _run_agent(deps)
 
     if report is None:
         return {"error": "Audit agent failed to produce a report."}
 
-    await _report_progress_complete(ctx, report)
+    await report_step(
+        reporter,
+        60,
+        100,
+        "summarize",
+        (
+            f"Audit complete with {report.stats.total_findings} findings and "
+            f"{report.stats.blocker_count} blocker-level issues."
+        ),
+    )
+
     output_path = _maybe_write_report(report, report_output_path)
-    
     violation_summary = await _handle_violation_persistence(
         ctx, report, project_id, persist_violations
     )
 
-    await _report_progress_persistence(ctx)
+    await report_step(
+        reporter,
+        82,
+        100,
+        "persist",
+        "Stored report output and processed violation persistence.",
+    )
 
     peer_review_result = await _handle_peer_review(ctx, report, peer_review)
-
-    await _report_progress_final(ctx)
+    if peer_review and peer_review_result is not None:
+        await report_step(
+            reporter,
+            94,
+            100,
+            "review",
+            "Peer review completed for the audit summary.",
+        )
 
     response = _build_response(report, output_path, violation_summary)
     if peer_review_result is not None:
         response["peer_review"] = peer_review_result
+
+    await report_step(
+        reporter,
+        100,
+        100,
+        "complete",
+        "Audit finished and final results are ready.",
+    )
     return response
-
-
-async def _report_progress_init(ctx: Context | None, package_path: str) -> None:
-    """Report initial progress."""
-    if ctx is not None:
-        await ctx.info(f"Starting audit of {package_path}")
-        await ctx.report_progress(progress=0, total=4)
-
-
-async def _report_progress_running(ctx: Context | None) -> None:
-    """Report agent running progress."""
-    if ctx is not None:
-        await ctx.info("Running audit agent…")
-        await ctx.report_progress(progress=1, total=4)
-
-
-async def _report_progress_complete(ctx: Context | None, report: AuditReport) -> None:
-    """Report audit complete progress."""
-    if ctx is not None:
-        await ctx.info(
-            f"Audit complete: {report.stats.total_findings} findings "
-            f"({report.stats.blocker_count} blockers)."
-        )
-        await ctx.report_progress(progress=2, total=4)
-
-
-async def _report_progress_persistence(ctx: Context | None) -> None:
-    """Report persistence progress."""
-    if ctx is not None:
-        await ctx.report_progress(progress=3, total=4)
-
-
-async def _report_progress_final(ctx: Context | None) -> None:
-    """Report final progress."""
-    if ctx is not None:
-        await ctx.report_progress(progress=4, total=4)
 
 
 async def _handle_violation_persistence(

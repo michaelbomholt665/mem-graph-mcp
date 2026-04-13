@@ -20,7 +20,7 @@ def _mock_report(rule_id: str, path: str) -> AuditReport:
     )
     result = FileAuditResult(file_path=path, findings=[finding])
     return AuditReport(
-        package_path="/tmp", summary="Test", file_results=[result], stats=stats, rules_applied=[rule_id]
+        package_path=".", summary="Test", file_results=[result], stats=stats, rules_applied=[rule_id]
     )
 
 

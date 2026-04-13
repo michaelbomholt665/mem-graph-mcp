@@ -16,11 +16,15 @@ from typing import Annotated, Any, Literal
 import anyio
 from fastmcp import FastMCP
 from fastmcp.server.context import Context
+from mcp.types import Icon
 from pydantic import Field
 
 from ...agents.orchestrator_agent import OrchestratorDependencies, orchestrator_agent
 from ...agents.orchestrator_graph import autopilot_graph_run
 from ...agents.router_agent import RouterDependencies, router_agent
+from ...services.task_queue import task_queue
+from ..background.progress import ContextProgressReporter, ProgressReporter, report_step
+from ..background.task_status import build_task_submission
 
 mcp = FastMCP("orchestrator", instructions="Batch orchestration and recursive autopilot workflows.")
 logger = logging.getLogger(__name__)
@@ -40,7 +44,11 @@ async def _load_skills() -> str:
         return ""
 
 
-@mcp.tool(tags={"namespace:audit"})
+@mcp.tool(
+    tags={"namespace:audit"},
+    icons=[Icon(src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBmaWxsPSIjMTYzYTVmIiBkPSJNMyAxOWgxOHYySDN6bTItM2gxNHYtMmgtMTR6bTQtM2gxMHYtMkg5em0yLTNoOHYtMkgxMXptMi0zaDZWNWgtNnoiLz48L3N2Zz4=", mimeType="image/svg+xml")],
+    task=True,
+)
 async def autopilot_remediate(
     project_id: Annotated[str, Field(description="Project ID to ground the remediation in.")],
     language: Annotated[Literal["go", "python", "typescript"], Field(description="Target language.")],
@@ -112,7 +120,7 @@ async def autopilot_remediate(
     }
 
 
-@mcp.tool(tags={"namespace:audit"})
+@mcp.tool(tags={"namespace:audit"}, task=True)
 async def orchestrate_codebase(
     package_path: Annotated[str, Field(description="Absolute path to the package directory to analyse in batches.")],
     project_id: Annotated[str, Field(description="Project ID used by downstream sub-agents.")],
@@ -139,15 +147,69 @@ async def orchestrate_codebase(
     into the selected sub-agent, aggregates results incrementally, and returns the
     merged output plus execution summary.
     """
+    if ctx is not None and ctx.is_background_task:
+        reporter = ContextProgressReporter(ctx)
+        return await _orchestrate_codebase_worker(
+            package_path=package_path,
+            project_id=project_id,
+            subagent_name=subagent_name,
+            batch_size=batch_size,
+            file_extension=file_extension,
+            batch_timeout_seconds=batch_timeout_seconds,
+            extra_context=extra_context,
+            reporter=reporter,
+        )
+
+    task = await task_queue.enqueue(
+        tool_name="orchestrate_codebase",
+        arguments={
+            "package_path": package_path,
+            "project_id": project_id,
+            "subagent_name": subagent_name,
+            "batch_size": batch_size,
+            "file_extension": file_extension,
+            "batch_timeout_seconds": batch_timeout_seconds,
+            "extra_context": extra_context or {},
+        },
+        session_id=ctx.session_id if ctx is not None else None,
+        runner=lambda reporter: _orchestrate_codebase_worker(
+            package_path=package_path,
+            project_id=project_id,
+            subagent_name=subagent_name,
+            batch_size=batch_size,
+            file_extension=file_extension,
+            batch_timeout_seconds=batch_timeout_seconds,
+            extra_context=extra_context,
+            reporter=reporter,
+        ),
+    )
+    return build_task_submission(task)
+
+
+async def _orchestrate_codebase_worker(
+    *,
+    package_path: str,
+    project_id: str,
+    subagent_name: Literal["audit", "map", "decision"],
+    batch_size: int,
+    file_extension: str,
+    batch_timeout_seconds: float,
+    extra_context: dict[str, Any] | None,
+    reporter: ProgressReporter,
+) -> dict[str, Any]:
     if not os.path.exists(package_path):
         return {"error": f"Package path not found: {package_path}"}
 
-    if ctx is not None:
-        await ctx.info(
-            f"Starting orchestrated {subagent_name} analysis of {package_path} "
-            f"(batch_size={batch_size})"
-        )
-        await ctx.report_progress(progress=0, total=3)
+    await report_step(
+        reporter,
+        8,
+        100,
+        "prepare",
+        (
+            f"Preparing orchestrated {subagent_name} analysis for {package_path} "
+            f"with batch size {batch_size}."
+        ),
+    )
 
     skills_content = await _load_skills()
     deps = OrchestratorDependencies(
@@ -166,9 +228,13 @@ async def orchestrate_codebase(
         "and call finalize once all batches are complete."
     )
 
-    if ctx is not None:
-        await ctx.info(f"Running orchestrator agent ({subagent_name})…")
-        await ctx.report_progress(progress=1, total=3)
+    await report_step(
+        reporter,
+        24,
+        100,
+        "orchestrate",
+        f"Running the orchestrator agent for the {subagent_name} workflow.",
+    )
 
     try:
         async with orchestrator_agent.run_stream(prompt, deps=deps) as result:
@@ -177,13 +243,16 @@ async def orchestrate_codebase(
         logger.error("Orchestrator execution failed: %s", exc)
         return {"error": f"Agent failed: {exc}"}
 
-    if ctx is not None:
-        await ctx.info(
-            f"Orchestration complete: {report.total_files} files in "
-            f"{report.total_batches} batches "
-            f"({report.failed_batches} failed)."
-        )
-        await ctx.report_progress(progress=3, total=3)
+    await report_step(
+        reporter,
+        100,
+        100,
+        "complete",
+        (
+            f"Orchestration finished across {report.total_files} files and "
+            f"{report.total_batches} batches."
+        ),
+    )
 
     return {
         "status": "completed" if not report.partial_failure else "partial",

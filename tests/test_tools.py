@@ -9,6 +9,7 @@ No Ollama or network required.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from unittest.mock import patch
 
@@ -379,9 +380,10 @@ async def test_task_link_decision_and_violation(conn):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_audit_package_tool(conn):
+async def test_audit_package_tool(conn, tmp_path):
     from mem_graph.tools.work.projects import project_create
     from mem_graph.tools.agents.audit import audit_package
+    from mem_graph.tools.background.task_status import get_task_status
     from mem_graph.models.audit import AuditReport, AuditStats
 
     proj = await project_create(name="P", description="d")
@@ -396,17 +398,33 @@ async def test_audit_package_tool(conn):
         by_severity={}, by_category={}, blocker_count=0, critical_count=0
     )
     mock_report = AuditReport(
-        package_path="/tmp", summary="Clean.", file_results=[], stats=stats, rules_applied=["rule1"]
+        package_path=str(tmp_path), summary="Clean.", file_results=[], stats=stats, rules_applied=["rule1"]
     )
 
     with patch.object(audit_tool_mod, "_run_agent", return_value=mock_report):
+        # Ensure the package path exists so the audit worker proceeds.
+        package_dir = tmp_path / "package"
+        package_dir.mkdir()
+
         result = await audit_package(
-            package_path="/tmp",
+            package_path=str(package_dir),
             project_id=pid,
-            persist_violations=True
+            persist_violations=True,
         )
 
-    assert result["status"] == "completed"
-    assert result["summary"] == "Clean."
-    assert result["total_findings"] == 0
+        assert result["status"] in {"queued", "running"}
+        assert result["tool"] == "audit_package"
+
+        async def wait_for_completion():
+            while True:
+                status = await get_task_status(result["task_id"])
+                if status["status"] == "completed":
+                    return status
+                await asyncio.sleep(0.01)
+
+        status = await asyncio.wait_for(wait_for_completion(), timeout=2.0)
+
+    assert status["result"]["status"] == "completed"
+    assert status["result"]["summary"] == "Clean."
+    assert status["result"]["total_findings"] == 0
 

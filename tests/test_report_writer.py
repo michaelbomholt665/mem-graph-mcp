@@ -18,7 +18,7 @@ def _mock_report() -> AuditReport:
     )
     result = FileAuditResult(file_path="src/main.py", findings=[finding])
     return AuditReport(
-        package_path="/tmp", summary="Test summary narrative.", file_results=[result], stats=stats, rules_applied=["test-rule"]
+        package_path=".", summary="Test summary narrative.", file_results=[result], stats=stats, rules_applied=["test-rule"]
     )
 
 def test_render_markdown_has_expected_sections():

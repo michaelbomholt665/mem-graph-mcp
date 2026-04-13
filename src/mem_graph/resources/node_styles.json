@@ -1,0 +1,34 @@
+{
+  "Project": {
+    "color": "#0b6e4f",
+    "size": 22
+  },
+  "Backend": {
+    "color": "#ff7f11",
+    "size": 18
+  },
+  "Task": {
+    "color": "#1c5d99",
+    "size": 16
+  },
+  "Decision": {
+    "color": "#8c2f59",
+    "size": 17
+  },
+  "Violation": {
+    "color": "#c43d2b",
+    "size": 19
+  },
+  "Memory": {
+    "color": "#d59c1a",
+    "size": 15
+  },
+  "Note": {
+    "color": "#546a7b",
+    "size": 14
+  },
+  "CodeSymbol": {
+    "color": "#2a9d8f",
+    "size": 13
+  }
+}

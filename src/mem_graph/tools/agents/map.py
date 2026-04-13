@@ -22,6 +22,9 @@ from mcp.types import Icon
 from pydantic import Field
 
 from ...agents.map.map_agent import MapDependencies, map_agent
+from ...services.task_queue import task_queue
+from ..background.progress import ContextProgressReporter, ProgressReporter, report_step
+from ..background.task_status import build_task_submission
 
 mcp = FastMCP("map", instructions="Codebase cartography mapping tools.")
 logger = logging.getLogger(__name__)
@@ -66,12 +69,50 @@ async def map_codebase(
     Produces a summary of what features exist, where they are implemented natively,
     and what files they depend on or are consumed by. Returns entry points and relationship counts.
     """
+    if ctx is not None and ctx.is_background_task:
+        reporter = ContextProgressReporter(ctx)
+        return await _map_codebase_worker(
+            package_path=package_path,
+            known_features=list(known_features),
+            file_extension=file_extension,
+            reporter=reporter,
+        )
+
+    task = await task_queue.enqueue(
+        tool_name="map_codebase",
+        arguments={
+            "package_path": package_path,
+            "known_features": list(known_features),
+            "file_extension": file_extension,
+        },
+        session_id=ctx.session_id if ctx is not None else None,
+        runner=lambda reporter: _map_codebase_worker(
+            package_path=package_path,
+            known_features=list(known_features),
+            file_extension=file_extension,
+            reporter=reporter,
+        ),
+    )
+    return build_task_submission(task)
+
+
+async def _map_codebase_worker(
+    *,
+    package_path: str,
+    known_features: list[str],
+    file_extension: str,
+    reporter: ProgressReporter,
+) -> dict:
     if not os.path.exists(package_path):
         return {"error": f"Package path not found: {package_path}"}
 
-    if ctx is not None:
-        await ctx.info(f"Starting codebase mapping of {package_path}")
-        await ctx.report_progress(progress=0, total=3)
+    await report_step(
+        reporter,
+        8,
+        100,
+        "prepare",
+        f"Preparing codebase mapping for {package_path}.",
+    )
 
     skills_content = await _load_skills()
     deps = MapDependencies(
@@ -81,9 +122,13 @@ async def map_codebase(
         skills_content=skills_content,
     )
 
-    if ctx is not None:
-        await ctx.info("Running map agent…")
-        await ctx.report_progress(progress=1, total=3)
+    await report_step(
+        reporter,
+        25,
+        100,
+        "scan",
+        "Running the map agent to discover features and relationships.",
+    )
 
     try:
         async with map_agent.run_stream(
@@ -95,12 +140,16 @@ async def map_codebase(
         logger.error("Map agent execution failed: %s", exc)
         return {"error": f"Agent failed: {exc}"}
 
-    if ctx is not None:
-        await ctx.info(
-            f"Mapping complete: {len(report.features)} features, "
+    await report_step(
+        reporter,
+        100,
+        100,
+        "complete",
+        (
+            f"Mapping finished with {len(report.features)} features and "
             f"{len(report.relationships)} relationships."
-        )
-        await ctx.report_progress(progress=3, total=3)
+        ),
+    )
 
     return {
         "status": "completed" if not report.partial_failure else "partial",

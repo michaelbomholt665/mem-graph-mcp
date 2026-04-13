@@ -41,15 +41,15 @@ Existing files to edit:
 
 ## Tasklist
 
-- [ ] Add `TaskStatus`, `TaskProgress`, `TaskResult`, and `Task` models with timestamps, status transitions, and result payload shape.
-- [ ] Implement a bounded in-memory `TaskQueue` service with enqueue, status lookup, completion tracking, and queued-task cancellation.
-- [ ] Add a background tools namespace that exposes status and progress helpers without coupling status lookup to any one agent tool.
-- [ ] Convert the heavy tools to `task=True` and keep their synchronous behavior available inside the task worker function.
-- [ ] Standardize progress messages so every background task reports percentage, current step, and user-meaningful status text.
-- [ ] Add `get_task_status` and `cancel_task` endpoints that work for queued, running, completed, failed, and cancelled tasks.
-- [ ] Wire queue lifecycle setup into server startup and ensure shutdown behavior is explicit about unfinished tasks.
-- [ ] Add tests for queue ordering, concurrency limits, terminal status handling, and status polling responses.
-- [ ] Document client polling expectations, cancellation semantics, and the fact that task state is in-memory only.
+- [x] Add `TaskStatus`, `TaskProgress`, `TaskResult`, and `Task` models with timestamps, status transitions, and result payload shape.
+- [x] Implement a bounded in-memory `TaskQueue` service with enqueue, status lookup, completion tracking, and queued-task cancellation.
+- [x] Add a background tools namespace that exposes status and progress helpers without coupling status lookup to any one agent tool.
+- [x] Convert the heavy tools to `task=True` and keep their synchronous behavior available inside the task worker function.
+- [x] Standardize progress messages so every background task reports percentage, current step, and user-meaningful status text.
+- [x] Add `get_task_status` and `cancel_task` endpoints that work for queued, running, completed, failed, and cancelled tasks.
+- [x] Wire queue lifecycle setup into server startup and ensure shutdown behavior is explicit about unfinished tasks.
+- [x] Add tests for queue ordering, concurrency limits, terminal status handling, and status polling responses.
+- [x] Document client polling expectations, cancellation semantics, and the fact that task state is in-memory only.
 
 ## Out Of Scope
 
@@ -59,10 +59,10 @@ Existing files to edit:
 
 ## Done When
 
-- [ ] `audit_package`, `map_codebase`, `triage_violations`, and `orchestrate_codebase` return a task identifier instead of blocking.
-- [ ] Clients can poll a stable status API and receive progress updates until completion.
-- [ ] Cancellation is explicit and safe for queued tasks, with clear behavior for running tasks.
-- [ ] No existing fast-path tools are forced into background mode unnecessarily.
+- [x] `audit_package`, `map_codebase`, `triage_violations`, and `orchestrate_codebase` return a task identifier instead of blocking.
+- [x] Clients can poll a stable status API and receive progress updates until completion.
+- [x] Cancellation is explicit and safe for queued tasks, with clear behavior for running tasks.
+- [x] No existing fast-path tools are forced into background mode unnecessarily.
 
 ## References
 

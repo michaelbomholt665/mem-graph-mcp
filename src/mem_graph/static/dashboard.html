@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Memory Atlas</title>
+    <!-- External fonts removed to avoid loading remote resources in the dashboard. Use system fonts as fallback. -->
+    <link rel="stylesheet" href="/dashboard.css" />
+    <script src="/force-graph.js"></script>
+    <script src="/dashboard.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Knowledge Graph Dashboard</p>
+          <h1>Memory Atlas</h1>
+          <p class="subhead">
+            Explore tasks, decisions, violations, memories, and symbols without leaving the server.
+          </p>
+        </div>
+        <div class="tab-strip" aria-label="Planned dashboard surfaces">
+          <button type="button" class="tab is-active">Graph</button>
+          <button type="button" class="tab" disabled>Jira Soon</button>
+          <button type="button" class="tab" disabled>Files Soon</button>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="controls panel" aria-label="Dashboard controls">
+          <div class="panel-header">
+            <h2>Controls</h2>
+            <p id="snapshot-status">Loading graph snapshot…</p>
+          </div>
+
+          <label class="field">
+            <span>Project ID</span>
+            <input id="project-id" type="text" placeholder="Leave blank for all projects" />
+          </label>
+
+          <label class="field search-field">
+            <span>Search</span>
+            <div class="search-row">
+              <input id="search-input" type="search" placeholder="Find nodes by title, rule, file, or memory" />
+              <button id="search-button" type="button">Find</button>
+            </div>
+          </label>
+
+          <div class="field-inline">
+            <label class="field compact">
+              <span>Depth</span>
+              <select id="depth-select">
+                <option value="1">1 hop</option>
+                <option value="2" selected>2 hops</option>
+                <option value="3">3 hops</option>
+              </select>
+            </label>
+
+            <label class="field compact">
+              <span>Max Nodes</span>
+              <select id="max-nodes-select">
+                <option value="120">120</option>
+                <option value="180">180</option>
+                <option value="240" selected>240</option>
+                <option value="320">320</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="actions">
+            <button id="refresh-button" type="button">Refresh</button>
+            <span id="last-updated">Waiting for first snapshot</span>
+          </div>
+
+          <section class="filter-section">
+            <div class="section-heading">
+              <h3>Node Types</h3>
+              <button id="reset-filters-button" type="button" class="ghost-button">Reset</button>
+            </div>
+            <div id="type-filters" class="type-filters"></div>
+          </section>
+
+          <section class="results-section">
+            <div class="section-heading">
+              <h3>Search Results</h3>
+            </div>
+            <ul id="search-results" class="results-list">
+              <li class="muted">Search to focus the graph on a matching node.</li>
+            </ul>
+          </section>
+        </aside>
+
+        <main class="graph-stage panel">
+          <div class="stage-header">
+            <div>
+              <h2>Graph</h2>
+              <p id="graph-summary">Preparing the canvas…</p>
+            </div>
+            <div class="legend" id="legend"></div>
+          </div>
+          <div id="graph-canvas" class="graph-canvas" aria-label="Knowledge graph canvas"></div>
+        </main>
+
+        <aside class="details panel" aria-label="Node details">
+          <div class="panel-header">
+            <h2>Details</h2>
+            <p>Click a node to inspect its metadata and relationships.</p>
+          </div>
+          <div id="details-empty" class="details-empty">
+            Select a node from the graph or search results to inspect it.
+          </div>
+          <article id="details-card" class="details-card is-hidden">
+            <p id="details-type" class="details-type"></p>
+            <h3 id="details-title">Select a node</h3>
+            <dl id="details-metadata" class="metadata-list"></dl>
+            <div class="relationship-block">
+              <h4>Relationships</h4>
+              <ul id="details-relationships" class="relationship-list"></ul>
+            </div>
+          </article>
+        </aside>
+      </section>
+    </div>
+  </body>
+  </html>

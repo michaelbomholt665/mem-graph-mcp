@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "anyio>=4.3.0",
-    "fastmcp[code-mode,apps]>=3.2.3",
+    "fastmcp[code-mode,apps,tasks]>=3.2.3",
     "hindsight-pydantic-ai>=0.4.19",
     "httpx>=0.28.1",
     "logfire>=4.32.0",
