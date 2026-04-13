@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# src/mem_graph/agents/audit_agent.py
+# src/mem_graph/agents/audit/audit_agent.py
 """
 Generic code audit agent.
 
@@ -27,8 +27,8 @@ from typing import Any, Callable
 import anyio
 from pydantic_ai import Agent, RunContext
 
-from ..config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, build_model_settings
-from ..models.audit import (
+from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
+from ...models.audit import (
     AuditReport,
     AuditRule,
     AuditStats,
@@ -36,7 +36,7 @@ from ..models.audit import (
     FindingCategory,
     Severity,
 )
-from ..resources.personas import AUDITOR_PERSONA
+from ...resources.personas import AUDITOR_PERSONA
 
 ################
 #   CONSTANTS
@@ -213,7 +213,7 @@ audit_agent: Agent[AuditDependencies, AuditReport] = Agent(
     AGENT_MODEL,
     deps_type=AuditDependencies,
     output_type=AuditReport,
-    model_settings=build_model_settings(
+    model_settings=config_model_settings(
         temperature=AUDITOR_PERSONA.params.temperature,
         top_p=AUDITOR_PERSONA.params.top_p,
     ),

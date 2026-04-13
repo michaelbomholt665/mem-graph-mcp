@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# tests/conftest.py
 """Shared pytest fixtures for deterministic, offline test runs."""
 
 from __future__ import annotations
@@ -27,9 +29,9 @@ async def db(tmp_path):
     importlib.reload(db_mod)
 
     with patch.object(db_mod, "_probe_ollama", lambda: None):
-        db_mod.init_db()
-        yield db_mod.get_conn()
-        db_mod.close_db()
+        db_mod.db_init_engine()
+        yield db_mod.db_get_connection()
+        db_mod.db_close_engine()
 
 
 @pytest.fixture(autouse=True)

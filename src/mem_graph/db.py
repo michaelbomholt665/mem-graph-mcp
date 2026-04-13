@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# src/mem_graph/db.py
 """
 db.py — Ladybug connection singleton + schema bootstrap.
 
@@ -5,18 +7,18 @@ Initialization sequence (order matters):
   1. Open database file
   2. INSTALL + LOAD vector extension
   3. INSTALL + LOAD fts extension
-  4. Run schema DDL (idempotent via IF NOT EXISTS), substituting embed dim
+  4. Run schema DDL (idempotent via IF NOT EXISTS), substituting embeddings_generate dim
   5. Create vector indexes guarded by SHOW_INDEXES() check
   6. Write/validate SchemaMeta node (raises RuntimeError on dim mismatch)
   7. Startup probe: verify Ollama is reachable
 
-Call ``init_db()`` once at server startup (FastMCP lifespan).
-Call ``close_db()`` at shutdown.
-All tools should call ``get_conn()`` to obtain the active connection.
+Call ``db_init_engine()`` once at server startup (FastMCP lifespan).
+Call ``db_close_engine()`` at shutdown.
+All tools should call ``db_get_connection()`` to obtain the active connection.
 
 Thread-safety note
 ------------------
-``update_node_embedding`` acquires a per-table ``asyncio.Lock`` before
+``db_update_embedding`` acquires a per-table ``asyncio.Lock`` before
 the DROP_VECTOR_INDEX → SET → CREATE_VECTOR_INDEX sequence.  No tool
 should call DROP_VECTOR_INDEX or CREATE_VECTOR_INDEX directly.
 """
@@ -33,9 +35,7 @@ import ollama as _ollama
 import real_ladybug as lb
 from dotenv import load_dotenv
 
-from .config import EMBED_MODEL
 from .embeddings import EMBED_DIM
-
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,17 @@ SCHEMA_PATH = (
 DB_PATH = os.getenv("LADYBUG_DB_PATH", "./data/syntx_memory.lbug")
 SCHEMA_VERSION = "1.0"
 
+_KNOWN_EMBED_PROVIDERS = (
+    "ollama",
+    "openai",
+    "google-gla",
+    "google-vertex",
+    "cohere",
+    "voyageai",
+    "bedrock",
+    "sentence-transformers",
+)
+
 # Per-table locks that guard the DROP/SET/CREATE index cycle.
 _index_locks: dict[str, asyncio.Lock] = {}
 
@@ -57,14 +68,14 @@ _index_locks: dict[str, asyncio.Lock] = {}
 # ---------------------------------------------------------------------------
 
 
-def get_conn() -> lb.Connection:
-    """Return the active connection or raise if init_db() was not called."""
+def db_get_connection() -> lb.Connection:
+    """Return the active connection or raise if db_init_engine() was not called."""
     if _conn is None:
-        raise RuntimeError("DB not initialized — call init_db() first")
+        raise RuntimeError("DB not initialized — call db_init_engine() first")
     return _conn
 
 
-def init_db() -> None:
+def db_init_engine() -> None:
     """Open the database, run bootstrap, probe Ollama.  Called from lifespan."""
     global _db, _conn
 
@@ -77,14 +88,14 @@ def init_db() -> None:
     _probe_ollama()
 
 
-def close_db() -> None:
+def db_close_engine() -> None:
     """Release the connection.  Ladybug closes on GC but be explicit."""
     global _db, _conn
     _conn = None
     _db = None
 
 
-async def update_node_embedding(
+async def db_update_embedding(
     table: str,
     node_id: str,
     vec: list[float],
@@ -99,7 +110,7 @@ async def update_node_embedding(
     concurrent callers don't corrupt the index.
     """
     lock = _index_locks.setdefault(table, asyncio.Lock())
-    conn = get_conn()
+    conn = db_get_connection()
 
     async with lock:
         conn.execute(f"CALL DROP_VECTOR_INDEX('{table}', '{index_name}');")
@@ -118,21 +129,29 @@ async def update_node_embedding(
 
 
 def _probe_ollama() -> None:
-    """Fail loudly at startup if Ollama is not running, and pull model if missing."""
+    """Fail loudly at startup if Ollama is not running, and pull models if missing."""
+    from .config import CODE_EMBED_MODEL, TEXT_EMBED_MODEL
+    
+    models_to_check = [CODE_EMBED_MODEL, TEXT_EMBED_MODEL]
+    
     try:
         models = _ollama.list()
-        # Verify if our target model exists
         existing_models = [m.model for m in models.get("models", [])]
-        if (
-            EMBED_MODEL not in existing_models
-            and f"{EMBED_MODEL}:latest" not in existing_models
-        ):
-            logger.info(
-                "Ollama: Pulling required model '%s' (this may take a minute)...",
-                EMBED_MODEL,
-            )
-            _ollama.pull(EMBED_MODEL)
-            logger.info("Ollama: Pulled '%s' successfully.", EMBED_MODEL)
+        
+        for model in models_to_check:
+            ollama_model = model.split(":")[-1] if ":" in model else model
+            
+            if (
+                model not in existing_models
+                and ollama_model not in existing_models
+                and f"{ollama_model}:latest" not in existing_models
+            ):
+                logger.info(
+                    "Ollama: Pulling required model '%s' (this may take a minute)...",
+                    model,
+                )
+                _ollama.pull(model)
+                logger.info("Ollama: Pulled '%s' successfully.", model)
 
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(
@@ -152,7 +171,10 @@ def _bootstrap(conn: lb.Connection) -> None:
     # 3. Vector indexes — guarded manually (no IF NOT EXISTS equivalent)
     _ensure_vector_indexes(conn)
 
-    # 4. SchemaMeta — write on first init, validate on subsequent startups
+    # 4. FTS indexes — guarded by name check (same pattern as vector indexes)
+    _ensure_fts_indexes(conn)
+
+    # 5. SchemaMeta — write on first init, validate on subsequent startups
     _init_schema_meta(conn)
 
 
@@ -253,3 +275,26 @@ def _ensure_vector_indexes(conn: lb.Connection) -> None:
                 metric := 'cosine'
             );
         """)
+
+
+def _ensure_fts_indexes(conn: lb.Connection) -> None:
+    # Fetch existing index names — same SHOW_INDEXES() call used for vectors.
+    result = cast(list[list[str]], conn.execute("CALL SHOW_INDEXES() RETURN *;"))
+    existing = {row[1] for row in result}
+
+    fts_indexes = [
+        ("Memory",     "fts_memory_content", ["content"]),
+        ("Note",       "fts_note_body",      ["body", "title"]),
+        ("Task",       "fts_task_desc",      ["description", "title"]),
+        ("Decision",   "fts_decision_rat",   ["rationale", "title"]),
+        ("Violation",  "fts_violation_desc", ["description"]),
+        ("CodeSymbol", "fts_symbol_name",    ["name", "signature"]),
+    ]
+
+    for table, index_name, props in fts_indexes:
+        if index_name in existing:
+            continue
+        props_str = ", ".join(f"'{p}'" for p in props)
+        conn.execute(
+            f"CALL CREATE_FTS_INDEX('{table}', '{index_name}', [{props_str}]);"
+        )

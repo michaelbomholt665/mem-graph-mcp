@@ -15,9 +15,10 @@ from typing import Annotated, Any, cast
 from fastmcp import FastMCP
 from pydantic import Field
 
-from ...db import get_conn
-from ...embeddings import embed
-from ...ids import new_id as _new_id
+from ...db import db_get_connection
+from ...embeddings import embeddings_generate
+from ...ids import id_generate_v7 as _new_id
+from ...services.search import rrf_fuse
 
 mcp = FastMCP("violations")
 
@@ -52,10 +53,10 @@ async def violation_record(
     Provide the project, audit ID, rule identifier, severity, file location, and
     description. Returns a violation_id for tracking and linking to tasks.
     """
-    conn = get_conn()
+    conn = db_get_connection()
     violation_id = _new_id()
     text = f"{rule} {severity} {file_path}\n{description}"
-    vec = await embed(text)
+    vec = await embeddings_generate(text)
     ts = _now()
 
     conn.execute(
@@ -114,7 +115,7 @@ async def violation_resolve(
     Provide the violation ID to close it out. The resolved timestamp is recorded
     so fix time can be tracked. Returns confirmation.
     """
-    conn = get_conn()
+    conn = db_get_connection()
     ts = _now()
     conn.execute(
         """
@@ -140,7 +141,7 @@ async def violation_recur(
     A new violation record is created and linked to the original for drift tracking.
     Returns the new violation_id.
     """
-    conn = get_conn()
+    conn = db_get_connection()
 
     result = conn.execute(
         """
@@ -160,7 +161,7 @@ async def violation_recur(
 
     recurrence_id = _new_id()
     text = f"{rule} {severity} {file_path}\n{new_description}"
-    vec = await embed(text)
+    vec = await embeddings_generate(text)
     ts = _now()
 
     conn.execute(
@@ -220,23 +221,53 @@ async def violation_search(
     limit: Annotated[int, Field(description="Maximum results", ge=1, le=20)] = 10,
 ) -> dict:
     """Find and retrieve violations relevant to a pattern or file using semantic search. Optionally filter by project or status. Returns ranked violations."""
-    conn = get_conn()
-    vec = await embed(query)
+    conn = db_get_connection()
+    vec = await embeddings_generate(query)
+    candidate_size = limit * 3
 
-    result = conn.execute(
+    vector_raw = conn.execute(
         f"""
-        CALL QUERY_VECTOR_INDEX('Violation', 'idx_violation_emb', $qvec, {limit * 3})
+        CALL QUERY_VECTOR_INDEX('Violation', 'idx_violation_emb', $qvec, {candidate_size})
         WITH node AS v, distance
         OPTIONAL MATCH (p:Project)-[:HAS_VIOLATION]->(v)
         RETURN v.id, v.rule, v.severity, v.status, v.file_path, p.id AS project_id, distance
         ORDER BY distance
-        LIMIT {limit * 3}
+        LIMIT {candidate_size}
         """,
         {"qvec": vec},
     )
+    if isinstance(vector_raw, list):
+        vector_raw = vector_raw[0]
+    vector_rows = cast(list[list[Any]], vector_raw.get_all())
+
+    fts_raw = conn.execute(
+        f"""
+        CALL QUERY_FTS_INDEX('Violation', 'fts_violation_desc', $q)
+        WITH node AS v, score
+        OPTIONAL MATCH (p:Project)-[:HAS_VIOLATION]->(v)
+        RETURN v.id, v.rule, v.severity, v.status, v.file_path, p.id AS project_id, score
+        ORDER BY score DESC
+        LIMIT {candidate_size}
+        """,
+        {"q": query},
+    )
+    if isinstance(fts_raw, list):
+        fts_raw = fts_raw[0]
+    fts_rows = cast(list[list[Any]], fts_raw.get_all())
+
+    vector_hits = [(row[0], float(row[6])) for row in vector_rows]
+    fts_hits = [(row[0], float(rank)) for rank, row in enumerate(fts_rows, start=1)]
+    ranks = dict(rrf_fuse(vector_hits, fts_hits))
+
+    data_map: dict[str, list[Any]] = {row[0]: row for row in vector_rows}
+    for row in fts_rows:
+        data_map[row[0]] = row
 
     violations: list[dict[str, Any]] = []
-    for r in cast(list[list[Any]], result):
+    for node_id, _ in sorted(ranks.items(), key=lambda item: item[1], reverse=True):
+        if node_id not in data_map:
+            continue
+        r = data_map[node_id]
         if project_id and r[5] != project_id:
             continue
         if status and r[3] != status:
@@ -249,7 +280,7 @@ async def violation_search(
                 "status": r[3],
                 "file_path": r[4],
                 "project_id": r[5],
-                "distance": r[6],
+                "distance": 1.0 - ranks[node_id],
             }
         )
         if len(violations) >= limit:
@@ -264,7 +295,7 @@ async def violation_list(
     status: Annotated[str | None, Field(description="Filter by status")] = None,
 ) -> dict:
     """Browse and list all violations without ranking. Filter by project or status to review the open audit backlog."""
-    conn = get_conn()
+    conn = db_get_connection()
 
     if project_id:
         result = conn.execute(

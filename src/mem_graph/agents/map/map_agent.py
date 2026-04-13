@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# src/mem_graph/agents/map_agent.py
+# src/mem_graph/agents/map/map_agent.py
 """
 Codebase context map agent.
 
@@ -24,8 +24,8 @@ import anyio
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
-from ..config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, build_model_settings
-from ..resources.personas import MAPPER_PERSONA
+from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
+from ...resources.personas import MAPPER_PERSONA
 
 ################
 #   CONSTANTS
@@ -142,7 +142,7 @@ map_agent: Agent[MapDependencies, MapReport] = Agent(
     AGENT_MODEL,
     deps_type=MapDependencies,
     output_type=MapReport,
-    model_settings=build_model_settings(
+    model_settings=config_model_settings(
         temperature=MAPPER_PERSONA.params.temperature,
         top_p=MAPPER_PERSONA.params.top_p,
     ),

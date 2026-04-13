@@ -1,36 +1,31 @@
 #!/usr/bin/env python3
 # src/mem_graph/embeddings.py
-"""
-Async-safe embedding helper with LRU cache and test shim support.
+"""Async-safe embedding helper with an LRU cache and test shim support.
 
-Wraps Ollama's embedding API in a pydantic-ai-compatible interface.
-When pydantic-ai ships native EmbeddingsModel support this module is
-the single swap point — callers use embed() and embed_sync() throughout.
+Refactored to align with Pydantic AI's Embedder interface while preserving
+the existing cache, override hook, and dimension guard as the single swap
+point for all embedding generation.
 
-embed(text)      — primary async API, used by all tools and agents.
-embed_sync(text) — thin sync wrapper for callers that cannot be async.
-EMBED_DIM        — authoritative dimension constant, read by db.py and
-                   SchemaMeta validation at startup.
+Features:
+- Provider Shorthand: Uses 'ollama:<model>' for automatic provider detection.
+- Interface Split: Specialized embed_query (search) and embed_documents (index).
+- Context Safety: Uses truncate=True to handle long documents gracefully.
+- LRU Cache: Multi-key cache (text, model, type) to minimize API calls.
 """
 
 from __future__ import annotations
 
-################
-#   IMPORTS
-################
-
 import asyncio
-import os
-from functools import partial
 from typing import Callable
 
-import ollama
 from dotenv import load_dotenv
-
+from pydantic_ai import Embedder
+from pydantic_ai.embeddings import EmbeddingSettings
 from .config import (
     EMBED_CACHE_SIZE as _CONFIG_EMBED_CACHE_SIZE,
     EMBED_DIM as _CONFIG_EMBED_DIM,
-    EMBED_MODEL as _CONFIG_EMBED_MODEL,
+    CODE_EMBED_MODEL as _CONFIG_CODE_MODEL,
+    TEXT_EMBED_MODEL as _CONFIG_TEXT_MODEL,
 )
 
 load_dotenv()
@@ -39,18 +34,43 @@ load_dotenv()
 #   CONSTANTS
 ################
 
-_MODEL: str = _CONFIG_EMBED_MODEL
+_KNOWN_EMBED_PROVIDERS = (
+    "ollama",
+    "openai",
+    "google-gla",
+    "google-vertex",
+    "cohere",
+    "voyageai",
+    "bedrock",
+    "sentence-transformers",
+)
+
+
+def _normalise_model_name(model_name: str) -> str:
+    """Return a provider-prefixed model name for Pydantic AI."""
+    provider, separator, _ = model_name.partition(":")
+    if separator and provider in _KNOWN_EMBED_PROVIDERS:
+        return model_name
+    return f"ollama:{model_name}"
+
+
+_CODE_MODEL: str = _CONFIG_CODE_MODEL
+_TEXT_MODEL: str = _CONFIG_TEXT_MODEL
+
+_CODE_EMBEDDER = Embedder(_normalise_model_name(_CODE_MODEL), defer_model_check=True)
+_TEXT_EMBEDDER = Embedder(_normalise_model_name(_TEXT_MODEL), defer_model_check=True)
+
 EMBED_DIM: int = _CONFIG_EMBED_DIM
-_KEEP_ALIVE: str = os.getenv("OLLAMA_KEEP_ALIVE", "30s")
 _CACHE_MAXSIZE: int = _CONFIG_EMBED_CACHE_SIZE
+
+# Context Safety: Set truncate=True in EmbeddingSettings to prevent errors on long docs
+_SETTINGS = EmbeddingSettings(truncate=True)
 
 ################
 #   OVERRIDE HOOK
 ################
 
-# Test shim: replace this with a deterministic function in conftest.py:
-#   import mem_graph.embeddings as emb
-#   emb._embed_override = lambda text: [0.0] * emb.EMBED_DIM
+# Test shim: replace this with a deterministic function in conftest.py.
 _embed_override: Callable[[str], list[float]] | None = None
 
 
@@ -59,38 +79,46 @@ _embed_override: Callable[[str], list[float]] | None = None
 ################
 
 
-async def embed(text: str) -> list[float]:
-    """
-    Return a float embedding vector for the given text.
-
-    Uses the override shim if set (for tests), otherwise calls Ollama
-    via a thread-pool executor to avoid blocking the async event loop.
-    Validates the returned vector dimension before returning.
-    """
+async def embeddings_generate(text: str) -> list[float]:
+    """Return a float embedding vector for the given text."""
     if _embed_override is not None:
-        vec = _embed_override(text)
-        return _validate(vec, text)
+        return _validate(_embed_override(text), text)
 
-    vec = await _cached_embed_async(text)
-    return vec
+    return await _cached_embed_async(text, "document")
 
 
-def embed_sync(text: str) -> list[float]:
-    """
-    Synchronous wrapper around embed() for non-async callers.
-
-    Runs the async embed in a new event loop. Do not call from within
-    a running event loop — use await embed() there instead.
-    """
+async def embeddings_query(text: str) -> list[float]:
+    """Return a search-optimised embedding for a query string."""
     if _embed_override is not None:
-        vec = _embed_override(text)
-        return _validate(vec, text)
+        return _validate(_embed_override(text), text)
 
-    return asyncio.run(_cached_embed_async(text))
+    return await _cached_embed_async(text, "query")
+
+
+async def embeddings_documents(texts: list[str]) -> list[list[float]]:
+    """Return index-optimised embeddings for a list of documents."""
+    if _embed_override is not None:
+        return [_validate(_embed_override(t), t) for t in texts]
+
+    # Process individually to leverage the cache.
+    return [await _cached_embed_async(t, "document") for t in texts]
+
+
+def embeddings_generate_sync(text: str) -> list[float]:
+    """Synchronous wrapper around embeddings_generate() for non-async callers."""
+    if _embed_override is not None:
+        return _validate(_embed_override(text), text)
+
+    try:
+        # Pydantic AI's sync methods are safe to call if no loop is running
+        return _cached_embed_sync(text, "document")
+    except RuntimeError:
+        # Fallback for complex nesting
+        return asyncio.run(_cached_embed_async(text, "document"))
 
 
 def embed_dim() -> int:
-    """Return the configured embedding dimension (alias for EMBED_DIM)."""
+    """Return the configured embedding dimension."""
     return EMBED_DIM
 
 
@@ -99,22 +127,48 @@ def embed_dim() -> int:
 ################
 
 
-async def _cached_embed_async(text: str) -> list[float]:
-    """
-    Async embed with LRU cache keyed by (text, model).
-
-    Cache is keyed on both text and model so a model change at runtime
-    does not serve stale vectors from a previous model.
-    The underlying sync call is offloaded to a thread-pool executor.
-    """
-    cached = _cache_get(text, _MODEL)
+async def _cached_embed_async(text: str, input_type: str) -> list[float]:
+    """Return a cached embedding for text or generate a new one via Pydantic AI."""
+    # Use code embedder for audits/triage/mapping (document), text for others (query/doc)
+    is_code = input_type == "code"
+    model_name = _CODE_MODEL if is_code else _TEXT_MODEL
+    key_type = input_type
+    
+    cached = _cache_get(text, model_name, key_type)
     if cached is not None:
         return cached
 
-    loop = asyncio.get_running_loop()
-    vec = await loop.run_in_executor(None, partial(_embed_sync_raw, text))
+    embedder = _CODE_EMBEDDER if is_code else _TEXT_EMBEDDER
+    if key_type == "query":
+        result = await embedder.embed_query(text, settings=_SETTINGS)
+    else:
+        result = await embedder.embed(text, input_type="document", settings=_SETTINGS)
+
+    vec = [float(v) for v in result.embeddings[0]]
     validated = _validate(vec, text)
-    _cache_set(text, _MODEL, validated)
+    _cache_set(text, model_name, key_type, validated)
+    return validated
+
+
+def _cached_embed_sync(text: str, input_type: str) -> list[float]:
+    """Return a cached embedding for text or generate a new one via Pydantic AI sync."""
+    is_code = input_type == "code"
+    model_name = _CODE_MODEL if is_code else _TEXT_MODEL
+    key_type = input_type
+    
+    cached = _cache_get(text, model_name, key_type)
+    if cached is not None:
+        return cached
+
+    embedder = _CODE_EMBEDDER if is_code else _TEXT_EMBEDDER
+    if key_type == "query":
+        result = embedder.embed_query_sync(text, settings=_SETTINGS)
+    else:
+        result = embedder.embed_sync(text, input_type="document", settings=_SETTINGS)
+
+    vec = [float(v) for v in result.embeddings[0]]
+    validated = _validate(vec, text)
+    _cache_set(text, model_name, key_type, validated)
     return validated
 
 
@@ -122,15 +176,14 @@ async def _cached_embed_async(text: str) -> list[float]:
 #   CACHE STORE
 ################
 
-# Manual dict-based cache so we can key on (text, model) and keep a tiny
-# LRU ordering without pulling in extra dependencies.
-_cache: dict[tuple[str, str], list[float]] = {}
-_cache_keys: list[tuple[str, str]] = []
+# Manual dict-based cache keyed on (text, model, type)
+_cache: dict[tuple[str, str, str], list[float]] = {}
+_cache_keys: list[tuple[str, str, str]] = []
 
 
-def _cache_get(text: str, model: str) -> list[float] | None:
-    """Return cached vector for (text, model) or None if not cached."""
-    key = (text, model)
+def _cache_get(text: str, model: str, input_type: str) -> list[float] | None:
+    """Return cached vector for (text, model, input_type) or None if not cached."""
+    key = (text, model, input_type)
     cached = _cache.get(key)
     if cached is None:
         return None
@@ -141,11 +194,9 @@ def _cache_get(text: str, model: str) -> list[float] | None:
     return cached
 
 
-def _cache_set(text: str, model: str, vec: list[float]) -> None:
-    """
-    Store vector in cache, evicting the least recently used entry when full.
-    """
-    key = (text, model)
+def _cache_set(text: str, model: str, input_type: str, vec: list[float]) -> None:
+    """Store vector in cache, evicting the least recently used entry when full."""
+    key = (text, model, input_type)
     if key in _cache:
         _cache_keys.remove(key)
     elif len(_cache) >= _CACHE_MAXSIZE:
@@ -157,30 +208,9 @@ def _cache_set(text: str, model: str, vec: list[float]) -> None:
 
 
 def clear_cache() -> None:
-    """
-    Clear the embedding cache entirely.
-
-    Useful in tests and after a model change to prevent stale vectors.
-    """
+    """Clear the embedding cache entirely."""
     _cache.clear()
     _cache_keys.clear()
-
-
-################
-#   OLLAMA BACKEND
-################
-
-
-def _embed_sync_raw(text: str) -> list[float]:
-    """
-    Blocking Ollama embed call.
-
-    Do NOT call directly from async code — use embed() instead.
-    Separated from the public API so the cache layer can wrap it
-    without also wrapping the validation step.
-    """
-    response = ollama.embed(model=_MODEL, input=text, keep_alive=_KEEP_ALIVE)
-    return list(response.embeddings[0])
 
 
 ################
@@ -189,12 +219,7 @@ def _embed_sync_raw(text: str) -> list[float]:
 
 
 def _validate(vec: list[float], text: str) -> list[float]:
-    """
-    Assert the vector matches the expected EMBED_DIM.
-
-    Raises ValueError with a clear message if the dimension is wrong
-    so misconfiguration is caught at embed time, not at DB write time.
-    """
+    """Assert the vector matches the expected EMBED_DIM."""
     if len(vec) != EMBED_DIM:
         raise ValueError(
             f"Embedding dim mismatch: got {len(vec)}, expected {EMBED_DIM}. "

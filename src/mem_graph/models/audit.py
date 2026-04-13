@@ -96,6 +96,8 @@ class AuditFinding(BaseModel):
 
     Atomic unit of audit output. Carries enough information to write
     a Violation node to the graph and render a meaningful report entry.
+    The fingerprint field is populated by FingerprintService before the
+    finding is passed to violation_writer for stable deduplication.
     """
 
     rule_id: str = Field(
@@ -126,6 +128,14 @@ class AuditFinding(BaseModel):
         description="The offending code lines for inline report display.",
         default=None,
     )]
+    fingerprint: str | None = Field(
+        default=None,
+        description=(
+            "SHA-256 fingerprint (16-char hex) computed from file_path + rule_id + "
+            "normalised code_snippet. Populated by FingerprintService. "
+            "Used by violation_writer for stable deduplication across audit runs."
+        ),
+    )
 
 
 class FileAuditResult(BaseModel):

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# src/mem_graph/models/conversation.py
 """
 models/conversation.py — Pydantic I/O models for conversation capture tools.
 

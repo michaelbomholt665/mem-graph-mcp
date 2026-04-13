@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# tests/test_tools.py
 """
 tests/test_tools.py — Round-trip tests for all tool modules.
 
@@ -26,9 +28,9 @@ async def conn(tmp_path):
     importlib.reload(db_mod)
 
     with patch.object(db_mod, "_probe_ollama", lambda: None):
-        db_mod.init_db()
-        yield db_mod.get_conn()
-        db_mod.close_db()
+        db_mod.db_init_engine()
+        yield db_mod.db_get_connection()
+        db_mod.db_close_engine()
 
 
 # ---------------------------------------------------------------------------
@@ -71,21 +73,21 @@ async def test_memory_store_and_list(conn):
     from mem_graph.tools.memory.memory import memory_store, memory_manage
 
     r = await memory_store(
-        content="Python prefers explicit over implicit", kind="preference"
+        content="Python prefers explicit over implicit", kind="preference", conn=conn
     )
     mid = r["memory_id"]
     assert mid
 
-    listing = await memory_manage(action="list", scope="global")
+    listing = await memory_manage(action="list", scope="global", conn=conn)
     ids = [m["id"] for m in listing["memories"]]
     assert mid in ids
 
     # Expire it
-    exp = await memory_manage(action="expire", memory_id=mid)
+    exp = await memory_manage(action="expire", memory_id=mid, conn=conn)
     assert exp["status"] == "expired"
 
     # Should no longer appear in list
-    listing2 = await memory_manage(action="list", scope="global")
+    listing2 = await memory_manage(action="list", scope="global", conn=conn)
     ids2 = [m["id"] for m in listing2["memories"]]
     assert mid not in ids2
 
@@ -98,9 +100,9 @@ async def test_memory_store_with_project(conn):
     proj = await project_create(name="P", description="d")
     pid = proj["project_id"]
 
-    await memory_store(content="fact", kind="fact", scope="project", project_id=pid)
+    await memory_store(content="fact", kind="fact", scope="project", project_id=pid, conn=conn)
 
-    listing = await memory_manage(action="list", scope="project", project_id=pid)
+    listing = await memory_manage(action="list", scope="project", project_id=pid, conn=conn)
     assert len(listing["memories"]) == 1
     assert listing["memories"][0]["scope"] == "project"
 

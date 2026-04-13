@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# src/mem_graph/agents/decision_agent.py
+# src/mem_graph/agents/document/decision_agent.py
 """
 Decision review agent.
 
@@ -24,8 +24,8 @@ import anyio
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
-from ..config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, build_model_settings
-from ..resources.personas import ARCHITECT_PERSONA
+from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
+from ...resources.personas import ARCHITECT_PERSONA
 
 ################
 #   CONSTANTS
@@ -134,7 +134,7 @@ decision_agent: Agent[DecisionDependencies, ReviewReport] = Agent(
     AGENT_MODEL,
     deps_type=DecisionDependencies,
     output_type=ReviewReport,
-    model_settings=build_model_settings(
+    model_settings=config_model_settings(
         temperature=ARCHITECT_PERSONA.params.temperature,
         top_p=ARCHITECT_PERSONA.params.top_p,
     ),

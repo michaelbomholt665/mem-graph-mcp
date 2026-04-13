@@ -1,7 +1,9 @@
+#!/usr/bin/env python3
+# src/mem_graph/logging.py
 """
 logging.py — Hybrid logging for mem-graph (Console vs. JSON).
 
-Configure once at startup via ``configure_logging()``.
+Configure once at startup via ``logging_setup_engine()``.
 Supports two formats:
   - console: Human-readable, colourful logs (default if stderr is a TTY).
   - json: Structured JSON lines (default if stderr is redirected or LOG_FORMAT=json).
@@ -73,7 +75,7 @@ class _ConsoleFormatter(logging.Formatter):
         return result
 
 
-def configure_logging(level: str = "INFO") -> None:
+def logging_setup_engine(level: str = "INFO") -> None:
     """
     Install a handler on the root logger. Defaults to human-readable 'console'
     format unless LOG_FORMAT=json is explicitly set.
@@ -95,7 +97,7 @@ def configure_logging(level: str = "INFO") -> None:
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
 
 
-class tool_span:
+class logging_tool_span:
     """Async context manager that logs tool invocation timing."""
 
     def __init__(self, tool_name: str) -> None:
@@ -103,7 +105,7 @@ class tool_span:
         self._start = 0.0
         self._logger = logging.getLogger("mem_graph.tools")
 
-    async def __aenter__(self) -> "tool_span":
+    async def __aenter__(self) -> "logging_tool_span":
         self._start = time.monotonic()
         return self
 
@@ -119,7 +121,7 @@ class tool_span:
         )
 
 
-class codegen_span:
+class logging_codegen_span:
     """Async context manager that logs CodeMode execute_code events."""
 
     def __init__(self, code: str, tools_called: list[str] | None = None) -> None:
@@ -128,7 +130,7 @@ class codegen_span:
         self._start = 0.0
         self._logger = logging.getLogger("mem_graph.codegen")
 
-    async def __aenter__(self) -> "codegen_span":
+    async def __aenter__(self) -> "logging_codegen_span":
         self._start = time.monotonic()
         return self
 

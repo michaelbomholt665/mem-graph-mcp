@@ -1,10 +1,12 @@
+#!/usr/bin/env python3
+# tests/test_diagram_agent.py
 import os
 os.environ.setdefault("OPENAI_API_KEY", "test")
 
 import pytest
 from pydantic_ai.models.test import TestModel
 
-from mem_graph.agents.diagram_agent import (
+from mem_graph.agents.map.diagram_agent import (
     _classifier_agent,
     _describer_agent,
     _generator_agent,

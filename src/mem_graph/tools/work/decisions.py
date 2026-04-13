@@ -13,10 +13,11 @@ import anyio
 from fastmcp import FastMCP
 from pydantic import Field
 
-from ...db import get_conn
-from ...embeddings import embed
-from ...ids import new_id
-from ...agents.decision_agent import DecisionDependencies, decision_agent
+from ...agents.document.decision_agent import DecisionDependencies, decision_agent
+from ...db import db_get_connection
+from ...embeddings import embeddings_generate
+from ...ids import id_generate_v7
+from ...services.search import rrf_fuse
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +47,12 @@ async def decision_record(
     Provide the title, rationale, and any rejected alternatives so future sessions
     can retrieve the reasoning. Returns a decision_id for linking to tasks.
     """
-    conn = get_conn()
-    decision_id = new_id()
+    conn = db_get_connection()
+    decision_id = id_generate_v7()
     text = f"{title}\n{rationale}"
     if alternatives:
         text += f"\nAlternatives: {alternatives}"
-    vec = await embed(text)
+    vec = await embeddings_generate(text)
 
     conn.execute(
         """
@@ -104,7 +105,7 @@ async def decision_supersede(
     Provide both decision IDs and explain why the old one is no longer valid.
     The old decision is marked superseded and the lineage relationship is stored.
     """
-    conn = get_conn()
+    conn = db_get_connection()
     ts = _now()
 
     conn.execute(
@@ -136,7 +137,7 @@ async def decision_get(
     Provide the decision ID. Returns the rationale, status, impact, and the chain
     of decisions it supersedes or was superseded by.
     """
-    conn = get_conn()
+    conn = db_get_connection()
 
     result = conn.execute(
         """
@@ -207,27 +208,54 @@ async def decision_search(
     Provide a plain-language query and optionally scope to a project.
     Returns ranked decisions most relevant to your query.
     """
-    conn = get_conn()
-    vec = await embed(query)
+    conn = db_get_connection()
+    vec = await embeddings_generate(query)
+    candidate_size = limit * 3
 
-    result = conn.execute(
+    vector_raw = conn.execute(
         f"""
-        CALL QUERY_VECTOR_INDEX('Decision', 'idx_decision_emb', $qvec, {limit * 3})
+        CALL QUERY_VECTOR_INDEX('Decision', 'idx_decision_emb', $qvec, {candidate_size})
         WITH node AS d, distance
         OPTIONAL MATCH (p:Project)-[:HAS_DECISION]->(d)
-        RETURN d.id, d.title, d.status, d.impact, p.id AS project_id, distance
+        RETURN d.id, d.title, d.rationale, d.status, d.impact, p.id AS project_id, distance
         ORDER BY distance
-        LIMIT {limit * 3}
+        LIMIT {candidate_size}
         """,
         {"qvec": vec},
     )
+    if isinstance(vector_raw, list):
+        vector_raw = vector_raw[0]
+    vector_rows = cast(list[list[Any]], vector_raw.get_all())
 
-    if isinstance(result, list):
-        result = result[0]
+    fts_raw = conn.execute(
+        f"""
+        CALL QUERY_FTS_INDEX('Decision', 'fts_decision_rat', $q)
+        WITH node AS d, score
+        OPTIONAL MATCH (p:Project)-[:HAS_DECISION]->(d)
+        RETURN d.id, d.title, d.rationale, d.status, d.impact, p.id AS project_id, score
+        ORDER BY score DESC
+        LIMIT {candidate_size}
+        """,
+        {"q": query},
+    )
+    if isinstance(fts_raw, list):
+        fts_raw = fts_raw[0]
+    fts_rows = cast(list[list[Any]], fts_raw.get_all())
+
+    vector_hits = [(row[0], float(row[6])) for row in vector_rows]
+    fts_hits = [(row[0], float(rank)) for rank, row in enumerate(fts_rows, start=1)]
+    ranks = dict(rrf_fuse(vector_hits, fts_hits))
+
+    data_map: dict[str, list[Any]] = {row[0]: row for row in vector_rows}
+    for row in fts_rows:
+        data_map[row[0]] = row
 
     decisions = []
-    for r in cast(list[list[Any]], result.get_all()):
-        if project_id and r[4] != project_id:
+    for node_id, _ in sorted(ranks.items(), key=lambda item: item[1], reverse=True):
+        if node_id not in data_map:
+            continue
+        r = data_map[node_id]
+        if project_id and r[5] != project_id:
             continue
         decisions.append(
             {
@@ -235,8 +263,8 @@ async def decision_search(
                 "title": r[1],
                 "status": r[2],
                 "impact": r[3],
-                "project_id": r[4],
-                "distance": r[5],
+                "project_id": r[5],
+                "distance": 1.0 - ranks[node_id],
             }
         )
         if len(decisions) >= limit:
@@ -268,7 +296,7 @@ async def decision_review(
     Reads decisions linked to the project and analyses the current source codebase
     to see if they are still HONOURED or if they have DRIFTED.
     """
-    conn = get_conn()
+    conn = db_get_connection()
     result = conn.execute(
         """
         MATCH (p:Project {id: $project_id})-[:HAS_DECISION]->(d:Decision)

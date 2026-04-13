@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# src/mem_graph/agents/triage_agent.py
+# src/mem_graph/agents/document/triage_agent.py
 """
 Violation triage agent.
 
@@ -23,8 +23,8 @@ from enum import Enum
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
-from ..config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, build_model_settings
-from ..resources.personas import TRIAGE_PERSONA
+from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
+from ...resources.personas import TRIAGE_PERSONA
 
 ################
 #   CONSTANTS
@@ -148,7 +148,7 @@ triage_agent: Agent[TriageDependencies, TriageReport] = Agent(
     AGENT_MODEL,
     deps_type=TriageDependencies,
     output_type=TriageReport,
-    model_settings=build_model_settings(
+    model_settings=config_model_settings(
         temperature=TRIAGE_PERSONA.params.temperature,
         top_p=TRIAGE_PERSONA.params.top_p,
     ),

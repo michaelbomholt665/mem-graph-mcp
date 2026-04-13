@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# tests/test_map_agent.py
 import os
 os.environ.setdefault("OPENAI_API_KEY", "test")
 
@@ -5,7 +7,7 @@ import pytest
 from typing import cast
 from pydantic_ai.tools import RunContext
 from pydantic_ai.models.test import TestModel
-from mem_graph.agents.map_agent import map_agent, MapDependencies, process_batch, FeatureLocation, FileRelationship
+from mem_graph.agents.map.map_agent import map_agent, MapDependencies, process_batch, FeatureLocation, FileRelationship
 
 
 class MockContext:
@@ -34,7 +36,7 @@ async def test_map_process_batch():
     res = await process_batch(ctx, [], [], [])
     assert res == "No files requested. Findings stored."
     
-    from mem_graph.agents.map_agent import _get_state
+    from mem_graph.agents.map.map_agent import _get_state
     state = _get_state(ctx)
     assert len(state["features"]) == 0
     assert len(state["relationships"]) == 0

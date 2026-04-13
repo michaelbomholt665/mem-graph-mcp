@@ -5,6 +5,10 @@ Three tools form the complete memory surface:
 
   memory_store    — persist and store a distilled fact, pattern, or preference
   memory_manage   — expire outdated memories or list active ones
+
+FastMCP 3.0 upgrades:
+- ``Depends(db_get_connection)`` injects the DB connection.
+- ``ctx.elicit()`` requests confirmation before expiring a memory.
 """
 
 from __future__ import annotations
@@ -14,11 +18,14 @@ from datetime import datetime, timezone
 from typing import Annotated, Any, cast
 
 from fastmcp import FastMCP
+from fastmcp.dependencies import Depends
+from fastmcp.server.context import Context
+from mcp.types import Icon
 from pydantic import Field
 
-from ...db import get_conn
-from ...embeddings import embed
-from ...ids import new_id
+from ...db import db_get_connection
+from ...embeddings import embeddings_query
+from ...ids import id_generate_v7
 
 logger = logging.getLogger(__name__)
 mcp = FastMCP("memory")
@@ -28,7 +35,10 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-@mcp.tool(tags={"namespace:memory"})
+@mcp.tool(
+    tags={"namespace:memory"},
+    icons=[Icon(src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTkgM0g1Yy0xLjEgMC0yIC45LTIgMnYxNGMwIDEuMS45IDIgMiAyaDE0YzEuMSAwIDItLjkgMi0yVjVjMC0xLjEtLjktMi0yLTJ6bTAgMTZINVY1aDE0djE0em0tMi1xIDIgMGg2VjExaC0zdi41aDAyaC0zczB2MWgzVjloLTZ6bS0yIDB2LTNoLTZ6bS00LTJoMnYyaC0yeiIvPjwvc3ZnPg==", mimeType="image/svg+xml")]
+)
 async def memory_store(
     content: Annotated[str, Field(description="The fact, pattern, or preference to remember")],
     kind: Annotated[
@@ -42,6 +52,7 @@ async def memory_store(
     project_id: Annotated[
         str | None, Field(description="Associate with a specific project (optional)")
     ] = None,
+    conn: Any = Depends(db_get_connection),
 ) -> dict[str, str]:
     """
     Persist and store a distilled memory, fact, preference, or architectural pattern for future recall.
@@ -50,9 +61,8 @@ async def memory_store(
     facts, preferences, recurring patterns, or architectural decisions. Provide the
     content and categorise it with kind and scope. Returns the new memory ID.
     """
-    conn = get_conn()
-    mem_id = new_id()
-    vec = await embed(content)
+    mem_id = id_generate_v7()
+    vec = await embeddings_query(content)
 
     conn.execute(
         """
@@ -90,7 +100,10 @@ async def memory_store(
     return {"memory_id": mem_id}
 
 
-@mcp.tool(tags={"namespace:memory"})
+@mcp.tool(
+    tags={"namespace:memory"},
+    icons=[Icon(src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTkgNkg1Yy0xLjEgMC0yIC45LTIgMnYxMGMwIDEuMS45IDIgMiAyaDE0YzEuMSAwIDItLjkgMi0yVjhj MC0xLjEtLjktMi0yLTJ6bTAgMTJINVY4aDE0djEweiIvPjwvc3ZnPg==", mimeType="image/svg+xml")]
+)
 async def memory_manage(
     action: Annotated[
         str,
@@ -108,6 +121,8 @@ async def memory_manage(
         str | None,
         Field(description="Filter to a specific project when action='list'"),
     ] = None,
+    conn: Any = Depends(db_get_connection),
+    ctx: Context = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
     """
     Manage stored memories: expire outdated facts or list and browse what's saved.
@@ -115,12 +130,28 @@ async def memory_manage(
     Use action='expire' with a memory_id to soft-delete a fact that is no
     longer accurate. Use action='list' to browse active memories, optionally
     filtered by scope or project. Returns the operation result or memory list.
-    """
-    conn = get_conn()
 
+    Expiring a memory is a destructive operation — the client will be asked
+    to confirm before the change is committed.
+    """
     if action == "expire":
         if not memory_id:
             return {"error": "memory_id is required for action='expire'"}
+
+        # Elicit confirmation for destructive operations
+        if ctx is not None:
+            try:
+                from fastmcp.server.context import AcceptedElicitation
+
+                confirmation = await ctx.elicit(
+                    message=f"Are you sure you want to expire memory {memory_id!r}? This cannot be undone.",
+                    response_type=["yes", "no"],  # type: ignore[arg-type]
+                )
+                if not isinstance(confirmation, AcceptedElicitation) or confirmation.data != "yes":
+                    return {"memory_id": memory_id, "status": "cancelled", "reason": "User did not confirm."}
+            except Exception as exc:
+                logger.debug("Elicitation unavailable, proceeding without confirmation: %s", exc)
+
         conn.execute(
             """
             MATCH (m:Memory {id: $id})

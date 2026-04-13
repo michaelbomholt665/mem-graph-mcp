@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# src/mem_graph/agents/diagram_agent.py
+# src/mem_graph/agents/map/diagram_agent.py
 """
 Mermaid diagram generation agent using pydantic-graph.
 
@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_graph import BaseNode, End, Graph, GraphRunContext
 
-from ..config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK
+from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK
 
 ################
 #   CONSTANTS

@@ -123,6 +123,7 @@ CREATE NODE TABLE IF NOT EXISTS Violation (
     line_start  INT64,
     line_end    INT64,
     description STRING,
+    fingerprint STRING,               -- SHA-256 dedup key (first 16 hex chars)
     status      STRING DEFAULT 'open', -- open | recurrence | resolved | graduated
     embedding   FLOAT[1536],
     detected_at TIMESTAMP DEFAULT current_timestamp(),
@@ -280,6 +281,18 @@ CALL CREATE_VECTOR_INDEX('Conversation','idx_conv_emb',       'embedding',  metr
 CALL CREATE_VECTOR_INDEX('Message',     'idx_message_emb',    'embedding',  metric := 'cosine');
 CALL CREATE_VECTOR_INDEX('Memory',      'idx_memory_emb',     'embedding',  metric := 'cosine');
 CALL CREATE_VECTOR_INDEX('CodeSymbol',  'idx_symbol_emb',     'embedding',  metric := 'cosine');
+
+
+// =============================================================================
+// FULL-TEXT SEARCH INDEXES  (Hybrid search — reduces Ollama tax for keyword queries)
+// =============================================================================
+
+CALL CREATE_FTS_INDEX('Memory',     'fts_memory_content',  ['content']);
+CALL CREATE_FTS_INDEX('Note',       'fts_note_body',       ['body', 'title']);
+CALL CREATE_FTS_INDEX('Task',       'fts_task_desc',       ['description', 'title']);
+CALL CREATE_FTS_INDEX('Decision',   'fts_decision_rat',    ['rationale', 'title']);
+CALL CREATE_FTS_INDEX('Violation',  'fts_violation_desc',  ['description']);
+CALL CREATE_FTS_INDEX('CodeSymbol', 'fts_symbol_name',     ['name', 'signature']);
 
 
 // =============================================================================

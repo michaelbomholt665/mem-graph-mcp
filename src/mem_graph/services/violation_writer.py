@@ -4,9 +4,9 @@
 Audit-to-graph violation writer.
 
 Translates AuditReport findings into Violation nodes in the mem-graph
-Ladybug graph. Deduplicates against existing open violations by rule_id
-and file_path before writing, and marks recurrences rather than creating
-duplicate nodes.
+Ladybug graph. Uses SHA-256 fingerprints for stable deduplication so
+that the same logical violation is never created twice. Marks recurrences
+rather than duplicate nodes when a seen fingerprint is re-encountered.
 """
 
 from __future__ import annotations
@@ -17,9 +17,10 @@ from __future__ import annotations
 
 import logging
 
-from ..db import get_conn
-from ..ids import new_id
+from ..db import db_get_connection
+from ..ids import id_generate_v7
 from ..models.audit import AuditFinding, AuditReport
+from .fingerprint import fingerprint_attach_to_findings, fingerprint_compute_hash
 
 ################
 #   CONSTANTS
@@ -35,32 +36,57 @@ logger = logging.getLogger(__name__)
 def write_violations(
     report: AuditReport,
     project_id: str,
+    seen_fingerprints: set[str] | None = None,
 ) -> ViolationWriteResult:
     """
     Persist all findings from an AuditReport to the graph.
 
-    Deduplicates by (rule_id, file_path, line_start) against open
-    violations. New findings create Violation nodes linked to the
-    project. Matching open violations are promoted to recurrence status.
+    Fingerprints each finding via FingerprintService before any graph
+    interaction. New fingerprints create Violation nodes; repeated
+    fingerprints promote the existing node to 'recurrence'. An optional
+    seen_fingerprints set allows the caller to pre-seed the filter to
+    suppress findings already handled in the same orchestration run.
 
-    Returns a summary of what was written vs what was deduplicated.
+    Args:
+        report: The AuditReport containing findings to persist.
+        project_id: The Project node ID to link Violations to.
+        seen_fingerprints: Optional pre-seeded dedup filter for this run.
+
+    Returns:
+        ViolationWriteResult summarising new/recurrence/skipped counts.
     """
-    conn = get_conn()
+    conn = db_get_connection()
     result = ViolationWriteResult()
+    run_seen: set[str] = set(seen_fingerprints or ())
 
-    for finding in report.all_findings:
-        existing_id = _find_existing_violation(conn, finding, project_id)
+    # Attach fingerprints to all findings in-place.
+    all_findings = report.all_findings
+    fingerprint_attach_to_findings(all_findings)
+
+    for finding in all_findings:
+        fp = finding.fingerprint or fingerprint_compute_hash(finding)
+
+        # Discard within-run duplicates immediately.
+        if fp in run_seen:
+            result.skipped += 1
+            logger.debug("Skipping duplicate fingerprint %s", fp)
+            continue
+        run_seen.add(fp)
+
+        existing_id = _violation_find_by_fingerprint(conn, fp, project_id)
 
         if existing_id:
-            _mark_recurrence(conn, existing_id)
+            _violation_mark_recurrence(conn, existing_id)
             result.recurrences += 1
-            logger.debug("Marked recurrence for violation %s", existing_id)
+            result.recurrence_fingerprints.add(fp)
+            logger.debug("🔄 Recurrence: violation %s (fp=%s)", existing_id, fp)
         else:
-            violation_id = _create_violation(conn, finding, project_id)
+            violation_id = _violation_create_new(conn, finding, project_id, fp)
             result.created += 1
-            logger.debug("Created violation %s for %s", violation_id, finding.rule_id)
+            result.new_fingerprints.add(fp)
+            logger.debug("🆕 New violation %s (fp=%s)", violation_id, fp)
 
-    result.total = len(report.all_findings)
+    result.total = len(all_findings)
     return result
 
 
@@ -69,43 +95,66 @@ def write_violations(
 ################
 
 
-def _find_existing_violation(conn, finding: AuditFinding, project_id: str) -> str | None:
+def _violation_find_by_fingerprint(conn, fingerprint: str, project_id: str) -> str | None:
     """
-    Query for an existing open violation matching this finding.
+    Query for an existing violation matching the given fingerprint.
 
-    Matches on rule_id, file_path, and line_start within the given
-    project. Returns the violation ID if found, None otherwise.
+    Looks up open and recurrence violations scoped to project_id.
+    Falls back to an empty result (returns None) if the schema does not
+    yet have a fingerprint column — the caller will treat the finding as
+    new and create a fresh violation node that includes the fingerprint.
+
+    Args:
+        conn: Active Ladybug graph connection.
+        fingerprint: The 16-char hex fingerprint to search for.
+        project_id: The owning project's ID.
+
+    Returns:
+        The matching violation ID, or None if not found.
     """
-    result = conn.execute(
-        """
-        MATCH (p:Project {id: $project_id})-[:HAS_VIOLATION]->(v:Violation)
-        WHERE v.rule = $rule
-          AND v.file_path = $file_path
-          AND v.line_start = $line_start
-          AND v.status IN ['open', 'recurrence']
-        RETURN v.id
-        LIMIT 1
-        """,
-        {
-            "project_id": project_id,
-            "rule": finding.rule_id,
-            "file_path": finding.file_path,
-            "line_start": finding.line_start,
-        },
-    )
-    rows = result.get_all()
-    return rows[0][0] if rows else None
+    try:
+        result = conn.execute(
+            """
+            MATCH (p:Project {id: $project_id})-[:HAS_VIOLATION]->(v:Violation)
+            WHERE v.fingerprint = $fingerprint
+              AND v.status IN ['open', 'recurrence']
+            RETURN v.id
+            LIMIT 1
+            """,
+            {"project_id": project_id, "fingerprint": fingerprint},
+        )
+        rows = result.get_all()
+        return rows[0][0] if rows else None
+    except Exception:
+        # fingerprint column not present in this schema version — treat as new
+        return None
 
 
-def _create_violation(conn, finding: AuditFinding, project_id: str) -> str:
+def _violation_create_new(
+    conn,
+    finding: AuditFinding,
+    project_id: str,
+    fingerprint: str,
+) -> str:
     """
     Create a new Violation node and link it to the project.
 
-    Returns the new violation ID.
+    Stores the fingerprint on the node so future runs can detect
+    recurrences via a fast fingerprint lookup instead of a composite
+    key scan.
+
+    Args:
+        conn: Active Ladybug graph connection.
+        finding: The AuditFinding to persist.
+        project_id: The owning project's ID.
+        fingerprint: Pre-computed fingerprint for this finding.
+
+    Returns:
+        The ID of the newly created Violation node.
     """
     from datetime import datetime, timezone
 
-    violation_id = new_id()
+    violation_id = id_generate_v7()
     now = datetime.now(timezone.utc)
 
     conn.execute(
@@ -119,6 +168,7 @@ def _create_violation(conn, finding: AuditFinding, project_id: str) -> str:
             line_start: $line_start,
             line_end: $line_end,
             description: $description,
+            fingerprint: $fingerprint,
             status: 'open',
             detected_at: $ts
         })
@@ -132,6 +182,7 @@ def _create_violation(conn, finding: AuditFinding, project_id: str) -> str:
             "line_start": finding.line_start,
             "line_end": finding.line_end,
             "description": f"{finding.description}\n\nFix: {finding.suggested_fix}",
+            "fingerprint": fingerprint,
             "ts": now,
         },
     )
@@ -147,12 +198,16 @@ def _create_violation(conn, finding: AuditFinding, project_id: str) -> str:
     return violation_id
 
 
-def _mark_recurrence(conn, violation_id: str) -> None:
+def _violation_mark_recurrence(conn, violation_id: str) -> None:
     """
     Promote an existing violation to recurrence status.
 
     Updates the status and records the recurrence timestamp so the
     violation lifecycle can track escalation over time.
+
+    Args:
+        conn: Active Ladybug graph connection.
+        violation_id: The ID of the existing Violation node to update.
     """
     from datetime import datetime, timezone
 
@@ -175,19 +230,24 @@ class ViolationWriteResult:
     """
     Summary of a violation write operation.
 
-    Tracks how many findings were created as new violations versus
-    marked as recurrences of existing ones.
+    Tracks how many findings were created as new violations, marked as
+    recurrences, or discarded as within-run duplicates. The fingerprint
+    sets allow callers (e.g. report_writer) to bucket findings accordingly.
     """
 
     def __init__(self) -> None:
-        """Initialise all counters to zero."""
+        """Initialise all counters and fingerprint sets to empty."""
         self.total: int = 0
         self.created: int = 0
         self.recurrences: int = 0
+        self.skipped: int = 0
+        self.new_fingerprints: set[str] = set()
+        self.recurrence_fingerprints: set[str] = set()
 
     def __repr__(self) -> str:
         """Return a compact string summary of write results."""
         return (
             f"ViolationWriteResult(total={self.total}, "
-            f"created={self.created}, recurrences={self.recurrences})"
+            f"created={self.created}, recurrences={self.recurrences}, "
+            f"skipped={self.skipped})"
         )

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# tests/test_db.py
 """
 tests/test_db.py — DB bootstrap and idempotency tests.
 """
@@ -13,7 +15,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_bootstrap_creates_all_tables(tmp_path):
-    """All 12 node tables must exist after init_db()."""
+    """All 12 node tables must exist after db_init_engine()."""
     import importlib
 
     os.environ["LADYBUG_DB_PATH"] = str(tmp_path / "test.lbug")
@@ -22,8 +24,8 @@ async def test_bootstrap_creates_all_tables(tmp_path):
     importlib.reload(db_mod)
 
     with patch.object(db_mod, "_probe_ollama", lambda: None):
-        db_mod.init_db()
-        conn = db_mod.get_conn()
+        db_mod.db_init_engine()
+        conn = db_mod.db_get_connection()
 
         tables = [
             "Agent",
@@ -43,12 +45,12 @@ async def test_bootstrap_creates_all_tables(tmp_path):
             result = cast(Any, conn.execute(f"MATCH (n:{table}) RETURN count(n)")).get_all()
             assert result[0][0] == 0, f"Expected empty {table} table"
 
-        db_mod.close_db()
+        db_mod.db_close_engine()
 
 
 @pytest.mark.asyncio
 async def test_bootstrap_creates_all_vector_indexes(tmp_path):
-    """All 10 HNSW vector indexes must be present after init_db()."""
+    """All vector and FTS indexes must be present after db_init_engine()."""
     import importlib
 
     os.environ["LADYBUG_DB_PATH"] = str(tmp_path / "test.lbug")
@@ -57,8 +59,8 @@ async def test_bootstrap_creates_all_vector_indexes(tmp_path):
     importlib.reload(db_mod)
 
     with patch.object(db_mod, "_probe_ollama", lambda: None):
-        db_mod.init_db()
-        conn = db_mod.get_conn()
+        db_mod.db_init_engine()
+        conn = db_mod.db_get_connection()
 
         expected_indexes = {
             "idx_project_emb",
@@ -71,17 +73,23 @@ async def test_bootstrap_creates_all_vector_indexes(tmp_path):
             "idx_message_emb",
             "idx_memory_emb",
             "idx_symbol_emb",
+            "fts_memory_content",
+            "fts_note_body",
+            "fts_task_desc",
+            "fts_decision_rat",
+            "fts_violation_desc",
+            "fts_symbol_name",
         }
         result = cast(Any, conn.execute("CALL SHOW_INDEXES() RETURN *;"))
         actual = {row[1] for row in result.get_all()}
         assert expected_indexes == actual
 
-        db_mod.close_db()
+        db_mod.db_close_engine()
 
 
 @pytest.mark.asyncio
 async def test_bootstrap_idempotent(tmp_path):
-    """Running init_db() twice on the same file must not raise."""
+    """Running db_init_engine() twice on the same file must not raise."""
     import importlib
 
     os.environ["LADYBUG_DB_PATH"] = str(tmp_path / "test.lbug")
@@ -90,14 +98,14 @@ async def test_bootstrap_idempotent(tmp_path):
     importlib.reload(db_mod)
 
     with patch.object(db_mod, "_probe_ollama", lambda: None):
-        db_mod.init_db()
-        db_mod.close_db()
+        db_mod.db_init_engine()
+        db_mod.db_close_engine()
         # Second open — all IF NOT EXISTS guards must hold
-        db_mod.init_db()
-        conn = db_mod.get_conn()
+        db_mod.db_init_engine()
+        conn = db_mod.db_get_connection()
         result = cast(Any, conn.execute("CALL SHOW_INDEXES() RETURN *;"))
-        assert len(result.get_all()) == 10
-        db_mod.close_db()
+        assert len(result.get_all()) == 16
+        db_mod.db_close_engine()
 
 
 @pytest.mark.asyncio
@@ -112,8 +120,8 @@ async def test_embed_dim_substitution(tmp_path):
     importlib.reload(db_mod)
 
     with patch.object(db_mod, "_probe_ollama", lambda: None):
-        db_mod.init_db()
+        db_mod.db_init_engine()
         # If schema was run with wrong dim the DB would still open fine,
         # but we can verify EMBED_DIM is read correctly from env:
         assert db_mod.EMBED_DIM == 768
-        db_mod.close_db()
+        db_mod.db_close_engine()

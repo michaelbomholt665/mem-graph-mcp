@@ -27,8 +27,8 @@ from typing import NamedTuple
 
 import ollama
 
-from ..db import get_conn, update_node_embedding
-from ..embeddings import embed
+from ..db import db_get_connection, db_update_embedding
+from ..embeddings import embeddings_generate
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +161,7 @@ async def _persist_summary(
     status: str,
 ) -> None:
     """Write summary + embedding back to the Conversation node."""
-    conn = get_conn()
+    conn = db_get_connection()
     now = datetime.now(timezone.utc)
 
     # Store summary text and status regardless of embedding success.
@@ -177,11 +177,11 @@ async def _persist_summary(
 
     if status == "ok":
         try:
-            vec = await embed(summary)
-            await update_node_embedding(
+            vec = await embeddings_generate(summary)
+            await db_update_embedding(
                 "Conversation", conversation_id, vec, "idx_conv_emb"
             )
         except Exception:  # noqa: BLE001
             logger.exception(
-                "Failed to embed summary for conversation %s", conversation_id
+                "Failed to embeddings_generate summary for conversation %s", conversation_id
             )

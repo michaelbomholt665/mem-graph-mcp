@@ -1,1 +1,5 @@
-# mem-graph — Agent memory MCP server
+"""mem_graph package.
+
+Agent memory MCP server, graph models, agent implementations, and
+supporting services for the Syntx memory workspace.
+"""

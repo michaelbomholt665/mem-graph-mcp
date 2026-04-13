@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# tests/test_task_agent.py
 import os
 os.environ.setdefault("OPENAI_API_KEY", "test")
 
@@ -5,7 +7,7 @@ import pytest
 from typing import cast
 from pydantic_ai.tools import RunContext
 from pydantic_ai.models.test import TestModel
-from mem_graph.agents.task_agent import task_agent, TaskDependencies, process_batch, Task
+from mem_graph.agents.document.task_agent import task_agent, TaskDependencies, process_batch, Task
 
 
 class MockContext:
@@ -46,7 +48,7 @@ async def test_task_process_batch():
     res2 = await process_batch(ctx, [], [t1])
     assert res2 == "No context queries requested. Tasks stored."
     
-    from mem_graph.agents.task_agent import _get_state
+    from mem_graph.agents.document.task_agent import _get_state
     state = _get_state(ctx)
     assert len(state) == 1
     assert state[0].task_id == "T1"

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# src/mem_graph/providers/openapi.py
 """
 providers/openapi.py — FastMCP OpenAPIProvider builder.
 

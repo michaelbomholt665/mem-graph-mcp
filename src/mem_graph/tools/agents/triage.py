@@ -2,6 +2,10 @@
 # src/mem_graph/tools/agents/triage.py
 """
 MCP tool surface for the triage agent.
+
+FastMCP 3.0 upgrades:
+- ``ctx: Context`` injected for progress reporting and client logging.
+- ``Depends(db_get_connection)`` injects the DB connection via FastMCP DI.
 """
 
 from __future__ import annotations
@@ -12,10 +16,13 @@ from typing import Annotated, Any, cast
 
 import anyio
 from fastmcp import FastMCP
+from fastmcp.dependencies import Depends
+from fastmcp.server.context import Context
+from mcp.types import Icon
 from pydantic import Field
 
-from ...agents.triage_agent import TriageDependencies, RawFinding, triage_agent
-from ...db import get_conn
+from ...agents.document.triage_agent import TriageDependencies, RawFinding, triage_agent
+from ...db import db_get_connection
 
 mcp = FastMCP("triage", instructions="Code violation triage tools.")
 logger = logging.getLogger(__name__)
@@ -69,13 +76,19 @@ def _fetch_existing_violations(conn: Any, project_id: str) -> list[dict]:
     ]
 
 
-@mcp.tool(tags={"namespace:audit"})
+@mcp.tool(
+    tags={"namespace:audit"},
+    icons=[Icon(src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTkgMkgtNWMtMS4xIDAtMiAuOS0yIDJ2MTRjMCAxLjEuOSAyIDIgMmgxNGMxLjEgMCAyLS45IDItMlY0YzAtMS4xLS45LTItMi0yem0wIDE2aC01di00aDV2NHptMC02aC01YzAgMi4yMS0xLjc5IDQtNCA0cy00LTEuNzktNC00aDAuNzF2LTJIMTZ2Mnd6bTAgOHYtNGgydjR6Ii8+PC9zdmc+", mimeType="image/svg+xml")],
+    task=True
+)
 async def triage_violations(
     project_id: Annotated[str, Field(description="Project ID.")],
     raw_findings: Annotated[
         list[dict],
         Field(description="List of raw findings dicts (rule_id, file_path, description, severity, source, line_start, line_end)."),
     ] = [],
+    ctx: Context = None,  # type: ignore[assignment]
+    conn: Any = Depends(db_get_connection),
 ) -> dict:
     """
     Triage and classify raw code findings against existing open violations in the graph.
@@ -84,9 +97,16 @@ async def triage_violations(
     NEW, RECURRENCE, DUPLICATE, WONTFIX, or ESCALATE. Returns a structured
     triage report with counts per category.
     """
-    conn = get_conn()
+    if ctx is not None:
+        await ctx.info(f"Starting triage for project {project_id} ({len(raw_findings)} findings)")
+        await ctx.report_progress(progress=0, total=3)
+
     existing = _fetch_existing_violations(conn, project_id)
     findings = [_build_finding(f) for f in raw_findings]
+
+    if ctx is not None:
+        await ctx.info(f"Running triage agent against {len(existing)} existing violations…")
+        await ctx.report_progress(progress=1, total=3)
 
     skills_content = await _load_skills()
     deps = TriageDependencies(
@@ -105,6 +125,35 @@ async def triage_violations(
     except Exception as exc:
         logger.error("Triage agent execution failed: %s", exc)
         return {"error": f"Agent failed: {exc}"}
+
+    if ctx is not None:
+        await ctx.info(
+            f"Triage complete: {report.new_count} new, "
+            f"{report.recurrence_count} recurrences, "
+            f"{report.escalated_count} escalated."
+        )
+        
+        # Phase 3: Request confirmation if there are escalated violations
+        if report.escalated_count > 0:
+            try:
+                from fastmcp.server.context import AcceptedElicitation
+                
+                escalation_desc = (
+                    f"Found {report.escalated_count} violation(s) to escalate. "
+                    "Proceed with escalation?"
+                )
+                confirmation = await ctx.elicit(
+                    message=escalation_desc,
+                    response_type=["yes", "no"],  # type: ignore[arg-type]
+                )
+                
+                # Store the user's choice in the report
+                if not isinstance(confirmation, AcceptedElicitation) or confirmation.data != "yes":
+                    logger.info("User declined escalation.")
+            except Exception as exc:
+                logger.debug("Confirmation unavailable for escalation: %s", exc)
+        
+        await ctx.report_progress(progress=3, total=3)
 
     return {
         "status": "completed" if not report.partial_failure else "partial",

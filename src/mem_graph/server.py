@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# src/mem_graph/server.py
 """
 server.py — FastMCP app definition + lifespan wiring.
 
@@ -35,10 +37,20 @@ Tools are split into two tiers:
         audit      — audit_package, map_codebase, triage_violations, decision_review,
                                  orchestrate_codebase
     filesystem — file_read, file_write, file_edit, file_delete, file_search, file_grep
+
+FastMCP 3.0 Upgrades
+---------------------
+- Dependency Injection: ``Depends(db_get_connection)`` injects the DB connection.
+- Auth: ``StaticTokenVerifier`` replaces the custom ``auth_api_middleware``.
+- Middleware: ``LoggingMiddleware`` provides MCP-level structured logging.
+- Pagination: ``list_page_size=50`` prevents context window overflow.
+- Resources: URI templates for memory, work, and audit entities.
+- Context: ``ctx.report_progress()``, ``ctx.info()``, ``ctx.sample()`` in tools.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
@@ -50,9 +62,12 @@ from anyio import to_thread
 import httpx
 from dotenv import load_dotenv
 from fastmcp import FastMCP
+from fastmcp.server.auth import AccessToken, TokenVerifier
 from fastmcp.server.context import Context
+from fastmcp.server.middleware.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.server.providers.skills import SkillsProvider  # type: ignore[import-untyped]
 from fastmcp.experimental.transforms.code_mode import CodeMode  # type: ignore[import-untyped]
+from mcp.types import Icon
 from pydantic import Field
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -60,39 +75,24 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 import uvicorn
 
-from .auth import AUTH_ENABLED, ApiKeyMiddleware
-from .db import close_db, get_conn, init_db
-from .logging import configure_logging
+from .db import db_close_engine, db_get_connection, db_init_engine
+from .logging import logging_setup_engine
 from .providers.openapi import build_openapi_provider
 from .services.summarizer import start_worker, stop_worker
 from .resources.prompts import PROMPT_REGISTRY, get_sub_agent_instructions
-from .tools import (
-    audit,
-    conversation,
-    decisions,
-    diagrams,
-    filesystem,
-    map as map_tool,
-    memory,
-    notes,
-    orchestrator,
-    projects,
-    tasks,
-    triage,
-    violations,
-)
+from .tools.agents import audit, diagrams, map as map_tool, orchestrator, triage
+from .tools.filesystem import filesystem
+from .tools.memory import conversation, memory, notes
+from .tools.work import decisions, projects, tasks, violations
 
 load_dotenv()
 
 # Pre-emptively set a dummy key to avoid pydantic-ai import-time crashes if no key is in .env.
-# This allows the server to start even if agents aren't fully configured yet.
 if not os.getenv("OPENAI_API_KEY"):
     os.environ.setdefault("OPENAI_API_KEY", "missing-key-set-in-env-file")
 
 
-
-# (load_dotenv called at top of file)
-configure_logging(level=os.getenv("LOG_LEVEL", "INFO"))
+logging_setup_engine(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 
 _HOST = os.getenv("MCP_HOST", "127.0.0.1")
@@ -118,33 +118,113 @@ _OPENAPI_SPECS: list[str] = [
     if s.strip()
 ]
 
+# ---------------------------------------------------------------------------
+# Auth: StaticTokenVerifier (replaces custom auth_api_middleware)
+# ---------------------------------------------------------------------------
+
+_RAW_KEYS = os.getenv("MEM_GRAPH_API_KEYS", "").strip()
+_ALLOWED_KEYS: frozenset[str] = (
+    frozenset(k.strip() for k in _RAW_KEYS.split(",") if k.strip())
+    if _RAW_KEYS
+    else frozenset()
+)
+
+
+class StaticTokenVerifier(TokenVerifier):
+    """
+    FastMCP 3.0 auth provider that validates a static set of Bearer tokens.
+
+    Replaces the legacy ``auth_api_middleware``. When ``MEM_GRAPH_API_KEYS`` is
+    set the verifier is wired into the ``FastMCP`` constructor as ``auth=``.
+    Each key grants both ``memory:read`` and ``memory:write`` scopes.
+    """
+
+    def __init__(self, keys: frozenset[str]) -> None:
+        super().__init__(required_scopes=["memory:read", "memory:write"])
+        self._keys = keys
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        if token in self._keys:
+            return AccessToken(
+                token=token,
+                client_id="local",
+                scopes=["memory:read", "memory:write"],
+            )
+        return None
+
+
+_auth_provider: StaticTokenVerifier | None = (
+    StaticTokenVerifier(_ALLOWED_KEYS) if _ALLOWED_KEYS else None
+)
+
+# ---------------------------------------------------------------------------
+# MCP-level Middleware: structured logging for every tool call
+# ---------------------------------------------------------------------------
+
+
+class LoggingMiddleware(Middleware):
+    """
+    FastMCP 3.0 middleware: logs every tool call with elapsed time.
+
+    Captures ``tools/call`` requests and adds structured log lines at
+    INFO level so each AI action leaves a clear audit trail.
+    """
+
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext[Any],
+        call_next: CallNext[Any, Any],
+    ) -> Any:
+        import time
+
+        tool_name: str = getattr(context.message, "name", "<unknown>")
+        start = time.monotonic()
+        try:
+            result = await call_next(context)
+            elapsed = (time.monotonic() - start) * 1000
+            logger.info("tool_call tool=%s elapsed_ms=%.1f", tool_name, elapsed)
+            return result
+        except Exception as exc:
+            elapsed = (time.monotonic() - start) * 1000
+            logger.error(
+                "tool_error tool=%s elapsed_ms=%.1f error=%s",
+                tool_name,
+                elapsed,
+                exc,
+            )
+            raise
+
 
 _BANNER = r"""
-   _____             _             __  __                                
-  / ____|           | |           |  \/  |                               
- | (___  _   _ _ __ | |_ __  __   | \  / | ___ _ __ ___   ___  _ __ _   _ 
-  \___ \| | | | '_ \| __|\ \/ /   | |\/| |/ _ \ '_ ` _ \ / _ \| '__| | | |
-  ____) | |_| | | | | |_  >  <    | |  | |  __/ | | | | | (_) | |  | |_| |
- |_____/ \__, |_| |_|\__|/_/\_\   |_|  |_|\___|_| |_| |_|\___/|_|   \__, |
-          __/ |                                                      __/ |
-         |___/                                                      |___/ 
+__  __ ______ __  __      _____  _____            _____  _    _ 
+  |  \/  |  ____|  \/  |    / ____|  __ \     /\    |  __ \| |  | |
+  | \  / | |__  | \  / |   | |  __| |__) |   /  \   | |__) | |__| |
+  | |\/| |  __| | |\/| |   | | |_ |  _  /   / /\ \  |  ___/|  __  |
+  | |  | | |____| |  | |   | |__| | | \ \  / ____ \ | |    | |  | |
+  |_|  |_|______|_|  |_|    \_____|_|  \_\/_/    \_\|_|    |_|  |_|
+                                                                      
+  __  __  _____ _____                                                 
+ |  \/  |/ ____|  __ \                                                
+ | \  / | |    | |__) |                                               
+ | |\/| | |    |  ___/                                                
+ | |  | | |____| |                                                    
+ |_|  |_|\_____|_|
 """
 
 
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncGenerator[None, None]:  # noqa: ARG001
-    # Print banner before starting logging if possible, or just log it
     if sys.stderr.isatty():
         print(_BANNER, file=sys.stderr)
         print(f"  Version: 0.1.0 | CodeMode: ENABLED | Host: {_HOST}:{_PORT}\n", file=sys.stderr)
 
-    await to_thread.run_sync(init_db)
+    await to_thread.run_sync(db_init_engine)
     start_worker()
     await _load_openapi_providers()
     logger.info("mem-graph server ready.")
     yield
     await stop_worker()
-    await to_thread.run_sync(close_db)
+    await to_thread.run_sync(db_close_engine)
     logger.info("mem-graph server shut down cleanly.")
 
 
@@ -173,8 +253,22 @@ mcp = FastMCP(
     ),
     lifespan=lifespan,
     transforms=[CodeMode()],
+    list_page_size=50,
+    auth=_auth_provider,
+    website_url="https://github.com/michael/syntx-memory",
+    icons=[
+        Icon(
+            src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCIgdmlld0JveD0iMCAwIDQ4IDQ4Ij48cmVjdCBmaWxsPSIjRkZGIiBmaWxsLW9wYWNpdHk9Ii4wMSIgd2lkdGg9IjQ4IiBo ZWlnaHQ9IjQ4Ii8+PHBhdGggZmlsbD0iIzEyNzZkMiIgZD0iTTI0IDRDMTIuOTUgNCA0IDE2Ljk1IDQgMjhzOC45NSAyNCAyMCAyNCAyMC04Ljk1IDIwLTIwUzM1LjA1IDQgMjQgNHptLTQgMzZINjYuODN2LTEyCzMwSDE2VjZ6Ii8+PC9zdmc+",
+            mimeType="image/svg+xml"
+        )
+    ]
 )
 
+# Register MCP-level middleware for structured logging
+mcp.add_middleware(LoggingMiddleware())
+
+if _auth_provider is not None:
+    logger.info("API key authentication enabled (StaticTokenVerifier).")
 
 # Mount all tool sub-servers
 mcp.mount(conversation.mcp)
@@ -241,7 +335,7 @@ async def tools_search(
     query = query.lower()
     results = []
 
-    all_tools = await mcp._list_tools()
+    all_tools = await mcp.list_tools()
 
     for tool_def in all_tools:
         score = _score_tool(tool_def, query)
@@ -327,11 +421,216 @@ async def tools_activate(
             )
         }
     await ctx.enable_components(tags={f"namespace:{namespace}"}, components={"tool"})
+    await ctx.info(f"Activated namespace '{namespace}' for session.")
     logger.info("Activated namespace '%s' for session.", namespace)
     return {"activated": namespace, "status": "ok"}
 
 
+# ---------------------------------------------------------------------------
+# MCP Resource Templates (Phase 2)
+# ---------------------------------------------------------------------------
 
+
+@mcp.resource(
+    "memory://{memory_id}",
+    description="Read a stored memory node by its ID.",
+    mime_type="application/json",
+)
+async def resource_memory(memory_id: str) -> str:
+    """Retrieve a single Memory node as JSON."""
+    conn = db_get_connection()
+    result = conn.execute(
+        """
+        MATCH (m:Memory {id: $id})
+        OPTIONAL MATCH (m)<-[:PROJECT_MEMORY]-(p:Project)
+        RETURN m.id, m.kind, m.scope, m.content, m.confidence,
+               m.created_at, m.updated_at, m.expires_at, p.name AS project
+        """,
+        {"id": memory_id},
+    )
+    if isinstance(result, list):
+        result = result[0]
+    rows = cast(list[list[Any]], result.get_all())
+    if not rows:
+        return json.dumps({"error": f"Memory {memory_id!r} not found"})
+    r = rows[0]
+    return json.dumps(
+        {
+            "id": r[0],
+            "kind": r[1],
+            "scope": r[2],
+            "content": r[3],
+            "confidence": r[4],
+            "created_at": str(r[5]),
+            "updated_at": str(r[6]),
+            "expires_at": str(r[7]) if r[7] else None,
+            "project": r[8],
+        }
+    )
+
+
+@mcp.resource(
+    "memory://list",
+    description="List the 50 most recently created active memories.",
+    mime_type="application/json",
+)
+async def resource_memory_list() -> str:
+    """Return a JSON list of the most recent active memories."""
+    conn = db_get_connection()
+    result = conn.execute(
+        """
+        MATCH (m:Memory)
+        WHERE m.expires_at IS NULL OR m.expires_at > current_timestamp()
+        RETURN m.id, m.kind, m.scope, m.content, m.confidence, m.created_at
+        ORDER BY m.created_at DESC
+        LIMIT 50
+        """
+    )
+    if isinstance(result, list):
+        result = result[0]
+    memories = [
+        {
+            "id": r[0],
+            "kind": r[1],
+            "scope": r[2],
+            "content": r[3],
+            "confidence": r[4],
+            "created_at": str(r[5]),
+        }
+        for r in cast(list[list[Any]], result.get_all())
+    ]
+    return json.dumps({"memories": memories, "count": len(memories)})
+
+
+@mcp.resource(
+    "work://tasks/{task_id}",
+    description="Read a work task node by its ID.",
+    mime_type="application/json",
+)
+async def resource_task(task_id: str) -> str:
+    """Retrieve a single Task node with linked decisions, violations, and blockers."""
+    conn = db_get_connection()
+    result = conn.execute(
+        """
+        MATCH (t:Task {id: $id})
+        RETURN t.id, t.title, t.description, t.status, t.priority,
+               t.phase, t.created_at, t.updated_at, t.completed_at
+        """,
+        {"id": task_id},
+    )
+    if isinstance(result, list):
+        result = result[0]
+    rows = cast(list[list[Any]], result.get_all())
+    if not rows:
+        return json.dumps({"error": f"Task {task_id!r} not found"})
+    r = rows[0]
+    return json.dumps(
+        {
+            "id": r[0],
+            "title": r[1],
+            "description": r[2],
+            "status": r[3],
+            "priority": r[4],
+            "phase": r[5],
+            "created_at": str(r[6]),
+            "updated_at": str(r[7]),
+            "completed_at": str(r[8]) if r[8] else None,
+        }
+    )
+
+
+@mcp.resource(
+    "work://projects/{project_id}",
+    description="Read a project node, its tasks, and open violations by project ID.",
+    mime_type="application/json",
+)
+async def resource_project(project_id: str) -> str:
+    """Retrieve a Project node with task and violation counts."""
+    conn = db_get_connection()
+    result = conn.execute(
+        """
+        MATCH (p:Project {id: $id})
+        RETURN p.id, p.name, p.description, p.status, p.repo_path, p.created_at
+        """,
+        {"id": project_id},
+    )
+    if isinstance(result, list):
+        result = result[0]
+    rows = cast(list[list[Any]], result.get_all())
+    if not rows:
+        return json.dumps({"error": f"Project {project_id!r} not found"})
+    r = rows[0]
+
+    # Count tasks and open violations
+    task_result = conn.execute(
+        "MATCH (p:Project {id: $id})-[:HAS_TASK]->(t) RETURN count(t)",
+        {"id": project_id},
+    )
+    if isinstance(task_result, list):
+        task_result = task_result[0]
+    task_rows = cast(list[list[Any]], task_result.get_all())
+    task_count: int = int(task_rows[0][0]) if task_rows else 0
+
+    viol_result = conn.execute(
+        "MATCH (p:Project {id: $id})-[:HAS_VIOLATION]->(v) WHERE v.status = 'open' RETURN count(v)",
+        {"id": project_id},
+    )
+    if isinstance(viol_result, list):
+        viol_result = viol_result[0]
+    viol_rows = cast(list[list[Any]], viol_result.get_all())
+    viol_count: int = int(viol_rows[0][0]) if viol_rows else 0
+
+    return json.dumps(
+        {
+            "id": r[0],
+            "name": r[1],
+            "description": r[2],
+            "status": r[3],
+            "repo_path": r[4],
+            "created_at": str(r[5]),
+            "task_count": task_count,
+            "open_violation_count": viol_count,
+        }
+    )
+
+
+@mcp.resource(
+    "audit://violations/{violation_id}",
+    description="Read a code violation node by its ID.",
+    mime_type="application/json",
+)
+async def resource_violation(violation_id: str) -> str:
+    """Retrieve a single Violation node as JSON."""
+    conn = db_get_connection()
+    result = conn.execute(
+        """
+        MATCH (v:Violation {id: $id})
+        OPTIONAL MATCH (p:Project)-[:HAS_VIOLATION]->(v)
+        RETURN v.id, v.audit_id, v.rule, v.severity, v.status,
+               v.file_path, v.description, v.detected_at, v.resolved_at, p.id AS project_id
+        """,
+        {"id": violation_id},
+    )
+    if isinstance(result, list):
+        result = result[0]
+    rows = cast(list[list[Any]], result.get_all())
+    if not rows:
+        return json.dumps({"error": f"Violation {violation_id!r} not found"})
+    r = rows[0]
+    return json.dumps(
+        {
+            "id": r[0],
+            "audit_id": r[1],
+            "rule": r[2],
+            "severity": r[3],
+            "status": r[4],
+            "file_path": r[5],
+            "description": r[6],
+            "detected_at": str(r[7]),
+            "resolved_at": str(r[8]) if r[8] else None,
+            "project_id": r[9],
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -381,7 +680,7 @@ async def _health(request: Request) -> JSONResponse:  # noqa: ARG001
     http_status = 200
 
     try:
-        conn = get_conn()
+        conn = db_get_connection()
         conn.execute("MATCH (s:SchemaMeta) RETURN s LIMIT 1")
         status["db"] = "connected"
     except Exception as exc:  # noqa: BLE001
@@ -439,10 +738,6 @@ def _run_http() -> None:
         routes=[health_route] + app_http.router.routes + app_sse.router.routes,
         lifespan=combined_lifespan,
     )
-
-    if AUTH_ENABLED:
-        app.add_middleware(ApiKeyMiddleware)  # type: ignore[arg-type]
-        logger.info("API key authentication enabled.")
 
     async def serve() -> None:
         config = uvicorn.Config(

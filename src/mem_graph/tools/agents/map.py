@@ -4,6 +4,9 @@
 MCP tool surface for the map agent.
 
 Exposes a tool for mapping the architecture and feature geography of a codebase.
+
+FastMCP 3.0 upgrades:
+- ``ctx: Context`` injected for progress reporting and client logging.
 """
 
 from __future__ import annotations
@@ -14,9 +17,11 @@ from typing import Annotated
 
 import anyio
 from fastmcp import FastMCP
+from fastmcp.server.context import Context
+from mcp.types import Icon
 from pydantic import Field
 
-from ...agents.map_agent import MapDependencies, map_agent
+from ...agents.map.map_agent import MapDependencies, map_agent
 
 mcp = FastMCP("map", instructions="Codebase cartography mapping tools.")
 logger = logging.getLogger(__name__)
@@ -35,7 +40,11 @@ async def _load_skills() -> str:
         return ""
 
 
-@mcp.tool(tags={"namespace:audit"})
+@mcp.tool(
+    tags={"namespace:audit"},
+    icons=[Icon(src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTIgMkM2LjQ4IDIgMiA2LjQ4IDIgMTJzNC40OCAxMCAxMCAxMCAxMC00LjQ4IDEwLTEwUzE3LjUyIDIgMTIgMnptMCA4Yy0xLjEgMC0yLS45LTIgLTJzMi45IDIgMi4zNzZoLTJ6TTE4IDE2SDlWMTBoOXY2eiIvPjwvc3ZnPg==", mimeType="image/svg+xml")],
+    task=True
+)
 async def map_codebase(
     package_path: Annotated[
         str,
@@ -49,6 +58,7 @@ async def map_codebase(
         str,
         Field(description="Source file extension to analyse. Defaults to '.py'."),
     ] = ".py",
+    ctx: Context = None,  # type: ignore[assignment]
 ) -> dict:
     """
     Map and discover the feature geography, architecture, and knowledge relationships of a codebase.
@@ -59,6 +69,10 @@ async def map_codebase(
     if not os.path.exists(package_path):
         return {"error": f"Package path not found: {package_path}"}
 
+    if ctx is not None:
+        await ctx.info(f"Starting codebase mapping of {package_path}")
+        await ctx.report_progress(progress=0, total=3)
+
     skills_content = await _load_skills()
     deps = MapDependencies(
         package_path=package_path,
@@ -66,6 +80,10 @@ async def map_codebase(
         known_features=list(known_features),
         skills_content=skills_content,
     )
+
+    if ctx is not None:
+        await ctx.info("Running map agent…")
+        await ctx.report_progress(progress=1, total=3)
 
     try:
         async with map_agent.run_stream(
@@ -76,6 +94,13 @@ async def map_codebase(
     except Exception as exc:
         logger.error("Map agent execution failed: %s", exc)
         return {"error": f"Agent failed: {exc}"}
+
+    if ctx is not None:
+        await ctx.info(
+            f"Mapping complete: {len(report.features)} features, "
+            f"{len(report.relationships)} relationships."
+        )
+        await ctx.report_progress(progress=3, total=3)
 
     return {
         "status": "completed" if not report.partial_failure else "partial",

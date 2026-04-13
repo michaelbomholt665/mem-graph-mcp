@@ -20,9 +20,9 @@ from typing import Annotated, Any, cast
 from fastmcp import FastMCP
 from pydantic import Field
 
-from ...db import get_conn
-from ...embeddings import embed
-from ...ids import new_id
+from ...db import db_get_connection
+from ...embeddings import embeddings_generate, embeddings_query
+from ...ids import id_generate_v7
 from ...models.conversation import (
     AnnotateResult,
     ConversationMessage,
@@ -31,6 +31,7 @@ from ...models.conversation import (
     SessionCaptureResult,
 )
 from ...services.summarizer import enqueue_summary
+from ...services.search import rrf_fuse
 
 logger = logging.getLogger(__name__)
 mcp = FastMCP("conversation")
@@ -47,7 +48,7 @@ def _estimate_tokens(text: str) -> int:
 
 def _create_conversation(conn: Any, project_id: str, agent_name: str, model: str) -> str:
     """Create Agent (upsert), Conversation, and link edges. Returns conv_id."""
-    conv_id = new_id()
+    conv_id = id_generate_v7()
     agent_id = agent_name
 
     conn.execute(
@@ -95,7 +96,7 @@ def _bulk_insert_messages(conn: Any, conv_id: str, messages: list[ConversationMe
     msg_ids: list[str] = []
 
     for position, msg in enumerate(messages):
-        msg_id = new_id()
+        msg_id = id_generate_v7()
         msg_ids.append(msg_id)
 
         conn.execute(
@@ -167,7 +168,7 @@ async def memory_capture_session(
     Returns a session_id immediately — summarisation happens in the background
     so this call never blocks on Ollama. One call captures the full session.
     """
-    conn = get_conn()
+    conn = db_get_connection()
 
     conv_id = _create_conversation(conn, project_id, agent_name, model)
     _bulk_insert_messages(conn, conv_id, messages)
@@ -223,36 +224,66 @@ async def memory_recall(
     items — most semantically relevant first — trimmed to fit the budget.
     Optionally scope to a project or search cross-scope.
     """
-    conn = get_conn()
-    vec = await embed(query)
+    conn = db_get_connection()
+    vec = await embeddings_query(query)
+    candidate_size = limit * 3
 
-    raw = cast(
-        list[list[Any]],
-        conn.execute(
-            f"""
-            CALL QUERY_VECTOR_INDEX('Memory', 'idx_memory_emb', $qvec, {limit * 3})
-            WITH node AS m, distance
-            WHERE m.expires_at IS NULL OR m.expires_at > current_timestamp()
-            OPTIONAL MATCH (m)<-[:PROJECT_MEMORY]-(p:Project)
-            RETURN m.id, m.kind, m.scope, m.content, m.confidence, p.name AS project, distance
-            ORDER BY distance
-            LIMIT {limit}
-            """,
-            {"qvec": vec},
-        ),
+    vector_raw = conn.execute(
+        f"""
+        CALL QUERY_VECTOR_INDEX('Memory', 'idx_memory_emb', $qvec, {candidate_size})
+        WITH node AS m, distance
+        WHERE m.expires_at IS NULL OR m.expires_at > current_timestamp()
+        OPTIONAL MATCH (m)<-[:PROJECT_MEMORY]-(p:Project)
+        RETURN m.id, m.kind, m.scope, m.content, m.confidence, p.id AS project, distance
+        ORDER BY distance
+        LIMIT {candidate_size}
+        """,
+        {"qvec": vec},
     )
+    if isinstance(vector_raw, list):
+        vector_raw = vector_raw[0]
+    vector_rows = cast(list[list[Any]], vector_raw.get_all())
+
+    keyword_raw = conn.execute(
+        f"""
+        CALL QUERY_FTS_INDEX('Memory', 'fts_memory_content', $q)
+        WITH node AS m, score
+        WHERE m.expires_at IS NULL OR m.expires_at > current_timestamp()
+        OPTIONAL MATCH (m)<-[:PROJECT_MEMORY]-(p:Project)
+        RETURN m.id, m.kind, m.scope, m.content, m.confidence, p.id AS project, score
+        ORDER BY score DESC
+        LIMIT {candidate_size}
+        """,
+        {"q": query},
+    )
+    if isinstance(keyword_raw, list):
+        keyword_raw = keyword_raw[0]
+    keyword_rows = cast(list[list[Any]], keyword_raw.get_all())
+
+    vector_hits: list[tuple[str, float]] = [(row[0], float(row[6])) for row in vector_rows]
+    fts_hits: list[tuple[str, float]] = [
+        (row[0], float(rank)) for rank, row in enumerate(keyword_rows, start=1)
+    ]
+    ranks = dict(rrf_fuse(vector_hits, fts_hits))
+
+    data_map: dict[str, list[Any]] = {row[0]: row for row in vector_rows}
+    for row in keyword_rows:
+        data_map[row[0]] = row
 
     items: list[MemoryItem] = []
     total_tokens = 0
     truncated = False
 
-    for row in raw:
-        mem_project: str | None = row[5]
+    for node_id, relevance in sorted(ranks.items(), key=lambda item: item[1], reverse=True):
+        if node_id not in data_map:
+            continue
+        row = data_map[node_id]
 
-        if not cross_scope and project_id and mem_project is None:
+        mem_project: str | None = row[5]
+        if not cross_scope and project_id and mem_project != project_id:
             continue
 
-        content: str = str(row[3])
+        content = str(row[3])
         tok = _estimate_tokens(content)
 
         if total_tokens + tok > budget_tokens:
@@ -267,7 +298,7 @@ async def memory_recall(
                 content=content,
                 confidence=float(row[4]),
                 project=mem_project,
-                distance=float(row[6]),
+                distance=1.0 - relevance,
             )
         )
         total_tokens += tok
@@ -296,9 +327,9 @@ async def memory_annotate(
     a session that should survive beyond this conversation. Provide the active
     session ID and describe what to preserve. Returns the new memory ID.
     """
-    conn = get_conn()
-    mem_id = new_id()
-    vec = await embed(note)
+    conn = db_get_connection()
+    mem_id = id_generate_v7()
+    vec = await embeddings_generate(note)
 
     conf_map = {"low": 0.5, "normal": 0.75, "high": 0.9, "critical": 1.0}
 

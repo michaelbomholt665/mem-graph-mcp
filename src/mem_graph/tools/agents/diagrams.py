@@ -12,7 +12,7 @@ from typing import Annotated
 from fastmcp import FastMCP
 from pydantic import Field
 
-from ...agents.diagram_agent import DiagramRequest, DiagramType, run_diagram_agent
+from ...agents.map.diagram_agent import DiagramRequest, DiagramType, run_diagram_agent
 
 mcp = FastMCP("diagrams", instructions="Tools for generating diagrams via mermaid.")
 logger = logging.getLogger(__name__)

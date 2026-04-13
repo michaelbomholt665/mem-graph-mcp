@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# src/mem_graph/agents/task_agent.py
+# src/mem_graph/agents/document/task_agent.py
 """
 Task decomposition agent.
 
@@ -21,8 +21,8 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
-from ..config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, build_model_settings
-from ..resources.personas import ARCHITECT_PERSONA
+from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
+from ...resources.personas import ARCHITECT_PERSONA
 
 ################
 #   CONSTANTS
@@ -142,7 +142,7 @@ task_agent: Agent[TaskDependencies, DecompositionReport] = Agent(
     AGENT_MODEL,
     deps_type=TaskDependencies,
     output_type=DecompositionReport,
-    model_settings=build_model_settings(
+    model_settings=config_model_settings(
         temperature=ARCHITECT_PERSONA.params.temperature,
         top_p=ARCHITECT_PERSONA.params.top_p,
     ),

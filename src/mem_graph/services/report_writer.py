@@ -19,6 +19,13 @@ from pathlib import Path
 from ..models.audit import AuditFinding, AuditReport, AuditStats, Severity
 
 ################
+#   BUCKETING LABELS
+################
+
+_NEW_LABEL = "🆕 New"
+_RECUR_LABEL = "🔄 Recurring"
+
+################
 #   CONSTANTS
 ################
 
@@ -44,33 +51,59 @@ _SEVERITY_ORDER = [
 ################
 
 
-def render_markdown(report: AuditReport) -> str:
+def render_markdown(
+    report: AuditReport,
+    recurrence_fingerprints: set[str] | None = None,
+) -> str:
     """
     Render a complete AuditReport as a markdown string.
 
     Produces a document with a header, stats table, executive summary,
-    findings grouped by severity, and a skipped files appendix.
+    findings grouped by severity (with New vs. Recurring bucketing when
+    recurrence_fingerprints is provided), and a skipped files appendix.
     Ready to write to disk or display in a terminal.
+
+    Args:
+        report: The AuditReport to render.
+        recurrence_fingerprints: Optional set of fingerprints that were
+            matched as recurrences during the write_violations call.
+            When provided, findings are sub-bucketed into 🆕 New and
+            🔄 Recurring within each severity group.
+
+    Returns:
+        A complete markdown string.
     """
     sections: list[str] = [
         _render_header(report),
         _render_stats_table(report.stats),
         _render_summary(report),
-        _render_findings_by_severity(report.all_findings),
+        _render_findings_by_severity(report.all_findings, recurrence_fingerprints),
         _render_skipped_files(report),
     ]
 
     return "\n\n".join(s for s in sections if s.strip())
 
 
-def write_report(report: AuditReport, output_path: str) -> str:
+def write_report(
+    report: AuditReport,
+    output_path: str,
+    recurrence_fingerprints: set[str] | None = None,
+) -> str:
     """
     Render and write the audit report to disk.
 
     Creates parent directories if they do not exist.
-    Returns the resolved output path on success.
+
+    Args:
+        report: The AuditReport to render.
+        output_path: Destination file path.
+        recurrence_fingerprints: Optional set of recurrence fingerprints
+            from ViolationWriteResult.recurrence_fingerprints for bucketing.
+
+    Returns:
+        The resolved output path on success.
     """
-    content = render_markdown(report)
+    content = render_markdown(report, recurrence_fingerprints)
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
@@ -134,12 +167,25 @@ def _render_summary(report: AuditReport) -> str:
     return f"## Summary\n\n{report.summary}"
 
 
-def _render_findings_by_severity(findings: list[AuditFinding]) -> str:
+def _render_findings_by_severity(
+    findings: list[AuditFinding],
+    recurrence_fingerprints: set[str] | None = None,
+) -> str:
     """
     Render all findings grouped by severity in descending order.
 
     Within each severity group, findings are further grouped by file
-    to make file-level patterns visible.
+    to make file-level patterns visible. When recurrence_fingerprints
+    is provided, each file group is sub-bucketed into 🆕 New and
+    🔄 Recurring findings.
+
+    Args:
+        findings: All audit findings to render.
+        recurrence_fingerprints: Optional set of fingerprints that were
+            recurrences during the last violation write.
+
+    Returns:
+        Markdown string for the Findings section.
     """
     if not findings:
         return "## Findings\n\nNo findings."
@@ -156,17 +202,56 @@ def _render_findings_by_severity(findings: list[AuditFinding]) -> str:
 
         by_file = _group_by_file(group)
         for file_path, file_findings in by_file.items():
-            blocks.append(_render_file_findings(file_path, file_findings))
+            blocks.append(
+                _render_file_findings(file_path, file_findings, recurrence_fingerprints)
+            )
 
     return "\n\n".join(blocks)
 
 
-def _render_file_findings(file_path: str, findings: list[AuditFinding]) -> str:
-    """Render all findings for a single file as a markdown subsection."""
+def _render_file_findings(
+    file_path: str,
+    findings: list[AuditFinding],
+    recurrence_fingerprints: set[str] | None = None,
+) -> str:
+    """
+    Render all findings for a single file as a markdown subsection.
+
+    When recurrence_fingerprints is provided, splits findings into
+    🆕 New and 🔄 Recurring sub-buckets beneath the file header.
+
+    Args:
+        file_path: The source file path for the section header.
+        findings: All findings for this file.
+        recurrence_fingerprints: Optional set of recurrence fingerprints.
+
+    Returns:
+        Markdown string for this file's findings block.
+    """
     lines: list[str] = [f"#### `{file_path}`"]
 
-    for finding in findings:
-        lines.append(_render_single_finding(finding))
+    if recurrence_fingerprints is not None:
+        new_findings = [
+            f for f in findings
+            if f.fingerprint not in recurrence_fingerprints
+        ]
+        recurring_findings = [
+            f for f in findings
+            if f.fingerprint in recurrence_fingerprints
+        ]
+
+        if new_findings:
+            lines.append(f"**{_NEW_LABEL}**")
+            for finding in new_findings:
+                lines.append(_render_single_finding(finding))
+
+        if recurring_findings:
+            lines.append(f"**{_RECUR_LABEL}**")
+            for finding in recurring_findings:
+                lines.append(_render_single_finding(finding))
+    else:
+        for finding in findings:
+            lines.append(_render_single_finding(finding))
 
     return "\n\n".join(lines)
 

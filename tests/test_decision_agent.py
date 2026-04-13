@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# tests/test_decision_agent.py
 import os
 os.environ.setdefault("OPENAI_API_KEY", "test")
 
@@ -5,7 +7,7 @@ import pytest
 from typing import cast
 from pydantic_ai.tools import RunContext
 from pydantic_ai.models.test import TestModel
-from mem_graph.agents.decision_agent import decision_agent, DecisionDependencies, process_batch, DecisionReview, DriftStatus
+from mem_graph.agents.document.decision_agent import decision_agent, DecisionDependencies, process_batch, DecisionReview, DriftStatus
 
 
 class MockContext:
@@ -42,7 +44,7 @@ async def test_decision_process_batch():
     res = await process_batch(ctx, [], [r1])
     assert res == "No files requested. Reviews stored."
     
-    from mem_graph.agents.decision_agent import _get_state
+    from mem_graph.agents.document.decision_agent import _get_state
     state = _get_state(ctx)
     assert len(state) == 1
     assert state[0].decision_id == "D1"

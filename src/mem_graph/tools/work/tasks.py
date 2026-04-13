@@ -13,10 +13,11 @@ import anyio
 from fastmcp import FastMCP
 from pydantic import Field
 
-from ...db import get_conn
-from ...embeddings import embed
-from ...ids import new_id
-from ...agents.task_agent import TaskDependencies, task_agent
+from ...agents.document.task_agent import TaskDependencies, task_agent
+from ...db import db_get_connection
+from ...embeddings import embeddings_generate
+from ...ids import id_generate_v7
+from ...services.search import rrf_fuse
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +47,9 @@ async def task_create(
     Provide a title, description, and optional priority to create and index the task.
     Returns a task_id you can update, block, and link to decisions or violations.
     """
-    conn = get_conn()
-    task_id = new_id()
-    vec = await embed(f"{title}\n{description}")
+    conn = db_get_connection()
+    task_id = id_generate_v7()
+    vec = await embeddings_generate(f"{title}\n{description}")
 
     conn.execute(
         """
@@ -115,7 +116,7 @@ async def task_update(
     Provide the task ID and only the fields you want to update.
     Returns confirmation — set status='done' to mark the task complete.
     """
-    conn = get_conn()
+    conn = db_get_connection()
     ts = _now()
 
     set_clauses: list[str] = ["t.updated_at = $ts"]
@@ -151,7 +152,7 @@ async def task_get(
     task_id: Annotated[str, Field(description="Task ID to retrieve")],
 ) -> dict:
     """Retrieve and inspect full details for a task including linked decisions, violations, and blockers."""
-    conn = get_conn()
+    conn = db_get_connection()
 
     result = conn.execute(
         """
@@ -223,26 +224,53 @@ async def task_search(
     limit: Annotated[int, Field(description="Maximum results", ge=1, le=20)] = 10,
 ) -> dict:
     """Find and retrieve tasks relevant to a goal or topic using semantic search. Provide a natural language query and optionally scope to a project. Returns ranked tasks."""
-    conn = get_conn()
-    vec = await embed(query)
+    conn = db_get_connection()
+    vec = await embeddings_generate(query)
+    candidate_size = limit * 3
 
-    result = conn.execute(
+    vector_raw = conn.execute(
         f"""
-        CALL QUERY_VECTOR_INDEX('Task', 'idx_task_emb', $qvec, {limit * 3})
+        CALL QUERY_VECTOR_INDEX('Task', 'idx_task_emb', $qvec, {candidate_size})
         WITH node AS t, distance
         OPTIONAL MATCH (p:Project)-[:HAS_TASK]->(t)
         RETURN t.id, t.title, t.status, t.priority, p.id AS project_id, distance
         ORDER BY distance
-        LIMIT {limit * 3}
+        LIMIT {candidate_size}
         """,
         {"qvec": vec},
     )
+    if isinstance(vector_raw, list):
+        vector_raw = vector_raw[0]
+    vector_rows = cast(list[list[Any]], vector_raw.get_all())
 
-    if isinstance(result, list):
-        result = result[0]
+    fts_raw = conn.execute(
+        f"""
+        CALL QUERY_FTS_INDEX('Task', 'fts_task_desc', $q)
+        WITH node AS t, score
+        OPTIONAL MATCH (p:Project)-[:HAS_TASK]->(t)
+        RETURN t.id, t.title, t.status, t.priority, p.id AS project_id, score
+        ORDER BY score DESC
+        LIMIT {candidate_size}
+        """,
+        {"q": query},
+    )
+    if isinstance(fts_raw, list):
+        fts_raw = fts_raw[0]
+    fts_rows = cast(list[list[Any]], fts_raw.get_all())
+
+    vector_hits = [(row[0], float(row[5])) for row in vector_rows]
+    fts_hits = [(row[0], float(rank)) for rank, row in enumerate(fts_rows, start=1)]
+    ranks = dict(rrf_fuse(vector_hits, fts_hits))
+
+    data_map: dict[str, list[Any]] = {row[0]: row for row in vector_rows}
+    for row in fts_rows:
+        data_map[row[0]] = row
 
     tasks = []
-    for r in cast(list[list[Any]], result.get_all()):
+    for node_id, _ in sorted(ranks.items(), key=lambda item: item[1], reverse=True):
+        if node_id not in data_map:
+            continue
+        r = data_map[node_id]
         if project_id and r[4] != project_id:
             continue
         tasks.append(
@@ -252,7 +280,7 @@ async def task_search(
                 "status": r[2],
                 "priority": r[3],
                 "project_id": r[4],
-                "distance": r[5],
+                "distance": 1.0 - ranks[node_id],
             }
         )
         if len(tasks) >= limit:
@@ -267,7 +295,7 @@ async def task_link_decision(
     decision_id: Annotated[str, Field(description="Decision ID to link")],
 ) -> dict:
     """Record that a task is governed by a specific architectural decision. Provide both IDs and the relationship is created for traceability."""
-    conn = get_conn()
+    conn = db_get_connection()
     conn.execute(
         """
         MATCH (t:Task {id: $task_id}), (d:Decision {id: $decision_id})
@@ -284,7 +312,7 @@ async def task_link_violation(
     violation_id: Annotated[str, Field(description="Violation ID to link")],
 ) -> dict:
     """Associate and link a task with a specific code violation to track remediation. Provide both IDs and the link is stored."""
-    conn = get_conn()
+    conn = db_get_connection()
     conn.execute(
         """
         MATCH (t:Task {id: $task_id}), (v:Violation {id: $violation_id})
@@ -304,7 +332,7 @@ async def task_block(
     reason: Annotated[str, Field(description="Reason why the task is blocked")],
 ) -> dict:
     """Mark and record one task as blocked by another and explain why. Provide both task IDs and a reason so blockers are visible in task retrieval."""
-    conn = get_conn()
+    conn = db_get_connection()
     conn.execute(
         """
         MATCH (blocker:Task {id: $blocker_id}), (blocked:Task {id: $blocked_id})
@@ -376,7 +404,7 @@ async def task_decompose_feature(
     Reads prior decisions, open violations, and codebase context to generate tasks.
     Returns a structured list of tasks with complexity estimates and blockers identified.
     """
-    conn = get_conn()
+    conn = db_get_connection()
     prior_decisions = _fetch_active_decisions(conn, project_id)
     open_violations = _fetch_open_violations(conn, project_id)
 

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# src/mem_graph/auth.py
 """
 auth.py — API key authentication skeleton.
 
@@ -33,14 +35,14 @@ _ALLOWED_KEYS: frozenset[str] = (
 AUTH_ENABLED: bool = bool(_ALLOWED_KEYS)
 
 
-def verify_api_key(key: str) -> bool:
+def auth_verify_key(key: str) -> bool:
     """Return True if the key is in the allowed set (or auth is disabled)."""
     if not AUTH_ENABLED:
         return True
     return key in _ALLOWED_KEYS
 
 
-class ApiKeyMiddleware(BaseHTTPMiddleware):
+class auth_api_middleware(BaseHTTPMiddleware):
     """
     Starlette middleware that enforces Bearer token authentication.
 
@@ -63,7 +65,7 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
                 status_code=401,
             )
         key = auth_header.removeprefix("Bearer ").strip()
-        if not verify_api_key(key):
+        if not auth_verify_key(key):
             logger.warning("Rejected request with invalid API key from %s", request.client)
             return JSONResponse(
                 {"error": "Unauthorized — invalid API key"},

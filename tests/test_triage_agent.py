@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# tests/test_triage_agent.py
 import os
 os.environ.setdefault("OPENAI_API_KEY", "test")
 
@@ -5,7 +7,7 @@ import pytest
 from typing import cast
 from pydantic_ai.tools import RunContext
 from pydantic_ai.models.test import TestModel
-from mem_graph.agents.triage_agent import triage_agent, TriageDependencies, process_batch, TriagedViolation, RawFinding, TriageDecision
+from mem_graph.agents.document.triage_agent import triage_agent, TriageDependencies, process_batch, TriagedViolation, RawFinding, TriageDecision
 
 
 class MockContext:
@@ -46,7 +48,7 @@ async def test_triage_process_batch():
     res2 = await process_batch(ctx, [], [v1])
     assert res2 == "No findings requested. Decisions stored."
     
-    from mem_graph.agents.triage_agent import _get_state
+    from mem_graph.agents.document.triage_agent import _get_state
     state = _get_state(ctx)
     assert len(state) == 1
     assert state[0].decision == TriageDecision.NEW

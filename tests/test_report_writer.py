@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# tests/test_report_writer.py
 """
 tests/test_report_writer.py
 """
@@ -28,6 +30,16 @@ def test_render_markdown_has_expected_sections():
     assert "test-rule" in md
     assert "test desc" in md
     assert "src/main.py" in md
+
+def test_render_markdown_buckets_recurring_findings():
+    report = _mock_report()
+    finding = report.file_results[0].findings[0]
+    finding.fingerprint = "deadbeefdeadbeef"
+
+    md = render_markdown(report, recurrence_fingerprints={"deadbeefdeadbeef"})
+
+    assert "🔄 Recurring" in md
+    assert "🆕 New" not in md
 
 def test_write_report(tmp_path):
     report = _mock_report()

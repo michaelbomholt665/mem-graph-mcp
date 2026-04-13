@@ -10,9 +10,9 @@ from typing import Annotated, Any, cast
 from fastmcp import FastMCP
 from pydantic import Field
 
-from ...db import get_conn
-from ...embeddings import embed
-from ...ids import new_id
+from ...db import db_get_connection
+from ...embeddings import embeddings_generate
+from ...ids import id_generate_v7
 
 mcp = FastMCP("projects")
 
@@ -35,9 +35,9 @@ async def project_create(
     Provide a name and description — the project will be indexed for semantic search.
     Returns a project_id to use when creating tasks, decisions, and capturing sessions.
     """
-    conn = get_conn()
-    project_id = new_id()
-    vec = await embed(f"{name}\n{description}")
+    conn = db_get_connection()
+    project_id = id_generate_v7()
+    vec = await embeddings_generate(f"{name}\n{description}")
 
     conn.execute(
         """
@@ -70,7 +70,7 @@ async def project_get(
     project_id: Annotated[str, Field(description="Project ID to retrieve")],
 ) -> dict:
     """Retrieve full details for a project by its ID. Returns name, description, status, and creation timestamps."""
-    conn = get_conn()
+    conn = db_get_connection()
     result = conn.execute(
         """
         MATCH (p:Project {id: $id})
@@ -100,7 +100,7 @@ async def project_get(
 @mcp.tool(tags={"namespace:work"})
 async def project_list() -> dict:
     """List and browse all registered projects. Returns names, statuses, and IDs — useful to find a project_id before doing more specific work."""
-    conn = get_conn()
+    conn = db_get_connection()
     result = conn.execute(
         """
         MATCH (p:Project)
@@ -131,8 +131,8 @@ async def project_search(
     limit: Annotated[int, Field(description="Maximum results", ge=1, le=20)] = 5,
 ) -> dict:
     """Find and retrieve projects semantically similar to a search query. Provide a description of the work you're doing and get back the most relevant project IDs."""
-    conn = get_conn()
-    vec = await embed(query)
+    conn = db_get_connection()
+    vec = await embeddings_generate(query)
 
     result = conn.execute(
         f"""

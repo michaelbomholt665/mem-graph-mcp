@@ -333,7 +333,7 @@ async def _run_audit_batch(
     Injects file content via skills_content so the agent has all
     files available without additional read tool calls.
     """
-    from .audit_agent import AuditDependencies, audit_agent
+    from .audit.audit_agent import AuditDependencies, audit_agent
 
     file_block = _format_file_block(file_contents)
     deps = AuditDependencies(
@@ -361,7 +361,7 @@ async def _run_map_batch(
     Injects file content so the map agent can identify features and
     relationships without separate file reads.
     """
-    from .map_agent import MapDependencies, map_agent
+    from .map.map_agent import MapDependencies, map_agent
 
     file_block = _format_file_block(file_contents)
     deps = MapDependencies(
@@ -389,7 +389,7 @@ async def _run_decision_batch(
 
     Passes pre-read content and injects decisions from extra_context.
     """
-    from .decision_agent import DecisionDependencies, decision_agent
+    from .document.decision_agent import DecisionDependencies, decision_agent
 
     file_block = _format_file_block(file_contents)
     deps = DecisionDependencies(

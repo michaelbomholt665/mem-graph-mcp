@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# tests/test_openapi_provider.py
 """
 tests/test_openapi_provider.py — Unit tests for the OpenAPI provider builder.
 

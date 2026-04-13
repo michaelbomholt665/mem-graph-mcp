@@ -8,11 +8,13 @@ from datetime import datetime, timezone
 from typing import Annotated, Any, cast
 
 from fastmcp import FastMCP
+from fastmcp.dependencies import Depends
 from pydantic import Field
 
-from ...db import get_conn
-from ...embeddings import embed
-from ...ids import new_id
+from ...db import db_get_connection
+from ...embeddings import embeddings_generate
+from ...ids import id_generate_v7
+from ...services.search import rrf_fuse
 
 mcp = FastMCP("notes")
 
@@ -34,6 +36,7 @@ async def note_create(
     tags: Annotated[
         list[str] | None, Field(description="Optional list of tag strings")
     ] = None,
+    conn: Any = Depends(db_get_connection),
 ) -> dict:
     """
     Write down and store an observation, finding, warning, or lesson learned as a note.
@@ -41,9 +44,11 @@ async def note_create(
     Provide the content and categorise by kind (general, finding, warning, lesson, audit).
     Optionally attach to a project and tag for retrieval. Returns a note_id.
     """
-    conn = get_conn()
-    note_id = new_id()
-    vec = await embed(content)
+    if not hasattr(conn, "execute"):
+        conn = db_get_connection()
+
+    note_id = id_generate_v7()
+    vec = await embeddings_generate(content)
     tag_list: list[str] = tags or []
 
     conn.execute(
@@ -96,6 +101,7 @@ async def note_search(
     kind: Annotated[str | None, Field(description="Filter by note kind")] = None,
     project_id: Annotated[str | None, Field(description="Scope to a project")] = None,
     limit: Annotated[int, Field(description="Maximum results", ge=1, le=20)] = 10,
+    conn: Any = Depends(db_get_connection),
 ) -> dict:
     """
     Find and retrieve notes relevant to a topic using semantic similarity search.
@@ -103,23 +109,52 @@ async def note_search(
     Provide a query and optionally filter by kind or project. Returns ranked notes
     most semantically similar to your query. Use to recall past observations and findings.
     """
-    conn = get_conn()
-    vec = await embed(query)
+    vec = await embeddings_generate(query)
+    candidate_size = limit * 3
 
-    result = conn.execute(
+    vector_raw = conn.execute(
         f"""
-        CALL QUERY_VECTOR_INDEX('Note', 'idx_note_emb', $qvec, {limit * 3})
+        CALL QUERY_VECTOR_INDEX('Note', 'idx_note_emb', $qvec, {candidate_size})
         WITH node AS n, distance
         OPTIONAL MATCH (p:Project)-[:HAS_NOTE]->(n)
         RETURN n.id, n.kind, n.body, n.tags, p.id AS project_id, distance
         ORDER BY distance
-        LIMIT {limit * 3}
+        LIMIT {candidate_size}
         """,
         {"qvec": vec},
     )
+    if isinstance(vector_raw, list):
+        vector_raw = vector_raw[0]
+    vector_rows = cast(list[list[Any]], vector_raw.get_all())
+
+    fts_raw = conn.execute(
+        f"""
+        CALL QUERY_FTS_INDEX('Note', 'fts_note_body', $q)
+        WITH node AS n, score
+        OPTIONAL MATCH (p:Project)-[:HAS_NOTE]->(n)
+        RETURN n.id, n.kind, n.body, n.tags, p.id AS project_id, score
+        ORDER BY score DESC
+        LIMIT {candidate_size}
+        """,
+        {"q": query},
+    )
+    if isinstance(fts_raw, list):
+        fts_raw = fts_raw[0]
+    fts_rows = cast(list[list[Any]], fts_raw.get_all())
+
+    vector_hits = [(row[0], float(row[5])) for row in vector_rows]
+    fts_hits = [(row[0], float(rank)) for rank, row in enumerate(fts_rows, start=1)]
+    ranks = dict(rrf_fuse(vector_hits, fts_hits))
+
+    data_map: dict[str, list[Any]] = {row[0]: row for row in vector_rows}
+    for row in fts_rows:
+        data_map[row[0]] = row
 
     notes: list[dict[str, Any]] = []
-    for r in cast(list[list[Any]], result):
+    for node_id, _ in sorted(ranks.items(), key=lambda item: item[1], reverse=True):
+        if node_id not in data_map:
+            continue
+        r = data_map[node_id]
         if kind and r[1] != kind:
             continue
         if project_id and r[4] != project_id:
@@ -131,7 +166,7 @@ async def note_search(
                 "body": r[2],
                 "tags": r[3],
                 "project_id": r[4],
-                "distance": r[5],
+                "distance": 1.0 - ranks[node_id],
             }
         )
         if len(notes) >= limit:
@@ -144,6 +179,7 @@ async def note_search(
 async def note_list(
     project_id: Annotated[str | None, Field(description="Filter by project")] = None,
     kind: Annotated[str | None, Field(description="Filter by note kind")] = None,
+    conn: Any = Depends(db_get_connection),
 ) -> dict:
     """
     Browse and list all saved notes without semantic ranking.
@@ -151,7 +187,8 @@ async def note_list(
     Optionally filter by project or kind. Useful for reviewing all notes about a topic.
     Returns notes ordered by creation date descending.
     """
-    conn = get_conn()
+    if not hasattr(conn, "execute"):
+        conn = db_get_connection()
 
     if project_id:
         result = conn.execute(

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# tests/test_audit.py
 import os
 os.environ.setdefault("OPENAI_API_KEY", "test")
 
@@ -5,7 +7,7 @@ import pytest
 from typing import cast
 from pydantic_ai.tools import RunContext
 from pydantic_ai.models.test import TestModel
-from mem_graph.agents.audit_agent import audit_agent, AuditDependencies, process_batch, FileAuditResult
+from mem_graph.agents.audit.audit_agent import audit_agent, AuditDependencies, process_batch, FileAuditResult
 
 
 class MockContext:
@@ -31,7 +33,7 @@ async def test_audit_process_batch():
     ctx = cast(RunContext[AuditDependencies], MockContext(deps))
     
     # State should be initialized
-    from mem_graph.agents.audit_agent import _get_state
+    from mem_graph.agents.audit.audit_agent import _get_state
     
     # Mock file reading by just providing non-existent paths, we expect ERROR:NOT_FOUND
     res = await process_batch(ctx, ["invalid.go", "also_invalid.go"], [])
