@@ -1,11 +1,16 @@
 import os
 import sys
 import pathlib
+from dotenv import load_dotenv
 
-# Setup OpenTelemetry BEFORE importing FastMCP
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+
+load_dotenv()
+
+# Setup OpenTelemetry BEFORE importing FastMCP
+
 
 provider = TracerProvider()
 # Fallback Console Exporter for debugging and inline trace viewing
@@ -30,7 +35,7 @@ trace.set_tracer_provider(provider)
 # Allow imports from 'src'
 sys.path.insert(0, str(pathlib.Path(__file__).parent / "src"))
 
-from syntx_mcp.server import run  # noqa: E402
+from mem_graph.server import run  # noqa: E402
 
 if __name__ == "__main__":
     try:

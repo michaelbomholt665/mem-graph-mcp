@@ -17,7 +17,7 @@ async def test_bootstrap_creates_all_tables(tmp_path):
     import importlib
 
     os.environ["LADYBUG_DB_PATH"] = str(tmp_path / "test.lbug")
-    import syntx_mcp.db as db_mod
+    import mem_graph.db as db_mod
 
     importlib.reload(db_mod)
 
@@ -52,7 +52,7 @@ async def test_bootstrap_creates_all_vector_indexes(tmp_path):
     import importlib
 
     os.environ["LADYBUG_DB_PATH"] = str(tmp_path / "test.lbug")
-    import syntx_mcp.db as db_mod
+    import mem_graph.db as db_mod
 
     importlib.reload(db_mod)
 
@@ -85,7 +85,7 @@ async def test_bootstrap_idempotent(tmp_path):
     import importlib
 
     os.environ["LADYBUG_DB_PATH"] = str(tmp_path / "test.lbug")
-    import syntx_mcp.db as db_mod
+    import mem_graph.db as db_mod
 
     importlib.reload(db_mod)
 
@@ -107,7 +107,7 @@ async def test_embed_dim_substitution(tmp_path):
 
     os.environ["LADYBUG_DB_PATH"] = str(tmp_path / "test.lbug")
     os.environ["OLLAMA_EMBED_DIM"] = "768"
-    import syntx_mcp.db as db_mod
+    import mem_graph.db as db_mod
 
     importlib.reload(db_mod)
 

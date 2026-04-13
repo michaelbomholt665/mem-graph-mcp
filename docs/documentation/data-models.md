@@ -362,6 +362,6 @@ ORDER BY m.created_at;
 
 ## References to Code
 - Schema definition: `schema/agent_memory_schema.cypher`
-- Database initialization: `src/syntx_mcp/db.py:init_db()`
-- Embedding generation: `src/syntx_mcp/embeddings.py:embed()`
-- Node creation patterns: All tool implementations in `src/syntx_mcp/tools/`
+- Database initialization: `src/mem-graph/db.py:init_db()`
+- Embedding generation: `src/mem-graph/embeddings.py:embed()`
+- Node creation patterns: All tool implementations in `src/mem-graph/tools/`

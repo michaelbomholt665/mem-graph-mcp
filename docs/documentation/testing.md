@@ -73,7 +73,7 @@ pytest
 
 Run with coverage:
 ```bash
-pytest --cov=src/syntx_mcp --cov-report=html
+pytest --cov=src/mem-graph --cov-report=html
 ```
 
 Run specific test file:

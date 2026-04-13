@@ -4,7 +4,7 @@
 This document explains the Syntx Memory MCP Agent component - autonomous agents that interact with the server and tools to perform work, make decisions, and manage state while leveraging the memory capabilities of the system.
 
 ## Overview
-The agent system is designed around the Pydantic AI framework and is exemplified by the Audit Agent in `src/syntx_mcp/agents/audit_agent.py`. Agents encapsulate:
+The agent system is designed around the Pydantic AI framework and is exemplified by the Audit Agent in `src/mem-graph/agents/audit_agent.py`. Agents encapsulate:
 - Decision-making logic through LLM prompts and tool usage
 - State management through dependencies and context
 - Interaction with MCP server tools via standardized interfaces
@@ -191,7 +191,7 @@ Current implementation shows:
 
 ### Adding New Agent Types
 To create a new agent following the same pattern:
-1. Create `<agent_name>.py` in `src/syntx_mcp/agents/`
+1. Create `<agent_name>.py` in `src/mem-graph/agents/`
 2. Define dependencies dataclass
 3. Define result Pydantic model
 4. Instantiate Agent with model, deps_type, result_type
@@ -206,9 +206,9 @@ Agents can expose functionality through:
 3. **Hybrid Approach** - Some capabilities direct, others mediated
 
 ## Code References
-- Audit Agent Implementation: `src/syntx_mcp/agents/audit_agent.py`
-- Agent Tool Exposure: `src/syntx_mcp/tools/audit.py`
-- Agent Interface: `src/syntx_mcp/agents/__init__.py`
+- Audit Agent Implementation: `src/mem-graph/agents/audit_agent.py`
+- Agent Tool Exposure: `src/mem-graph/tools/audit.py`
+- Agent Interface: `src/mem-graph/agents/__init__.py`
 - Dependencies: Pydantic AI framework (imported as `pydantic_ai`)
 - Model Provider: OpenAI GPT-4o (configurable via agent initialization)
 

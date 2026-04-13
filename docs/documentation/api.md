@@ -459,7 +459,7 @@ embedding: number[1536]
 ```
 
 ## Code References
-- Server endpoints: `src/syntx_mcp/server.py:248-249`
-- Tool implementations: `src/syntx_mcp/tools/*.py`
+- Server endpoints: `src/mem-graph/server.py:248-249`
+- Tool implementations: `src/mem-graph/tools/*.py`
 - Message format handling: FastMCP framework
 - Error handling patterns: All tool functions return `{"error": "..."}` on failure

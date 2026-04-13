@@ -7,7 +7,7 @@ Good. Here's the plan — flat and functional, no architecture astronautics.
 ```
 syntx-mcp/
 ├── src/
-│   └── syntx_mcp/
+│   └── mem-graph/
 │       ├── __init__.py
 │       ├── server.py          # FastMCP app + lifespan
 │       ├── db.py              # Ladybug connection + schema bootstrap

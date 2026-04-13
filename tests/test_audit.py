@@ -1,46 +1,51 @@
+import os
+os.environ.setdefault("OPENAI_API_KEY", "test")
+
 import pytest
+from typing import cast
+from pydantic_ai.tools import RunContext
 from pydantic_ai.models.test import TestModel
-from syntx_mcp.agents.audit_agent import audit_agent, AuditDependencies, AuditOutput
+from mem_graph.agents.audit_agent import audit_agent, AuditDependencies, process_batch, FileAuditResult
 
 
-@pytest.mark.asyncio
-async def test_audit_agent_tool_calls():
-    # Note: Pydantic AI's TestModel can be configured with specific responses
-    model = TestModel(
-        custom_output_args=AuditOutput(
-            summary="Test summary",
-            new_smells_discovered=["test:smell"]
-        )
-    )
-
-    deps = AuditDependencies(
-        package_path="/tmp/test_pkg",
-        guide_path="/tmp/test.guide.md",
-        registry_path="/tmp/smell-registry.md",
-        skills_content="Rules...",
-    )
-
-    with audit_agent.override(model=model):
-        result = await audit_agent.run("Start audit", deps=deps)
-        out = getattr(result, "data", None)
-        assert out is not None
-        assert out.new_smells_discovered == ["test:smell"]
-        assert "Test summary" in out.summary
+class MockContext:
+    def __init__(self, deps):
+        self.deps = deps
 
 
 @pytest.mark.asyncio
 async def test_audit_agent_dependency_injection():
-    # Verify that the system prompt correctly uses deps
-    model = TestModel()
+    model = TestModel(call_tools=[])
     deps = AuditDependencies(
         package_path="/path/to/pkg",
-        guide_path="/path/to/guide.md",
-        registry_path="/path/to/registry.md",
         skills_content="Custom Skills",
     )
 
-    # We can't easily check the system prompt string directly without running,
-    # but we can verify the agent runs with these deps.
     with audit_agent.override(model=model):
         await audit_agent.run("Audit", deps=deps)
-        # If it didn't crash, dependency injection worked.
+
+
+@pytest.mark.asyncio
+async def test_audit_process_batch():
+    deps = AuditDependencies(package_path="/test")
+    ctx = cast(RunContext[AuditDependencies], MockContext(deps))
+    
+    # State should be initialized
+    from mem_graph.agents.audit_agent import _get_state
+    
+    # Mock file reading by just providing non-existent paths, we expect ERROR:NOT_FOUND
+    res = await process_batch(ctx, ["invalid.go", "also_invalid.go"], [])
+    assert "ERROR:NOT_FOUND" in res
+    
+    state = _get_state(ctx)
+    assert len(state) == 0
+
+    # Submit a finding
+    finding = FileAuditResult(file_path="old.go", findings=[], skipped=False)
+    res2 = await process_batch(ctx, [], [finding])
+    
+    assert res2 == "No files requested. Findings stored."
+    
+    state2 = _get_state(ctx)
+    assert len(state2) == 1
+    assert state2[0].file_path == "old.go"

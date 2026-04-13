@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "anyio>=4.3.0",
-    "fastmcp>=3.2.3",
+    "fastmcp[code-mode,apps]>=3.2.3",
     "httpx>=0.28.1",
     "ollama>=0.6.1",
     "opentelemetry-api>=1.20.0",
@@ -14,10 +14,12 @@ dependencies = [
     "opentelemetry-sdk>=1.20.0",
     "pydantic>=2.12.5",
     "pydantic-ai>=0.0.34",
+    "pydantic-graph>=0.8.1",
     "python-dotenv>=1.2.2",
     "real-ladybug>=0.15.3",
     "sentence-transformers>=5.4.0",
     "starlette>=0.36.0",
+    "uuid-utils>=0.14.1",
     "uvicorn>=0.29.0",
 ]
 

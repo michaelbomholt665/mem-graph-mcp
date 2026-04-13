@@ -151,7 +151,7 @@ Standard for generating unique identifiers.
 
 ## References
 ### Code References
-- Term definitions derived from: `src/syntx_mcp/` implementations
+- Term definitions derived from: `src/mem-graph/` implementations
 - Acronym usage: Throughout documentation and code comments
 
 ### External References

@@ -36,7 +36,7 @@ The server currently implements minimal security measures, assuming deployment i
 
 ### Code-Level Hints
 ```python
-# src/syntx_mcp/server.py - Add authentication middleware
+# src/mem-graph/server.py - Add authentication middleware
 async def authenticate_request(request):
     api_key = request.headers.get('X-API-Key')
     if not api_key or not validate_api_key(api_key):
@@ -159,7 +159,7 @@ async def authenticate_request(request):
 
 **Code-Level Auditing:**
 ```python
-# src/syntx_mcp/server.py - Add audit logging
+# src/mem-graph/server.py - Add audit logging
 async def audit_tool_call(tool_name, params, result, user_id):
     audit_entry = {
         'timestamp': datetime.utcnow(),
@@ -275,7 +275,7 @@ async def audit_tool_call(tool_name, params, result, user_id):
 - Security audit requirements
 
 ## References to Code
-- Server initialization: `src/syntx_mcp/server.py`
-- Database access: `src/syntx_mcp/db.py`
-- Tool implementations: `src/syntx_mcp/tools/*.py`
-- Agent execution: `src/syntx_mcp/agents/audit_agent.py`
+- Server initialization: `src/mem-graph/server.py`
+- Database access: `src/mem-graph/db.py`
+- Tool implementations: `src/mem-graph/tools/*.py`
+- Agent execution: `src/mem-graph/agents/audit_agent.py`

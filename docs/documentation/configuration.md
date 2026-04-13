@@ -59,7 +59,7 @@ Configuration is loaded using `python-dotenv` with the following priority:
 
 **Code Reference:**
 ```python
-# src/syntx_mcp/server.py
+# src/mem-graph/server.py
 from dotenv import load_dotenv
 load_dotenv()
 ```
@@ -68,7 +68,7 @@ load_dotenv()
 Configuration values are validated and defaulted in the server startup code:
 
 ```python
-# src/syntx_mcp/server.py:41-45
+# src/mem-graph/server.py:41-45
 _HOST = os.getenv("MCP_HOST", "127.0.0.1")
 _PORT = int(os.getenv("MCP_PORT", "9100"))
 ```
@@ -110,7 +110,7 @@ Variables can be overridden at runtime using shell environment:
 
 ```bash
 # Override port for testing
-MCP_PORT=9090 python -m syntx_mcp.server
+MCP_PORT=9090 python -m mem-graph.server
 ```
 
 ### Docker Environment
@@ -159,7 +159,7 @@ The server performs validation during initialization:
 
 **Code Reference:**
 ```python
-# src/syntx_mcp/db.py:init_db()
+# src/mem-graph/db.py:init_db()
 await _probe_ollama()
 ```
 
@@ -237,6 +237,6 @@ When upgrading, check for new configuration variables in release notes.
 Configuration is backward compatible. New variables use sensible defaults.
 
 ## References to Code
-- Configuration loading: `src/syntx_mcp/server.py:41-45`
-- Database initialization: `src/syntx_mcp/db.py:init_db()`
-- Environment variable usage: Throughout `src/syntx_mcp/server.py`
+- Configuration loading: `src/mem-graph/server.py:41-45`
+- Database initialization: `src/mem-graph/db.py:init_db()`
+- Environment variable usage: Throughout `src/mem-graph/server.py`

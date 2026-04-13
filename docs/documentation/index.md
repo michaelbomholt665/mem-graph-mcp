@@ -30,7 +30,7 @@ The Syntx Memory MCP Server consists of three core components working together:
 pip install -e .
 
 # Start the server (default: http://127.0.0.1:9100)
-python -m syntx_mcp.server
+python -m mem-graph.server
 
 # In another terminal, interact with the server using MCP clients
 # Example: Use tools_search to discover available capabilities

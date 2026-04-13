@@ -18,7 +18,7 @@ We will use `openai:gpt-4o` as the core agent brain, but since this runs under F
 ---
 
 ### Core Agent Logic
-#### [NEW] src/syntx_mcp/agents/audit_agent.py
+#### [NEW] src/mem-graph/agents/audit_agent.py
 This file contains the Pydantic AI agent setup (`pydantic_ai.Agent`).
 - **Instructions**: The agent is instructed using the rules defined in `SKILL.md` (e.g., "Write corrective behavior, not the complaint", "Keep markdown as prompt surface", "Prefer one stable smell_id per normalized violation class").
 - **Dependencies (`RunContext`)**: Accepts `database.guide.md` content, `smell-registry.md` content, and the source code being audited.
@@ -28,13 +28,13 @@ This file contains the Pydantic AI agent setup (`pydantic_ai.Agent`).
 ---
 
 ### FastMCP Tool Exposure
-#### [NEW] src/syntx_mcp/tools/audit.py
+#### [NEW] src/mem-graph/tools/audit.py
 Creates the FastMCP interface for you to trigger the audit.
 - Exposes an `@mcp.tool()` named `audit_package`.
 - Takes `package_path` as a parameter.
 - The tool acts as a bridge: it reads the local `*.guide.md` and the `smell-registry.md`, executes the Pydantic AI agent natively, and then applies the structured updates back to the filesystem directly.
 
-#### [MODIFY] src/syntx_mcp/server.py
+#### [MODIFY] src/mem-graph/server.py
 - Mounts `audit.mcp` and wires it up to the `tools_activate` gateway.
 
 ## Testing & Verification 

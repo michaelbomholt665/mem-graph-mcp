@@ -1,0 +1,322 @@
+"""
+tools/work/decisions.py — Architectural decision recording and lineage tools.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from datetime import datetime, timezone
+from typing import Annotated, Any, cast
+
+import anyio
+from fastmcp import FastMCP
+from pydantic import Field
+
+from ...db import get_conn
+from ...embeddings import embed
+from ...ids import new_id
+from ...agents.decision_agent import DecisionDependencies, decision_agent
+
+logger = logging.getLogger(__name__)
+
+mcp = FastMCP("decisions")
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+@mcp.tool()
+async def decision_record(
+    project_id: Annotated[str, Field(description="Owning project ID")],
+    title: Annotated[str, Field(description="Short decision title")],
+    rationale: Annotated[str, Field(description="Why this decision was made")],
+    alternatives: Annotated[
+        str | None, Field(description="Rejected alternatives, free text")
+    ] = None,
+    impact: Annotated[
+        str,
+        Field(description="Impact level: low | medium | high | critical"),
+    ] = "low",
+) -> dict:
+    """
+    Permanently record and store an architectural or implementation decision for a project.
+
+    Provide the title, rationale, and any rejected alternatives so future sessions
+    can retrieve the reasoning. Returns a decision_id for linking to tasks.
+    """
+    conn = get_conn()
+    decision_id = new_id()
+    text = f"{title}\n{rationale}"
+    if alternatives:
+        text += f"\nAlternatives: {alternatives}"
+    vec = await embed(text)
+
+    conn.execute(
+        """
+        CREATE (d:Decision {
+            id: $id,
+            title: $title,
+            rationale: $rationale,
+            alternatives: $alternatives,
+            status: 'active',
+            impact: $impact,
+            embedding: $embedding,
+            created_at: $ts
+        })
+        """,
+        {
+            "id": decision_id,
+            "title": title,
+            "rationale": rationale,
+            "alternatives": alternatives or "",
+            "impact": impact,
+            "embedding": vec,
+            "ts": _now(),
+        },
+    )
+
+    conn.execute(
+        """
+        MATCH (p:Project {id: $project_id}), (d:Decision {id: $decision_id})
+        CREATE (p)-[:HAS_DECISION]->(d)
+        """,
+        {"project_id": project_id, "decision_id": decision_id},
+    )
+
+    return {"decision_id": decision_id}
+
+
+@mcp.tool(tags={"namespace:work"})
+async def decision_supersede(
+    old_id: Annotated[str, Field(description="ID of the decision being superseded")],
+    new_id: Annotated[
+        str, Field(description="ID of the new decision that supersedes it")
+    ],
+    reason: Annotated[
+        str, Field(description="Why the old decision is being superseded")
+    ],
+) -> dict:
+    """
+    Record that an older decision has been replaced and superseded by a newer one.
+
+    Provide both decision IDs and explain why the old one is no longer valid.
+    The old decision is marked superseded and the lineage relationship is stored.
+    """
+    conn = get_conn()
+    ts = _now()
+
+    conn.execute(
+        """
+        MATCH (d:Decision {id: $old_id})
+        SET d.status = 'superseded'
+        """,
+        {"old_id": old_id},
+    )
+
+    conn.execute(
+        """
+        MATCH (new_d:Decision {id: $new_id}), (old_d:Decision {id: $old_id})
+        CREATE (new_d)-[:SUPERSEDES {reason: $reason, superseded_at: $ts}]->(old_d)
+        """,
+        {"new_id": new_id, "old_id": old_id, "reason": reason, "ts": ts},
+    )
+
+    return {"ok": True}
+
+
+@mcp.tool(tags={"namespace:work"})
+async def decision_get(
+    decision_id: Annotated[str, Field(description="Decision ID to retrieve")],
+) -> dict:
+    """
+    Retrieve a decision and its full supersession lineage history.
+
+    Provide the decision ID. Returns the rationale, status, impact, and the chain
+    of decisions it supersedes or was superseded by.
+    """
+    conn = get_conn()
+
+    result = conn.execute(
+        """
+        MATCH (d:Decision {id: $id})
+        RETURN d.id, d.title, d.rationale, d.alternatives, d.status, d.impact, d.created_at
+        """,
+        {"id": decision_id},
+    )
+    if isinstance(result, list):
+        result = result[0]
+    rows = cast(list[list[Any]], result.get_all())
+    if not rows:
+        return {"error": f"Decision {decision_id!r} not found"}
+
+    r = rows[0]
+    decision: dict[str, Any] = {
+        "id": r[0],
+        "title": r[1],
+        "rationale": r[2],
+        "alternatives": r[3],
+        "status": r[4],
+        "impact": r[5],
+        "created_at": str(r[6]),
+    }
+
+    lineage_result = conn.execute(
+        """
+        MATCH (d:Decision {id: $id})-[s:SUPERSEDES*]->(old:Decision)
+        RETURN old.id, old.title, old.status
+        """,
+        {"id": decision_id},
+    )
+    if isinstance(lineage_result, list):
+        lineage_result = lineage_result[0]
+    decision["supersedes"] = [
+        {"id": row[0], "title": row[1], "status": row[2]}
+        for row in cast(list[list[Any]], lineage_result.get_all())
+    ]
+
+    supd_result = conn.execute(
+        """
+        MATCH (newer:Decision)-[:SUPERSEDES]->(d:Decision {id: $id})
+        RETURN newer.id, newer.title
+        """,
+        {"id": decision_id},
+    )
+    if isinstance(supd_result, list):
+        supd_result = supd_result[0]
+    decision["superseded_by"] = [
+        {"id": row[0], "title": row[1]}
+        for row in cast(list[list[Any]], supd_result.get_all())
+    ]
+
+    return {"decision": decision}
+
+
+@mcp.tool()
+async def decision_search(
+    query: Annotated[str, Field(description="Natural language search query")],
+    project_id: Annotated[
+        str | None, Field(description="Scope to a specific project")
+    ] = None,
+    limit: Annotated[int, Field(description="Maximum results", ge=1, le=20)] = 10,
+) -> dict:
+    """
+    Find and retrieve decisions relevant to a topic or choice using semantic search.
+
+    Provide a plain-language query and optionally scope to a project.
+    Returns ranked decisions most relevant to your query.
+    """
+    conn = get_conn()
+    vec = await embed(query)
+
+    result = conn.execute(
+        f"""
+        CALL QUERY_VECTOR_INDEX('Decision', 'idx_decision_emb', $qvec, {limit * 3})
+        WITH node AS d, distance
+        OPTIONAL MATCH (p:Project)-[:HAS_DECISION]->(d)
+        RETURN d.id, d.title, d.status, d.impact, p.id AS project_id, distance
+        ORDER BY distance
+        LIMIT {limit * 3}
+        """,
+        {"qvec": vec},
+    )
+
+    if isinstance(result, list):
+        result = result[0]
+
+    decisions = []
+    for r in cast(list[list[Any]], result.get_all()):
+        if project_id and r[4] != project_id:
+            continue
+        decisions.append(
+            {
+                "id": r[0],
+                "title": r[1],
+                "status": r[2],
+                "impact": r[3],
+                "project_id": r[4],
+                "distance": r[5],
+            }
+        )
+        if len(decisions) >= limit:
+            break
+
+    return {"decisions": decisions, "query": query}
+
+
+async def _load_decision_skills() -> str:
+    path = os.path.join(os.getcwd(), "skills", "decision_agent", "SKILL.md")
+    if not os.path.exists(path):
+        return ""
+    try:
+        async with await anyio.open_file(path, "r", encoding="utf-8") as f:
+            return await f.read()
+    except Exception as exc:
+        logger.warning("Failed to load skills: %s", exc)
+        return ""
+
+
+@mcp.tool(tags={"namespace:audit"})
+async def decision_review(
+    project_id: Annotated[str, Field(description="Project ID")],
+    package_path: Annotated[str, Field(description="Package path to review against")],
+) -> dict:
+    """
+    Review and audit architectural decisions for drift against the codebase using an AI agent.
+
+    Reads decisions linked to the project and analyses the current source codebase
+    to see if they are still HONOURED or if they have DRIFTED.
+    """
+    conn = get_conn()
+    result = conn.execute(
+        """
+        MATCH (p:Project {id: $project_id})-[:HAS_DECISION]->(d:Decision)
+        WHERE d.status = 'active'
+        RETURN d.id, d.title, d.rationale, d.alternatives, d.status, d.impact
+        """,
+        {"project_id": project_id},
+    )
+    if isinstance(result, list):
+        result = result[0]
+
+    decisions = [
+        {
+            "id": row[0],
+            "title": row[1],
+            "rationale": row[2],
+            "alternatives": row[3],
+            "status": row[4],
+            "impact": row[5],
+        }
+        for row in cast(list[list[Any]], result.get_all())
+    ]
+
+    if not decisions:
+        return {"summary": "No active decisions to review.", "honoured": 0, "drifted": 0}
+
+    skills_content = await _load_decision_skills()
+    deps = DecisionDependencies(
+        project_id=project_id,
+        package_path=package_path,
+        decisions=decisions,
+        skills_content=skills_content,
+    )
+
+    try:
+        async with decision_agent.run_stream(
+            "Review decisions against codebase by calling process_batch.",
+            deps=deps,
+        ) as run_result:
+            report = await run_result.get_output()
+    except Exception as exc:
+        logger.error("Decision agent execution failed: %s", exc)
+        return {"error": f"Agent failed: {exc}"}
+
+    return {
+        "status": "completed" if not report.partial_failure else "partial",
+        "summary": report.summary,
+        "honoured": report.honoured_count,
+        "drifted": report.drifted_count,
+        "unverifiable": report.unverifiable_count,
+    }

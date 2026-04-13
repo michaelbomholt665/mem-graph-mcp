@@ -1,59 +1,34 @@
 """
 tests/test_tools.py — Round-trip tests for all tool modules.
 
-Runs against a real Ladybug DB with embed() patched to return zero-vectors.
+Runs against a real Ladybug DB with deterministic embeddings supplied by conftest.
 No Ollama or network required.
 """
 
 from __future__ import annotations
 
 import os
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-FAKE_VEC = [0.0] * 768
-_EMBED_PATCH = AsyncMock(return_value=FAKE_VEC)
-
-EMBED_TARGETS = [
-    "syntx_mcp.tools.conversation.embed",
-    "syntx_mcp.tools.memory.embed",
-    "syntx_mcp.tools.projects.embed",
-    "syntx_mcp.tools.tasks.embed",
-    "syntx_mcp.tools.decisions.embed",
-    "syntx_mcp.tools.notes.embed",
-    "syntx_mcp.tools.violations.embed",
-]
-
-
 @pytest.fixture()
 async def conn(tmp_path):
-    """Fresh DB + all embed() calls patched out."""
+    """Fresh DB with deterministic embeddings supplied by the global fixture."""
     import importlib
 
     os.environ["LADYBUG_DB_PATH"] = str(tmp_path / "test.lbug")
     os.environ["OLLAMA_EMBED_DIM"] = "768"
 
-    import syntx_mcp.db as db_mod
+    import mem_graph.db as db_mod
 
     importlib.reload(db_mod)
 
-    fake_embed = AsyncMock(return_value=FAKE_VEC)
-    patches = [patch(t, fake_embed) for t in EMBED_TARGETS]
-
     with patch.object(db_mod, "_probe_ollama", lambda: None):
-        for p in patches:
-            p.start()
         db_mod.init_db()
         yield db_mod.get_conn()
         db_mod.close_db()
-        for p in patches:
-            p.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +38,7 @@ async def conn(tmp_path):
 
 @pytest.mark.asyncio
 async def test_project_create_and_get(conn):
-    from syntx_mcp.tools.projects import project_create, project_get, project_list
+    from mem_graph.tools.work.projects import project_create, project_get, project_list
 
     result = await project_create(name="Acme", description="Test project")
     pid = result["project_id"]
@@ -80,7 +55,7 @@ async def test_project_create_and_get(conn):
 
 @pytest.mark.asyncio
 async def test_project_get_missing(conn):
-    from syntx_mcp.tools.projects import project_get
+    from mem_graph.tools.work.projects import project_get
 
     result = await project_get(project_id="does-not-exist")
     assert "error" in result
@@ -93,7 +68,7 @@ async def test_project_get_missing(conn):
 
 @pytest.mark.asyncio
 async def test_memory_store_and_list(conn):
-    from syntx_mcp.tools.memory import memory_store, memory_list, memory_expire
+    from mem_graph.tools.memory.memory import memory_store, memory_manage
 
     r = await memory_store(
         content="Python prefers explicit over implicit", kind="preference"
@@ -101,31 +76,31 @@ async def test_memory_store_and_list(conn):
     mid = r["memory_id"]
     assert mid
 
-    listing = await memory_list()
+    listing = await memory_manage(action="list", scope="global")
     ids = [m["id"] for m in listing["memories"]]
     assert mid in ids
 
     # Expire it
-    exp = await memory_expire(memory_id=mid)
+    exp = await memory_manage(action="expire", memory_id=mid)
     assert exp["status"] == "expired"
 
     # Should no longer appear in list
-    listing2 = await memory_list()
+    listing2 = await memory_manage(action="list", scope="global")
     ids2 = [m["id"] for m in listing2["memories"]]
     assert mid not in ids2
 
 
 @pytest.mark.asyncio
 async def test_memory_store_with_project(conn):
-    from syntx_mcp.tools.projects import project_create
-    from syntx_mcp.tools.memory import memory_store, memory_list
+    from mem_graph.tools.work.projects import project_create
+    from mem_graph.tools.memory.memory import memory_store, memory_manage
 
     proj = await project_create(name="P", description="d")
     pid = proj["project_id"]
 
     await memory_store(content="fact", kind="fact", scope="project", project_id=pid)
 
-    listing = await memory_list(project_id=pid)
+    listing = await memory_manage(action="list", scope="project", project_id=pid)
     assert len(listing["memories"]) == 1
     assert listing["memories"][0]["scope"] == "project"
 
@@ -137,8 +112,8 @@ async def test_memory_store_with_project(conn):
 
 @pytest.mark.asyncio
 async def test_task_create_update_get(conn):
-    from syntx_mcp.tools.projects import project_create
-    from syntx_mcp.tools.tasks import task_create, task_update, task_get
+    from mem_graph.tools.work.projects import project_create
+    from mem_graph.tools.work.tasks import task_create, task_update, task_get
 
     proj = await project_create(name="P", description="d")
     pid = proj["project_id"]
@@ -156,8 +131,8 @@ async def test_task_create_update_get(conn):
 
 @pytest.mark.asyncio
 async def test_task_block(conn):
-    from syntx_mcp.tools.projects import project_create
-    from syntx_mcp.tools.tasks import task_create, task_block, task_get
+    from mem_graph.tools.work.projects import project_create
+    from mem_graph.tools.work.tasks import task_create, task_block, task_get
 
     proj = await project_create(name="P", description="d")
     pid = proj["project_id"]
@@ -176,8 +151,8 @@ async def test_task_block(conn):
 
 @pytest.mark.asyncio
 async def test_task_done_sets_completed_at(conn):
-    from syntx_mcp.tools.projects import project_create
-    from syntx_mcp.tools.tasks import task_create, task_update, task_get
+    from mem_graph.tools.work.projects import project_create
+    from mem_graph.tools.work.tasks import task_create, task_update, task_get
 
     proj = await project_create(name="P", description="d")
     t = await task_create(project_id=proj["project_id"], title="T", description="d")
@@ -194,8 +169,8 @@ async def test_task_done_sets_completed_at(conn):
 
 @pytest.mark.asyncio
 async def test_decision_record_and_supersede(conn):
-    from syntx_mcp.tools.projects import project_create
-    from syntx_mcp.tools.decisions import (
+    from mem_graph.tools.work.projects import project_create
+    from mem_graph.tools.work.decisions import (
         decision_record,
         decision_supersede,
         decision_get,
@@ -228,8 +203,8 @@ async def test_decision_record_and_supersede(conn):
 
 @pytest.mark.asyncio
 async def test_note_create_and_list(conn):
-    from syntx_mcp.tools.projects import project_create
-    from syntx_mcp.tools.notes import note_create, note_list
+    from mem_graph.tools.work.projects import project_create
+    from mem_graph.tools.memory.notes import note_create, note_list
 
     proj = await project_create(name="P", description="d")
     pid = proj["project_id"]
@@ -259,8 +234,8 @@ async def test_note_create_and_list(conn):
 
 @pytest.mark.asyncio
 async def test_violation_record_and_resolve(conn):
-    from syntx_mcp.tools.projects import project_create
-    from syntx_mcp.tools.violations import (
+    from mem_graph.tools.work.projects import project_create
+    from mem_graph.tools.work.violations import (
         violation_record,
         violation_resolve,
         violation_list,
@@ -289,8 +264,8 @@ async def test_violation_record_and_resolve(conn):
 
 @pytest.mark.asyncio
 async def test_violation_recur(conn):
-    from syntx_mcp.tools.projects import project_create
-    from syntx_mcp.tools.violations import (
+    from mem_graph.tools.work.projects import project_create
+    from mem_graph.tools.work.violations import (
         violation_record,
         violation_resolve,
         violation_recur,
@@ -330,62 +305,30 @@ async def test_violation_recur(conn):
 
 
 @pytest.mark.asyncio
-async def test_conversation_start_append_get(conn):
-    from syntx_mcp.tools.projects import project_create
-    from syntx_mcp.tools import conversation as conv_mod
-
+async def test_memory_capture_session_and_recall(conn):
+    from mem_graph.tools.work.projects import project_create
+    from mem_graph.tools import conversation as conv_mod
+    
     proj = await project_create(name="P", description="d")
     pid = proj["project_id"]
 
-    started = await conv_mod.conversation_start(
-        project_id=pid, agent_name="test-agent", model="claude-test"
-    )
-    cid = started["conversation_id"]
-    assert cid
+    from mem_graph.models.conversation import ConversationMessage
 
-    m1 = await conv_mod.conversation_append(
-        conversation_id=cid, role="user", content="Hello!"
-    )
-    m2 = await conv_mod.conversation_append(
-        conversation_id=cid, role="assistant", content="Hi there!"
-    )
+    messages = [
+        ConversationMessage(role="user", content="How do I build a graph?"),
+        ConversationMessage(role="assistant", content="You use nodes and edges.")
+    ]
 
-    assert m1["position"] == 0
-    assert m2["position"] == 1
-
-    got = await conv_mod.conversation_get(conversation_id=cid)
-    assert got["conversation"]["turn_count"] == 2
-    assert len(got["messages"]) == 2
-    assert got["messages"][0]["role"] == "user"
-    assert got["messages"][1]["role"] == "assistant"
-
-
-@pytest.mark.asyncio
-async def test_conversation_end_generates_summary(conn):
-    """conversation_end must set summary and ended_at even when Ollama summariser fails."""
-    from syntx_mcp.tools.projects import project_create
-    from syntx_mcp.tools import conversation as conv_mod
-
-    proj = await project_create(name="P", description="d")
-    pid = proj["project_id"]
-
-    started = await conv_mod.conversation_start(
-        project_id=pid, agent_name="a", model="m"
-    )
-    cid = started["conversation_id"]
-    await conv_mod.conversation_append(conversation_id=cid, role="user", content="test")
-
-    # Patch _generate_summary to avoid real Ollama call
-    with patch(
-        "syntx_mcp.tools.conversation._generate_summary", return_value="Test summary"
-    ):
-        ended = await conv_mod.conversation_end(conversation_id=cid)
-
-    assert ended["summary"] == "Test summary"
-
-    got = await conv_mod.conversation_get(conversation_id=cid)
-    assert got["conversation"]["summary"] == "Test summary"
-    assert got["conversation"]["ended_at"] is not None
+    with patch("mem_graph.tools.memory.conversation.enqueue_summary") as mock_enqueue:
+        res = await conv_mod.memory_capture_session(
+            project_id=pid,
+            messages=messages,
+            agent_name="test-agent",
+            model="test-model"
+        )
+        assert res.session_id is not None
+        assert res.turn_count == 2
+        mock_enqueue.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -395,15 +338,15 @@ async def test_conversation_end_generates_summary(conn):
 
 @pytest.mark.asyncio
 async def test_task_link_decision_and_violation(conn):
-    from syntx_mcp.tools.projects import project_create
-    from syntx_mcp.tools.tasks import (
+    from mem_graph.tools.work.projects import project_create
+    from mem_graph.tools.work.tasks import (
         task_create,
         task_link_decision,
         task_link_violation,
         task_get,
     )
-    from syntx_mcp.tools.decisions import decision_record
-    from syntx_mcp.tools.violations import violation_record
+    from mem_graph.tools.work.decisions import decision_record
+    from mem_graph.tools.work.violations import violation_record
 
     proj = await project_create(name="P", description="d")
     pid = proj["project_id"]
@@ -428,3 +371,40 @@ async def test_task_link_decision_and_violation(conn):
 
     assert d["decision_id"] in decision_ids
     assert v["violation_id"] in violation_ids
+
+# ---------------------------------------------------------------------------
+# audit
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_audit_package_tool(conn):
+    from mem_graph.tools.work.projects import project_create
+    from mem_graph.tools.agents.audit import audit_package
+    from mem_graph.models.audit import AuditReport, AuditStats
+
+    proj = await project_create(name="P", description="d")
+    pid = proj["project_id"]
+
+    # Mock the _run_agent to avoid running the real AI model
+    from unittest.mock import patch
+    import mem_graph.tools.agents.audit as audit_tool_mod
+
+    stats = AuditStats(
+        total_files_analysed=1, total_files_skipped=0, total_findings=0,
+        by_severity={}, by_category={}, blocker_count=0, critical_count=0
+    )
+    mock_report = AuditReport(
+        package_path="/tmp", summary="Clean.", file_results=[], stats=stats, rules_applied=["rule1"]
+    )
+
+    with patch.object(audit_tool_mod, "_run_agent", return_value=mock_report):
+        result = await audit_package(
+            package_path="/tmp",
+            project_id=pid,
+            persist_violations=True
+        )
+
+    assert result["status"] == "completed"
+    assert result["summary"] == "Clean."
+    assert result["total_findings"] == 0
+

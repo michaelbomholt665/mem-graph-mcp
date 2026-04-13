@@ -24,7 +24,7 @@ The Syntx Memory MCP Server is a Model Context Protocol (MCP) implementation des
 
 ## Component Responsibilities
 
-### MCP Server (`src/syntx_mcp/server.py`)
+### MCP Server (`src/mem-graph/server.py`)
 **Responsibilities:**
 - Provide MCP protocol interface (HTTP/SSE/stdio transports)
 - Manage server lifecycle (startup/shutdown via lifespan)
@@ -39,7 +39,7 @@ The Syntx Memory MCP Server is a Model Context Protocol (MCP) implementation des
 - Automatic ToolListChangedNotifications for dynamic tool updates
 - Multi-protocol support (streamable HTTP and SSE)
 
-### Tools System (`src/syntx_mcp/tools/`)
+### Tools System (`src/mem-graph/tools/`)
 **Responsibilities:**
 - Implement domain-specific functionality (memory, tasks, conversations, etc.)
 - Provide semantic search capabilities via vector embeddings
@@ -53,7 +53,7 @@ The Syntx Memory MCP Server is a Model Context Protocol (MCP) implementation des
 - Lazy namespace tools use `tags={"namespace:<name>"}` for visibility control
 - Core tools have no special tags (always visible)
 
-### Agent System (`src/syntx_mcp/agents/`)
+### Agent System (`src/mem-graph/agents/`)
 **Responsibilities:**
 - Encapsulate autonomous decision-making and workflow execution
 - Interact with MCP server through tool interfaces
@@ -69,15 +69,15 @@ The Syntx Memory MCP Server is a Model Context Protocol (MCP) implementation des
 ## Data Flows
 
 ### Tool Invocation Flow
-[← src/syntx_mcp/server.py:66-94 - Mounting tools]
+[← src/mem-graph/server.py:66-94 - Mounting tools]
 ```
 1. Client Request (MCP Protocol)
    ↓
 2. FastMCP Routing (based on tool name)
    ↓
-3. Tool Handler Execution (src/syntx_mcp/tools/*.py)
+3. Tool Handler Execution (src/mem-graph/tools/*.py)
    ↓
-4. Database Access (src/syntx_mcp/db.py:get_conn)
+4. Database Access (src/mem-graph/db.py:get_conn)
    ↓
 5. Ladybug Operations (Cypher queries)
    ↓
@@ -87,9 +87,9 @@ The Syntx Memory MCP Server is a Model Context Protocol (MCP) implementation des
 ```
 
 ### Conversation Capture Flow
-[← src/syntx_mcp/tools/conversation.py:46-102 - conversation_start]
-[← src/syntx_mcp/tools/conversation.py:105-191 - conversation_append]
-[← src/syntx_mcp/tools/conversation.py:194-247 - conversation_end]
+[← src/mem-graph/tools/conversation.py:46-102 - conversation_start]
+[← src/mem-graph/tools/conversation.py:105-191 - conversation_append]
+[← src/mem-graph/tools/conversation.py:194-247 - conversation_end]
 ```
 1. conversation_start:
    - Create Conversation node
@@ -111,7 +111,7 @@ The Syntx Memory MCP Server is a Model Context Protocol (MCP) implementation des
 ```
 
 ### Semantic Recall Flow
-[← src/syntx_mcp/tools/memory.py:91-140 - memory_recall]
+[← src/mem-graph/tools/memory.py:91-140 - memory_recall]
 ```
 1. query → embed() → query vector
 2. CALL QUERY_VECTOR_INDEX('Memory', 'idx_memory_emb', $qvec, k)
@@ -120,8 +120,8 @@ The Syntx Memory MCP Server is a Model Context Protocol (MCP) implementation des
 ```
 
 ### Agent Interaction Flow
-[← src/syntx_mcp/tools/audit.py:14-58 - audit_package]
-[← src/syntx_mcp/agents/audit_agent.py:18-22 - audit_agent]
+[← src/mem-graph/tools/audit.py:14-58 - audit_package]
+[← src/mem-graph/agents/audit_agent.py:18-22 - audit_agent]
 ```
 1. Client → audit_package tool (MCP)
    ↓
@@ -321,7 +321,7 @@ Current architecture presents challenges for horizontal scaling:
 - Tools return dict objects for MCP serialization
 
 ### Tools → Database Contract
-- All tools use `get_conn()` from `src/syntx_mcp/db.py`
+- All tools use `get_conn()` from `src/mem-graph/db.py`
 - Database schema defined in `schema/agent_memory_schema.cypher`
 - Standard node/relationship naming conventions
 - Embedding property named `embedding` as `FLOAT[n]`
@@ -358,13 +358,13 @@ Current architecture presents challenges for horizontal scaling:
    - Needed: Metrics, tracing, health endpoints
 
 4. **Extension Mechanism** - How are new tool types added?
-   - Current: Add module to src/syntx_mcp/tools/, mount in server.py
+   - Current: Add module to src/mem-graph/tools/, mount in server.py
    - Alternative: Plugin/dynamic loading system
 
 ## References to Code
-- Server mounting: `src/syntx_mcp/server.py:83-94`
-- Tool interface: `src/syntx_mcp/tools/*.py` (all files)
-- Database contract: `src/syntx_mcp/db.py`
+- Server mounting: `src/mem-graph/server.py:83-94`
+- Tool interface: `src/mem-graph/tools/*.py` (all files)
+- Database contract: `src/mem-graph/db.py`
 - Schema definition: `schema/agent_memory_schema.cypher`
-- Agent pattern: `src/syntx_mcp/agents/audit_agent.py`
+- Agent pattern: `src/mem-graph/agents/audit_agent.py`
 - MCP protocol: FastMCP framework (external dependency)

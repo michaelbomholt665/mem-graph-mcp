@@ -4,7 +4,7 @@
 This document explains the Syntx Memory MCP Server component - the foundation that provides the Model Context Protocol (MCP) server interface, handles tool discovery, manages lazy namespace activation, and orchestrates HTTP/SSE transport mechanisms.
 
 ## Overview
-The server is implemented in `src/syntx_mcp/server.py` and serves as the entry point for all MCP interactions. It uses the FastMCP framework to provide a standardized interface for tools and agents while implementing custom logic for lazy tool loading and session-based namespace activation.
+The server is implemented in `src/mem-graph/server.py` and serves as the entry point for all MCP interactions. It uses the FastMCP framework to provide a standardized interface for tools and agents while implementing custom logic for lazy tool loading and session-based namespace activation.
 
 ### Responsibilities
 - Initialize and shutdown database connections via lifespan management
@@ -20,7 +20,7 @@ The server is implemented in `src/syntx_mcp/server.py` and serves as the entry p
 The server uses FastMCP's lifespan context manager to handle initialization and cleanup:
 
 1. **Startup** (`lifespan` function):
-   - Calls `init_db()` from `src/syntx_mcp/db.py` to initialize Ladybug database
+   - Calls `init_db()` from `src/mem-graph/db.py` to initialize Ladybug database
    - Installs and loads vector/fts extensions
    - Runs schema DDL from `schema/agent_memory_schema.cypher`
    - Creates vector indexes for all embeddable node types
@@ -59,7 +59,7 @@ All MCP tool invocations follow this pattern:
 1. Client sends tool call request via HTTP/SSE/stdio
 2. FastMCP routes to appropriate tool handler based on method name
 3. Handler executes with automatic Context injection (when requested)
-4. Handler accesses database via `get_conn()` from `src/syntx_mcp/db.py`
+4. Handler accesses database via `get_conn()` from `src/mem-graph/db.py`
 5. Handler performs Ladybug Cypher operations
 6. Handler returns structured dict response serialized by FastMCP
 
@@ -67,15 +67,15 @@ All MCP tool invocations follow this pattern:
 ```
 Client Request 
     → FastMCP Routing 
-    → Tool Handler (src/syntx_mcp/tools/*.py)
-    → Database Connection (src/syntx_mcp/db.py:get_conn)
+    → Tool Handler (src/mem-graph/tools/*.py)
+    → Database Connection (src/mem-graph/db.py:get_conn)
     → Ladybug Database Operations
     → Result Returned to Client
 ```
 
 ### State Management
 The server maintains minimal internal state:
-- Database connection singleton (managed in `src/syntx_mcp/db.py`)
+- Database connection singleton (managed in `src/mem-graph/db.py`)
 - Tool visibility tags (managed via FastMCP's provider system)
 - No in-memory caching of tool results - all queries hit database
 
@@ -92,7 +92,7 @@ The server maintains minimal internal state:
 - MCP protocol provides built-in request/response tracing capabilities
 
 ### Code References
-- Main server logic: `src/syntx_mcp/server.py`
-- Database initialization: `src/syntx_mcp/db.py`
+- Main server logic: `src/mem-graph/server.py`
+- Database initialization: `src/mem-graph/db.py`
 - Schema definition: `schema/agent_memory_schema.cypher`
-- Tool implementations: `src/syntx_mcp/tools/*.py`
+- Tool implementations: `src/mem-graph/tools/*.py`

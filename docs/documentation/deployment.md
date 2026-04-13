@@ -58,7 +58,7 @@ OLLAMA_EMBED_DIM=1536
 ### Running the Server
 Start the server:
 ```bash
-python -m syntx_mcp.server
+python -m mem-graph.server
 ```
 
 The server will be available at `http://127.0.0.1:9100`
@@ -86,7 +86,7 @@ COPY pyproject.toml .
 RUN pip install -e .
 COPY src/ src/
 EXPOSE 9100
-CMD ["python", "-m", "syntx_mcp.server"]
+CMD ["python", "-m", "mem-graph.server"]
 ```
 
 Build and run:
@@ -137,7 +137,7 @@ User=syntx
 Group=syntx
 WorkingDirectory=/opt/syntx-memory
 Environment=PATH=/opt/syntx-memory/venv/bin
-ExecStart=/opt/syntx-memory/venv/bin/python -m syntx_mcp.server
+ExecStart=/opt/syntx-memory/venv/bin/python -m mem-graph.server
 Restart=always
 [Install]
 WantedBy=multi-user.target
@@ -241,6 +241,6 @@ journalctl -u syntx-memory -f
 No built-in metrics, consider integrating with Prometheus for production monitoring.
 
 ## References to Code
-- Server startup: `src/syntx_mcp/server.py`
-- Database initialization: `src/syntx_mcp/db.py`
-- Configuration loading: `src/syntx_mcp/server.py:41-45`
+- Server startup: `src/mem-graph/server.py`
+- Database initialization: `src/mem-graph/db.py`
+- Configuration loading: `src/mem-graph/server.py:41-45`

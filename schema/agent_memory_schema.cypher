@@ -15,6 +15,16 @@ INSTALL fts;    LOAD fts;
 
 
 // =============================================================================
+// SCHEMA META  (written once by init_db, validated on every subsequent startup)
+// =============================================================================
+CREATE NODE TABLE IF NOT EXISTS SchemaMeta (
+    version        STRING PRIMARY KEY,  -- semver string, e.g. "1.0"
+    embed_dim      INT64,               -- must match OLLAMA_EMBED_DIM at runtime
+    initialized_at TIMESTAMP DEFAULT current_timestamp()
+);
+
+
+// =============================================================================
 // NODE TABLES
 // =============================================================================
 
@@ -116,6 +126,7 @@ CREATE NODE TABLE IF NOT EXISTS Violation (
     status      STRING DEFAULT 'open', -- open | recurrence | resolved | graduated
     embedding   FLOAT[1536],
     detected_at TIMESTAMP DEFAULT current_timestamp(),
+    last_seen_at TIMESTAMP,
     resolved_at TIMESTAMP
 );
 
@@ -126,6 +137,7 @@ CREATE NODE TABLE IF NOT EXISTS Conversation (
     id          STRING PRIMARY KEY,
     title       STRING,
     summary     STRING,
+    summary_status STRING,
     model       STRING,
     turn_count  INT64 DEFAULT 0,
     embedding   FLOAT[1536],

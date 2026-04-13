@@ -22,7 +22,7 @@ The vector index creation is the landmine. `CALL CREATE_VECTOR_INDEX(...)` throw
 ## `db.py`
 
 ```python
-# src/syntx_mcp/db.py
+# src/mem-graph/db.py
 import os
 from pathlib import Path
 import real_ladybug as lb
@@ -142,7 +142,7 @@ def _ensure_vector_indexes(conn: lb.Connection) -> None:
 The other thing that needs care — Ollama's embed call is synchronous in the SDK but your FastMCP server is async. Wrap it properly or you'll block the event loop.
 
 ```python
-# src/syntx_mcp/embeddings.py
+# src/mem-graph/embeddings.py
 import os
 import asyncio
 from functools import partial

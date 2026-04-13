@@ -4,6 +4,10 @@ __pycache__/
 *$py.class
 .mypy_cache/
 .ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+.cache
 
 # Python-generated files
 __pycache__/

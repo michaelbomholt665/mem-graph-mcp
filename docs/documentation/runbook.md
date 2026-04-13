@@ -54,7 +54,7 @@ sudo systemctl stop syntx-memory
 # Service status
 systemctl status syntx-memory
 # Process check
-ps aux | grep syntx_mcp
+ps aux | grep mem-graph
 # Port check
 netstat -tlnp | grep 9100
 # Log monitoring
@@ -188,7 +188,7 @@ journalctl -u syntx-memory | grep "tool_call" | awk '{print $1, $2}' | uniq -c |
 **Diagnosis:**
 1. Check system resources:
    ```bash
-   top -p $(pgrep -f syntx_mcp)
+   top -p $(pgrep -f mem-graph)
    free -h
    df -h
    ```
@@ -343,8 +343,8 @@ sudo systemctl start syntx-memory
 ```python
 # Script to recalculate embeddings
 import asyncio
-from syntx_mcp.db import get_conn
-from syntx_mcp.embeddings import embed
+from mem-graph.db import get_conn
+from mem-graph.embeddings import embed
 async def recalculate_embeddings():
     conn = await get_conn()
     # Query nodes needing embedding recalculation
@@ -427,7 +427,7 @@ async def recalculate_embeddings():
 - Security concern
 
 ## References to Code
-- Server startup: `src/syntx_mcp/server.py`
+- Server startup: `src/mem-graph/server.py`
 - Service management: `/etc/systemd/system/syntx-memory.service`
 - Monitoring scripts: `/opt/syntx-memory/monitoring/`
 - Backup scripts: `/opt/syntx-memory/backup/`

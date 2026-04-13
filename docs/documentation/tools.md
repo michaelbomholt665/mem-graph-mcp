@@ -4,9 +4,9 @@
 This document explains the Syntx Memory MCP Tools component - the collection of specialized functional modules that provide capabilities for memory storage, task management, conversation capture, decision recording, and more. Each tool is implemented as a FastMCP sub-server with specific responsibilities.
 
 ## Overview
-Tools are organized in `src/syntx_mcp/tools/` as individual Python modules, each exposing a FastMCP instance (`mcp`) that gets mounted into the main server. Tools follow a consistent pattern:
-- Database access via `get_conn()` from `src/syntx_mcp/db.py`
-- Embedding generation via `embed()` from `src/syntx_mcp/embeddings.py`
+Tools are organized in `src/mem-graph/tools/` as individual Python modules, each exposing a FastMCP instance (`mcp`) that gets mounted into the main server. Tools follow a consistent pattern:
+- Database access via `get_conn()` from `src/mem-graph/db.py`
+- Embedding generation via `embed()` from `src/mem-graph/embeddings.py`
 - UUID-based identification using `uuid.uuid4()`
 - Timestamp handling with timezone-aware UTC datetimes
 
@@ -17,7 +17,7 @@ As documented in server.md, tools are split into:
 
 ## Tool Categories
 
-### Memory Tools (`src/syntx_mcp/tools/memory.py`)
+### Memory Tools (`src/mem-graph/tools/memory.py`)
 Responsible for storing and retrieving distilled memories with semantic search capabilities.
 
 **Key Tools:**
@@ -33,7 +33,7 @@ Store: content → embed() → Memory node → (optional) PROJECT_MEMORY link
 Recall: query → embed() → QUERY_VECTOR_INDEX → filter → return memories
 ```
 
-### Conversation Tools (`src/syntx_mcp/tools/conversation.py`)
+### Conversation Tools (`src/mem-graph/tools/conversation.py`)
 Handles conversation lifecycle management and message storage with automatic summarization.
 
 **Key Tools:**
@@ -56,7 +56,7 @@ End:
   3. Store summary + embedding on Conversation node
 ```
 
-### Task Tools (`src/syntx_mcp/tools/tasks.py`)
+### Task Tools (`src/mem-graph/tools/tasks.py`)
 Manages units of work tracked across sessions with blocking dependencies and links to decisions/violations.
 
 **Key Tools:**
@@ -81,7 +81,7 @@ Links:
   Blocker Task →[TASK_BLOCKS{reason}]→ Blocked Task
 ```
 
-### Decision Tools (`src/syntx_mcp/tools/decisions.py`)
+### Decision Tools (`src/mem-graph/tools/decisions.py`)
 Records architectural decisions and tracks their lineage through supersession relationships.
 
 **Key Tools:**
@@ -100,7 +100,7 @@ Supersede:
   New Decision →[SUPERSEDES{reason}]→ Old Decision
 ```
 
-### Project Tools (`src/syntx_mcp/tools/projects.py`)
+### Project Tools (`src/mem-graph/tools/projects.py`)
 Manages top-level isolation boundaries for organizing work.
 
 **Key Tools:**
@@ -109,7 +109,7 @@ Manages top-level isolation boundaries for organizing work.
 - `project_list()` - List all projects
 - `project_search(query, limit)` - Semantic search over projects
 
-### Note Tools (`src/syntx_mcp/tools/notes.py`)
+### Note Tools (`src/mem-graph/tools/notes.py`)
 Handles free-form observations, findings, and reminders with tagging capabilities.
 
 **Key Tools:**
@@ -117,7 +117,7 @@ Handles free-form observations, findings, and reminders with tagging capabilitie
 - `note_search(query, limit)` - Semantic search over notes
 - `note_list()` - List notes without ranking
 
-### Violation Tools (`src/syntx_mcp/tools/violations.py`)
+### Violation Tools (`src/mem-graph/tools/violations.py`)
 Tracks policy violations, smells, and audit findings with lifecycle management.
 
 **Key Tools:**
@@ -127,7 +127,7 @@ Tracks policy violations, smells, and audit findings with lifecycle management.
 - `violation_search(query, limit)` - Semantic search over violations
 - `violation_list()` - List violations
 
-### Audit Tools (`src/syntx_mcp/tools/audit.py`)
+### Audit Tools (`src/mem-graph/tools/audit.py`)
 Interfaces with the autonomous Audit Agent for package codebase audits.
 
 **Key Tool:**
@@ -211,7 +211,7 @@ async def conversation_start(...) -> dict:
 - Validation failures return error dicts (e.g., invalid namespace in tools_activate)
 
 ## Dependencies
-- Database layer: `src/syntx_mcp/db.py`
-- Embedding service: `src/syntx_mcp/embeddings.py`
+- Database layer: `src/mem-graph/db.py`
+- Embedding service: `src/mem-graph/embeddings.py`
 - External services: Ollama (for embeddings and summarization)
 - Ladybug graph database (for data storage)

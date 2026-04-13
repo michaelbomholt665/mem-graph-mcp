@@ -1,6 +1,6 @@
-# Syntx Memory MCP Server
+# Mem-graph Memory MCP Server
 
-Syntx Memory is an agent memory store for Syntx implemented as an MCP (Model Context Protocol) server. It leverages the FastMCP framework to provide robust capability for capturing and inter-linking conversations, tasks, decisions, notes, and audit violations, enabling semantic recall across AI assistant sessions.
+Mem-graph Memory is an agent memory store for Mem-graph implemented as an MCP (Model Context Protocol) server. It leverages the FastMCP framework to provide robust capability for capturing and inter-linking conversations, tasks, decisions, notes, and audit violations, enabling semantic recall across AI assistant sessions.
 
 ## Features & Capabilities
 
