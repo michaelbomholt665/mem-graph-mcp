@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Protocol
 
 from ..models.task import Task, TaskProgress, TaskResult, TaskStatus
+from ..observability import record_task_event
 
 
 class ProgressReporter(Protocol):
@@ -126,6 +127,7 @@ class TaskQueue:
             current_step="queued",
             status_text="Task accepted and waiting for execution.",
         )
+        record_task_event(tool_name, status=TaskStatus.QUEUED.value)
 
         async with self._lock:
             self.queue.append(task.task_id)
@@ -166,6 +168,7 @@ class TaskQueue:
 
             task.status = TaskStatus.RUNNING
             task.started_at = _utc_now()
+            record_task_event(task.tool_name, status=TaskStatus.RUNNING.value)
             self.update_progress(
                 task_id,
                 current=1,
@@ -189,6 +192,7 @@ class TaskQueue:
             if task.status != TaskStatus.CANCELLED:
                 task.status = TaskStatus.COMPLETED
                 task.result = TaskResult(data=result)
+                record_task_event(task.tool_name, status=TaskStatus.COMPLETED.value)
                 self.update_progress(
                     task_id,
                     current=100,
@@ -199,6 +203,7 @@ class TaskQueue:
         except asyncio.CancelledError:
             task.status = TaskStatus.CANCELLED
             task.cancellation_requested = False
+            record_task_event(task.tool_name, status=TaskStatus.CANCELLED.value)
             self.update_progress(
                 task_id,
                 current=100,
@@ -211,6 +216,7 @@ class TaskQueue:
             task.status = TaskStatus.FAILED
             task.error = str(exc)
             task.result = TaskResult(errors=[str(exc)])
+            record_task_event(task.tool_name, status=TaskStatus.FAILED.value)
             self.update_progress(
                 task_id,
                 current=max(task.progress.current, 1),
@@ -253,6 +259,7 @@ class TaskQueue:
                     return None
                 task.status = TaskStatus.CANCELLED
                 task.completed_at = _utc_now()
+                record_task_event(task.tool_name, status=TaskStatus.CANCELLED.value)
                 self.update_progress(
                     task_id,
                     current=100,

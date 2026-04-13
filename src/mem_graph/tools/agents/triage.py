@@ -23,6 +23,7 @@ from pydantic import Field
 
 from ...agents.document.triage_agent import TriageDependencies, RawFinding, triage_agent
 from ...db import db_get_connection
+from ...observability import traced_tool
 from ...services.task_queue import task_queue
 from ..background.progress import ContextProgressReporter, ProgressReporter, report_step
 from ..background.task_status import build_task_submission
@@ -123,8 +124,7 @@ async def triage_violations(
         ),
     )
     return build_task_submission(task)
-
-
+@traced_tool("triage_violations", component="tool.worker")
 async def _triage_violations_worker(
     *,
     project_id: str,

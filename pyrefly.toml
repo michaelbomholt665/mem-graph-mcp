@@ -6,6 +6,8 @@ name = "memory"
 root = "."
 # We only want to check the package source
 src = ["src"]
+# Ignore all .pyi files in the project
+project-excludes = ["**/*.pyi"]
 
 [check]
 python-version = "3.14"

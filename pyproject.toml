@@ -1,6 +1,6 @@
 [project]
 name = "memory"
-version = "0.1.0"
+version = "0.2.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -30,6 +30,9 @@ dependencies = [
     "uvicorn>=0.29.0",
     #   "pydantic-ai-slim[openai,google,ag-ui,logfire,fastmcp,evals]"
 ]
+
+[project.scripts]
+mem-graph-evals = "mem_graph.evals.evaluator:main"
 
 [dependency-groups]
 dev = [

@@ -18,6 +18,23 @@ import sys
 import time
 from typing import Any
 
+from opentelemetry import trace
+
+
+class _TraceContextFilter(logging.Filter):
+    """Attach active trace context to every log record."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        span = trace.get_current_span()
+        span_context = span.get_span_context() if span is not None else None
+        if span_context is not None and span_context.is_valid:
+            record.trace_id = f"{span_context.trace_id:032x}"
+            record.span_id = f"{span_context.span_id:016x}"
+        else:
+            record.trace_id = "-"
+            record.span_id = "-"
+        return True
+
 
 class _JsonFormatter(logging.Formatter):
     """Format log records as single-line JSON."""
@@ -28,6 +45,8 @@ class _JsonFormatter(logging.Formatter):
             "level": record.levelname,
             "logger": record.name,
             "msg": record.getMessage(),
+            "trace_id": getattr(record, "trace_id", "-"),
+            "span_id": getattr(record, "span_id", "-"),
         }
         if record.exc_info:
             data["exc"] = self.formatException(record.exc_info)
@@ -68,6 +87,11 @@ class _ConsoleFormatter(logging.Formatter):
             if key in record.__dict__:
                 val = record.__dict__[key]
                 extras.append(f"{key}={val}")
+        trace_id = getattr(record, "trace_id", "-")
+        span_id = getattr(record, "span_id", "-")
+        if trace_id != "-":
+            extras.append(f"trace_id={trace_id}")
+            extras.append(f"span_id={span_id}")
 
         if extras:
             result += f" {self.grey}({', '.join(extras)}){self.reset}"
@@ -90,6 +114,7 @@ def logging_setup_engine(level: str = "INFO") -> None:
 
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(formatter)
+    handler.addFilter(_TraceContextFilter())
 
     root = logging.getLogger()
     root.handlers.clear()

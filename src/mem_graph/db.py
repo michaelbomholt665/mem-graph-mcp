@@ -26,22 +26,29 @@ should call DROP_VECTOR_INDEX or CREATE_VECTOR_INDEX directly.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 from pathlib import Path
+from time import perf_counter
 from typing import cast, Any
 
 import ollama as _ollama
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 import real_ladybug as lb
 from dotenv import load_dotenv
 
 from .embeddings import EMBED_DIM
+from .observability import record_graph_query
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+_QUERY_TRACER = trace.get_tracer("mem_graph.db")
 
 _db: lb.Database | None = None
 _conn: lb.Connection | None = None
+_conn_proxy: "_InstrumentedConnection | None" = None
 
 SCHEMA_PATH = (
     Path(__file__).parent.parent.parent / "schema" / "agent_memory_schema.cypher"
@@ -63,26 +70,145 @@ _KNOWN_EMBED_PROVIDERS = (
 # Per-table locks that guard the DROP/SET/CREATE index cycle.
 _index_locks: dict[str, asyncio.Lock] = {}
 
+
+class _ObservedQueryResult:
+    """Cache Ladybug query rows so result counts can be measured safely."""
+
+    def __init__(self, result: Any) -> None:
+        self._result = result
+        self._rows: list[list[Any]] | None = None
+
+    def get_all(self) -> list[list[Any]]:
+        if self._rows is None:
+            self._rows = cast(list[list[Any]], self._result.get_all())
+        return self._rows
+
+    def __iter__(self):
+        return iter(self.get_all())
+
+    def __len__(self) -> int:
+        return len(self.get_all())
+
+    def __getitem__(self, index: int) -> list[Any]:
+        return self.get_all()[index]
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._result, name)
+
+
+class _InstrumentedConnection:
+    """Proxy Ladybug connection calls so graph queries emit spans and metrics."""
+
+    def __init__(self, connection: lb.Connection) -> None:
+        self._connection = connection
+
+    def execute(self, query: str, params: dict[str, Any] | None = None) -> Any:
+        query_class = _classify_query(query)
+        start = perf_counter()
+        with _QUERY_TRACER.start_as_current_span("graph.query") as span:
+            span.set_attribute("db.system", "ladybug")
+            span.set_attribute("graph.query.class", query_class)
+            span.set_attribute("graph.query.fingerprint", _query_fingerprint(query))
+            span.set_attribute("graph.query.parameter_count", len(params or {}))
+
+            try:
+                raw_result = self._connection.execute(query, params or {})
+                result, result_count = _instrument_result(raw_result)
+            except Exception as exc:
+                duration_ms = (perf_counter() - start) * 1000
+                span.set_attribute("graph.query.duration_ms", duration_ms)
+                span.set_attribute("graph.success", False)
+                span.set_attribute("error.type", type(exc).__name__)
+                span.set_status(Status(StatusCode.ERROR))
+                span.record_exception(exc)
+                record_graph_query(query_class, duration_ms, status="error")
+                raise
+
+            duration_ms = (perf_counter() - start) * 1000
+            span.set_attribute("graph.query.duration_ms", duration_ms)
+            span.set_attribute("graph.success", True)
+            span.set_status(Status(StatusCode.OK))
+            if result_count is not None:
+                span.set_attribute("graph.result.count", result_count)
+            record_graph_query(
+                query_class,
+                duration_ms,
+                status="ok",
+                result_count=result_count,
+            )
+            return result
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._connection, name)
+
+
+def _normalize_query(query: str) -> str:
+    return " ".join(query.split())
+
+
+def _query_fingerprint(query: str) -> str:
+    normalized = _normalize_query(query)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+
+
+def _classify_query(query: str) -> str:
+    normalized = _normalize_query(query).upper()
+    if normalized.startswith("CALL QUERY_VECTOR_INDEX"):
+        return "vector-index-search"
+    if normalized.startswith("CALL QUERY_FTS_INDEX"):
+        return "fts-search"
+    if normalized.startswith("CALL SHOW_INDEXES"):
+        return "index-inspection"
+    if "CREATE_VECTOR_INDEX" in normalized:
+        return "vector-index-create"
+    if "CREATE_FTS_INDEX" in normalized:
+        return "fts-index-create"
+    if "DROP_VECTOR_INDEX" in normalized:
+        return "vector-index-drop"
+    if normalized.startswith("MATCH"):
+        return "match"
+    if normalized.startswith("CREATE"):
+        return "create"
+    if normalized.startswith("MERGE"):
+        return "merge"
+    if normalized.startswith("SET") or " SET " in normalized:
+        return "update"
+    if normalized.startswith("DELETE") or normalized.startswith("DETACH DELETE"):
+        return "delete"
+    if normalized.startswith("INSTALL") or normalized.startswith("LOAD"):
+        return "extension"
+    return "query"
+
+
+def _instrument_result(raw_result: Any) -> tuple[Any, int | None]:
+    if isinstance(raw_result, list):
+        return raw_result, len(raw_result)
+    if hasattr(raw_result, "get_all"):
+        observed_result = _ObservedQueryResult(raw_result)
+        return observed_result, len(observed_result.get_all())
+    return raw_result, None
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 
-def db_get_connection() -> lb.Connection:
+def db_get_connection() -> Any:
     """Return the active connection or raise if db_init_engine() was not called."""
-    if _conn is None:
+    if _conn is None or _conn_proxy is None:
         raise RuntimeError("DB not initialized — call db_init_engine() first")
-    return _conn
+    return _conn_proxy
 
 
 def db_init_engine() -> None:
     """Open the database, run bootstrap, probe Ollama.  Called from lifespan."""
-    global _db, _conn
+    global _db, _conn, _conn_proxy
 
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
 
     _db = lb.Database(DB_PATH)
     _conn = lb.Connection(_db)
+    _conn_proxy = _InstrumentedConnection(_conn)
 
     _bootstrap(_conn)
     _probe_ollama()
@@ -90,8 +216,9 @@ def db_init_engine() -> None:
 
 def db_close_engine() -> None:
     """Release the connection.  Ladybug closes on GC but be explicit."""
-    global _db, _conn
+    global _db, _conn, _conn_proxy
     _conn = None
+    _conn_proxy = None
     _db = None
 
 

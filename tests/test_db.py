@@ -73,12 +73,16 @@ async def test_bootstrap_creates_all_vector_indexes(tmp_path):
             "idx_message_emb",
             "idx_memory_emb",
             "idx_symbol_emb",
+            "idx_codefile_emb",
+            "idx_jira_issue_emb",
             "fts_memory_content",
             "fts_note_body",
             "fts_task_desc",
             "fts_decision_rat",
             "fts_violation_desc",
             "fts_symbol_name",
+            "fts_codefile_path",
+            "fts_jira_issue_text",
         }
         result = cast(Any, conn.execute("CALL SHOW_INDEXES() RETURN *;"))
         actual = {row[1] for row in result.get_all()}
@@ -104,7 +108,7 @@ async def test_bootstrap_idempotent(tmp_path):
         db_mod.db_init_engine()
         conn = db_mod.db_get_connection()
         result = cast(Any, conn.execute("CALL SHOW_INDEXES() RETURN *;"))
-        assert len(result.get_all()) == 16
+        assert len(result.get_all()) == 20
         db_mod.db_close_engine()
 
 

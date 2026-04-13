@@ -26,6 +26,7 @@ from pydantic import Field
 from ...db import db_get_connection
 from ...embeddings import embeddings_query
 from ...ids import id_generate_v7
+from ...observability import traced_tool
 
 logger = logging.getLogger(__name__)
 mcp = FastMCP("memory")
@@ -39,6 +40,7 @@ def _now() -> datetime:
     tags={"namespace:memory"},
     icons=[Icon(src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTkgM0g1Yy0xLjEgMC0yIC45LTIgMnYxNGMwIDEuMS45IDIgMiAyaDE0YzEuMSAwIDItLjkgMi0yVjVjMC0xLjEtLjktMi0yLTJ6bTAgMTZINVY1aDE0djE0em0tMi1xIDIgMGg2VjExaC0zdi41aDAyaC0zczB2MWgzVjloLTZ6bS0yIDB2LTNoLTZ6bS00LTJoMnYyaC0yeiIvPjwvc3ZnPg==", mimeType="image/svg+xml")]
 )
+@traced_tool("memory_store")
 async def memory_store(
     content: Annotated[str, Field(description="The fact, pattern, or preference to remember")],
     kind: Annotated[
@@ -104,6 +106,7 @@ async def memory_store(
     tags={"namespace:memory"},
     icons=[Icon(src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTkgNkg1Yy0xLjEgMC0yIC45LTIgMnYxMGMwIDEuMS45IDIgMiAyaDE0YzEuMSAwIDItLjkgMi0yVjhj MC0xLjEtLjktMi0yLTJ6bTAgMTJINVY4aDE0djEweiIvPjwvc3ZnPg==", mimeType="image/svg+xml")]
 )
+@traced_tool("memory_manage")
 async def memory_manage(
     action: Annotated[
         str,

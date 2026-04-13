@@ -33,12 +33,12 @@ Existing files to edit:
 
 ## Tasklist
 
-- [ ] Define one authoritative package version and make the server read from that source instead of hard-coding metadata.
-- [ ] Add a website URL setting with a sensible default and a documented override path.
-- [ ] Expose version, API version, and website metadata from the server in a stable info endpoint or equivalent MCP-visible surface.
-- [ ] Decide whether response metadata wrapping is worth the extra payload churn; if yes, keep it consistent and minimal.
-- [ ] Create an initial changelog entry that reflects the planned phases without pretending unfinished work is already shipped.
-- [ ] Update README and deployment docs so operators know where version and website metadata come from.
+- [x] Define one authoritative package version and make the server read from that source instead of hard-coding metadata.
+- [x] Add a website URL setting with a sensible default and a documented override path.
+- [x] Expose version, API version, and website metadata from the server in a stable info endpoint or equivalent MCP-visible surface.
+- [x] Decide whether response metadata wrapping is worth the extra payload churn; if yes, keep it consistent and minimal.
+- [x] Create an initial changelog entry that reflects the planned phases without pretending unfinished work is already shipped.
+- [x] Update README and deployment docs so operators know where version and website metadata come from.
 
 ## Out Of Scope
 
@@ -48,9 +48,9 @@ Existing files to edit:
 
 ## Done When
 
-- [ ] Version metadata is defined once and reused everywhere.
-- [ ] The server exposes version and website information to clients.
-- [ ] Release notes have a durable home instead of being scattered across planning docs.
+- [x] Version metadata is defined once and reused everywhere.
+- [x] The server exposes version and website information to clients.
+- [x] Release notes have a durable home instead of being scattered across planning docs.
 
 ## References
 

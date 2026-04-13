@@ -27,6 +27,7 @@ from pydantic import Field
 
 from ...agents.audit.audit_agent import DEFAULT_RULES, AuditDependencies, audit_agent
 from ...models.audit import AuditReport
+from ...observability import traced_tool
 from ...services.task_queue import task_queue
 from ...services.report_writer import write_report
 from ...services.violation_writer import write_violations
@@ -123,8 +124,7 @@ async def audit_package(
         ),
     )
     return build_task_submission(task)
-
-
+@traced_tool("audit_package", component="tool.worker")
 async def _audit_package_worker(
     *,
     package_path: str,

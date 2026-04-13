@@ -77,8 +77,10 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 import uvicorn
 
+from . import __version__
 from .db import db_close_engine, db_get_connection, db_init_engine
 from .logging import logging_setup_engine
+from .observability import setup_observability, shutdown_observability
 from .providers.openapi import build_openapi_provider
 from .services.summarizer import start_worker, stop_worker
 from .services.task_queue import task_queue
@@ -103,6 +105,10 @@ _HOST = os.getenv("MCP_HOST", "127.0.0.1")
 _PORT = int(os.getenv("MCP_PORT", "9100"))
 _BASE_DIR = Path(__file__).resolve().parent
 _STATIC_DIR = _BASE_DIR / "static"
+SERVER_NAME = "syntx-memory"
+SERVER_VERSION = __version__
+SERVER_API_VERSION = "1.0"
+SERVER_WEBSITE = os.getenv("MEM_GRAPH_WEBSITE", "https://github.com/michael/syntx-memory")
 
 # Consolidated namespaces
 _LAZY_NAMESPACES: frozenset[str] = frozenset(
@@ -224,8 +230,12 @@ __  __ ______ __  __      _____  _____            _____  _    _
 async def lifespan(server: FastMCP) -> AsyncGenerator[None, None]:  # noqa: ARG001
     if sys.stderr.isatty():
         print(_BANNER, file=sys.stderr)
-        print(f"  Version: 0.1.0 | CodeMode: ENABLED | Host: {_HOST}:{_PORT}\n", file=sys.stderr)
+        print(
+            f"  Version: {SERVER_VERSION} | CodeMode: ENABLED | Host: {_HOST}:{_PORT}\n",
+            file=sys.stderr,
+        )
 
+    setup_observability(service_name=SERVER_NAME, service_version=SERVER_VERSION)
     await to_thread.run_sync(db_init_engine)
     start_worker()
     await task_queue.startup()
@@ -241,6 +251,7 @@ async def lifespan(server: FastMCP) -> AsyncGenerator[None, None]:  # noqa: ARG0
         )
     await stop_worker()
     await to_thread.run_sync(db_close_engine)
+    shutdown_observability()
     logger.info("mem-graph server shut down cleanly.")
 
 
@@ -255,8 +266,17 @@ async def _load_openapi_providers() -> None:
             logger.warning("openapi_provider_failed spec=%s error=%s", spec_url, exc)
 
 
+def _server_info_payload() -> dict[str, str]:
+    return {
+        "name": SERVER_NAME,
+        "version": SERVER_VERSION,
+        "api_version": SERVER_API_VERSION,
+        "website": SERVER_WEBSITE,
+    }
+
+
 mcp = FastMCP(
-    "syntx-memory",
+    SERVER_NAME,
     instructions=(
         "Agent memory store for Syntx. "
         "Captures conversations, tasks, decisions, notes, violations "
@@ -271,7 +291,8 @@ mcp = FastMCP(
     transforms=[CodeMode()],
     list_page_size=50,
     auth=_auth_provider,
-    website_url="https://github.com/michael/syntx-memory",
+    version=SERVER_VERSION,
+    website_url=SERVER_WEBSITE,
     icons=[
         Icon(
             src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCIgdmlld0JveD0iMCAwIDQ4IDQ4Ij48cmVjdCBmaWxsPSIjRkZGIiBmaWxsLW9wYWNpdHk9Ii4wMSIgd2lkdGg9IjQ4IiBo ZWlnaHQ9IjQ4Ii8+PHBhdGggZmlsbD0iIzEyNzZkMiIgZD0iTTI0IDRDMTIuOTUgNCA0IDE2Ljk1IDQgMjhzOC45NSAyNCAyMCAyNCAyMC04Ljk1IDIwLTIwUzM1LjA1IDQgMjQgNHptLTQgMzZINjYuODN2LTEyCzMwSDE2VjZ6Ii8+PC9zdmc+",
@@ -308,6 +329,12 @@ mcp.mount(integrations.mcp)
 mcp.add_provider(SkillsProvider("skills"))
 
 # (OpenAPI providers are loaded asynchronously in lifespan → _load_openapi_providers)
+
+
+@mcp.tool()
+async def get_server_info() -> dict[str, str]:
+    """Return stable server metadata for clients and operators."""
+    return _server_info_payload()
 
 
 def _score_tool(tool_def: Any, query: str) -> int:
@@ -697,6 +724,10 @@ mcp.disable(tags={f"namespace:{ns}" for ns in _LAZY_NAMESPACES})
 # ---------------------------------------------------------------------------
 
 
+def _info(request: Request) -> JSONResponse:  # noqa: ARG001
+    return JSONResponse(_server_info_payload())
+
+
 async def _health(request: Request) -> JSONResponse:  # noqa: ARG001
     """GET /health — returns 200 OK or 503 with degraded component identified."""
     status: dict[str, str] = {"db": "unknown", "ollama": "unknown"}
@@ -861,8 +892,9 @@ def _run_http() -> None:
             log_level="warning",
         )
         logger.info(
-            "Starting server %r (HTTP: /mcp, SSE: /sse, Health: /health, Dashboard: /dashboard, Files: /file-tree) on %s:%s",
+            "Starting server %r v%s (HTTP: /mcp, SSE: /sse, Info: /info, Health: /health, Dashboard: /dashboard, Files: /file-tree) on %s:%s",
             mcp.name,
+            SERVER_VERSION,
             _HOST,
             _PORT,
         )
@@ -883,6 +915,7 @@ def build_http_app(*, with_lifespan: bool = True) -> Starlette:
                 yield
 
     web_routes = [
+        Route("/info", _info, methods=["GET"]),
         Route("/health", _health, methods=["GET"]),
         Route("/dashboard", _dashboard, methods=["GET"]),
         Route("/dashboard.js", _dashboard_js, methods=["GET"]),

@@ -1,0 +1,18 @@
+{
+  "fix": {
+    "fix-bare-except": [
+      "CWE-703 fixtures/fetch_user.py uses a bare except and swallows database failures."
+    ],
+    "fix-hardcoded-secret": [
+      "security:hardcoded-secret fixtures/payments.py stores an API key in source code."
+    ]
+  },
+  "validate": {
+    "validate-approved": [
+      "CWE-703 fixtures/fetch_user.py uses a bare except and swallows database failures."
+    ],
+    "validate-scope-drift": [
+      "CWE-703 fixtures/fetch_user.py uses a bare except and swallows database failures."
+    ]
+  }
+}

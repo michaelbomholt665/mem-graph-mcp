@@ -18,6 +18,7 @@ from pydantic import Field
 from ...db import db_get_connection
 from ...embeddings import embeddings_generate
 from ...ids import id_generate_v7 as _new_id
+from ...observability import traced_tool
 from ...services.search import rrf_fuse
 
 mcp = FastMCP("violations")
@@ -28,6 +29,7 @@ def _now() -> datetime:
 
 
 @mcp.tool(tags={"namespace:work"})
+@traced_tool("violation_record")
 async def violation_record(
     project_id: Annotated[str, Field(description="Owning project ID")],
     audit_id: Annotated[str, Field(description="Audit identifier, e.g. '002A'")],
@@ -106,6 +108,7 @@ async def violation_record(
 
 
 @mcp.tool(tags={"namespace:work"})
+@traced_tool("violation_resolve")
 async def violation_resolve(
     violation_id: Annotated[str, Field(description="Violation ID to mark as resolved")],
 ) -> dict:
@@ -128,6 +131,7 @@ async def violation_resolve(
 
 
 @mcp.tool(tags={"namespace:work"})
+@traced_tool("violation_recur")
 async def violation_recur(
     original_id: Annotated[
         str, Field(description="ID of the original violation that recurred")
@@ -211,6 +215,7 @@ async def violation_recur(
 
 
 @mcp.tool(tags={"namespace:work"})
+@traced_tool("violation_search")
 async def violation_search(
     query: Annotated[str, Field(description="Natural language search query")],
     project_id: Annotated[str | None, Field(description="Scope to a project")] = None,
@@ -290,6 +295,7 @@ async def violation_search(
 
 
 @mcp.tool(tags={"namespace:work"})
+@traced_tool("violation_list")
 async def violation_list(
     project_id: Annotated[str | None, Field(description="Filter by project")] = None,
     status: Annotated[str | None, Field(description="Filter by status")] = None,

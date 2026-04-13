@@ -46,14 +46,14 @@ Existing files to edit:
 
 ## Tasklist
 
-- [ ] Add eval result and suite models that can express stochastic runs, pass rates, durations, and failure detail.
-- [ ] Implement scoring helpers for exact match, keyword, regex, and semantic similarity scoring.
-- [ ] Build an evaluator runner that can execute a suite multiple times per case and aggregate pass/fail outcomes.
-- [ ] Define the first three eval suites for audit, fix, and validate using representative fixture-backed examples.
-- [ ] Add a small CLI or script entry point for local eval runs so the framework is usable outside pytest.
-- [ ] Add baseline pytest coverage that asserts the framework works and the first suites can run.
-- [ ] Update the relevant agent creation points only as needed so eval harnesses can instantiate them cleanly.
-- [ ] Document how to run evals locally, what the pass threshold means, and why results are stochastic.
+- [x] Add eval result and suite models that can express stochastic runs, pass rates, durations, and failure detail.
+- [x] Implement scoring helpers for exact match, keyword, regex, and semantic similarity scoring.
+- [x] Build an evaluator runner that can execute a suite multiple times per case and aggregate pass/fail outcomes.
+- [x] Define the first three eval suites for audit, fix, and validate using representative fixture-backed examples.
+- [x] Add a small CLI or script entry point for local eval runs so the framework is usable outside pytest.
+- [x] Add baseline pytest coverage that asserts the framework works and the first suites can run.
+- [x] Update the relevant agent creation points only as needed so eval harnesses can instantiate them cleanly.
+- [x] Document how to run evals locally, what the pass threshold means, and why results are stochastic.
 
 ## Out Of Scope
 
@@ -63,10 +63,10 @@ Existing files to edit:
 
 ## Done When
 
-- [ ] The repo has a reusable eval framework instead of ad hoc benchmark scripts.
-- [ ] Audit, fix, and validate each have at least one maintained eval suite.
-- [ ] Developers can run evals from pytest and from a direct script entry point.
-- [ ] This task stays at or below the 15 new-file cap by deferring the rest of the suites.
+- [x] The repo has a reusable eval framework instead of ad hoc benchmark scripts.
+- [x] Audit, fix, and validate each have at least one maintained eval suite.
+- [x] Developers can run evals from pytest and from a direct script entry point.
+- [x] This task stays at or below the 15 new-file cap by deferring the rest of the suites.
 
 ## References
 

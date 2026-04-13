@@ -33,12 +33,14 @@ from pydantic import BaseModel, Field
 from pydantic_graph import BaseNode, End, Graph, GraphRunContext
 
 from ..config import ModelTier
+from ..observability import traced_span
 
 ################
 #   CONSTANTS
 ################
 
 logger = logging.getLogger(__name__)
+_NEXT_NODE_ATTR = "graph.next_node"
 
 ################
 #   STATE
@@ -127,29 +129,35 @@ class ContextGatherNode(BaseNode[AutopilotState, None, AutopilotState]):
         Returns:
             LogicDraftNode to proceed to the logic draft phase.
         """
-        logger.info(
-            "[CONTEXT] Gathering graph context for project %s (%s, %d files)",
-            ctx.state.project_id,
-            ctx.state.language,
-            len(ctx.state.target_files),
-        )
+        with traced_span(
+            "orchestrator.context_gather",
+            attributes=_graph_span_attributes(ctx.state, "ContextGatherNode"),
+        ) as span:
+            logger.info(
+                "[CONTEXT] Gathering graph context for project %s (%s, %d files)",
+                ctx.state.project_id,
+                ctx.state.language,
+                len(ctx.state.target_files),
+            )
 
-        ctx.state.context_violations = _state_query_violations(
-            ctx.state.project_id
-        )
-        ctx.state.context_decisions = _state_query_decisions(
-            ctx.state.project_id
-        )
-        ctx.state.context_map = _state_query_map(ctx.state.project_id)
-        ctx.state.manifest_context = await _state_read_manifests()
-        ctx.state.file_contents = await _state_read_target_files(ctx.state.target_files)
+            ctx.state.context_violations = _state_query_violations(
+                ctx.state.project_id
+            )
+            ctx.state.context_decisions = _state_query_decisions(
+                ctx.state.project_id
+            )
+            ctx.state.context_map = _state_query_map(ctx.state.project_id)
+            ctx.state.manifest_context = await _state_read_manifests()
+            ctx.state.file_contents = await _state_read_target_files(ctx.state.target_files)
 
-        logger.info(
-            "[CONTEXT] %d violations, %d decisions loaded.",
-            len(ctx.state.context_violations),
-            len(ctx.state.context_decisions),
-        )
-        return SentryNode()
+            logger.info(
+                "[CONTEXT] %d violations, %d decisions loaded.",
+                len(ctx.state.context_violations),
+                len(ctx.state.context_decisions),
+            )
+            next_node = SentryNode()
+            span.set_attribute(_NEXT_NODE_ATTR, type(next_node).__name__)
+            return next_node
 
 
 ################
@@ -172,39 +180,46 @@ class SentryNode(BaseNode[AutopilotState, None, AutopilotState]):
         """Run the Sentry Agent to produce a red-first test plan."""
         from .validate.sentry_agent import SentryDependencies, sentry_agent
 
-        logger.info(
-            "[SENTRY] Planning red tests for %d file(s) (project=%s)",
-            len(ctx.state.target_files),
-            ctx.state.project_id,
-        )
+        with traced_span(
+            "orchestrator.sentry",
+            attributes=_graph_span_attributes(ctx.state, "SentryNode"),
+        ) as span:
+            logger.info(
+                "[SENTRY] Planning red tests for %d file(s) (project=%s)",
+                len(ctx.state.target_files),
+                ctx.state.project_id,
+            )
 
-        deps = SentryDependencies(
-            language=ctx.state.language,
-            file_contents=ctx.state.file_contents,
-            manifest_context=ctx.state.manifest_context,
-            context_violations=ctx.state.context_violations,
-            context_decisions=ctx.state.context_decisions,
-        )
+            deps = SentryDependencies(
+                language=ctx.state.language,
+                file_contents=ctx.state.file_contents,
+                manifest_context=ctx.state.manifest_context,
+                context_violations=ctx.state.context_violations,
+                context_decisions=ctx.state.context_decisions,
+            )
 
-        prompt = (
-            "Draft the failing tests that should be written before the fix. "
-            "Use sentry_read_file for file context and sentry_record_test for each test. "
-            "Return a SentryReport."
-        )
-        result = await sentry_agent.run(prompt, deps=deps)
-        report = result.output
+            prompt = (
+                "Draft the failing tests that should be written before the fix. "
+                "Use sentry_read_file for file context and sentry_record_test for each test. "
+                "Return a SentryReport."
+            )
+            result = await sentry_agent.run(prompt, deps=deps)
+            report = result.output
 
-        ctx.state.sentry_tests = [
-            f"{test.file_path}::{test.test_name} — {test.failing_assertion}"
-            for test in report.test_cases
-        ]
+            ctx.state.sentry_tests = [
+                f"{test.file_path}::{test.test_name} — {test.failing_assertion}"
+                for test in report.test_cases
+            ]
 
-        logger.info(
-            "[SENTRY] %d test case(s) planned using %s.",
-            len(report.test_cases),
-            report.framework,
-        )
-        return LogicDraftNode()
+            logger.info(
+                "[SENTRY] %d test case(s) planned using %s.",
+                len(report.test_cases),
+                report.framework,
+            )
+            span.set_attribute("orchestrator.test_plan_count", len(report.test_cases))
+            next_node = LogicDraftNode()
+            span.set_attribute(_NEXT_NODE_ATTR, type(next_node).__name__)
+            return next_node
 
 
 ################
@@ -240,59 +255,73 @@ class LogicDraftNode(BaseNode[AutopilotState, None, AutopilotState]):
         from ..config import config_get_concurrency_for_files, config_is_solo_mode
         from .fix.fixer_agent import FixerDependencies, fixer_agent
 
-        prefix = f"[RETRY {ctx.state.retry_count}]" if ctx.state.retry_count else "[LOGIC]"
-        file_count = len(ctx.state.target_files)
-        is_solo = config_is_solo_mode(file_count, high_complexity=(ctx.state.tier == ModelTier.AUTOPILOT.value))
-        concurrency = 1 if is_solo else config_get_concurrency_for_files(file_count)
-
-        logger.info(
-            "%s Running Fixer Agent (tier=%s, concurrency=%d, solo=%s)",
-            prefix,
-            ctx.state.tier,
-            concurrency,
-            is_solo,
-        )
-
-        violations_to_fix = list(ctx.state.context_violations)
-        if ctx.state.validation_violations:
-            violations_to_fix = ctx.state.validation_violations
-
-        test_plan_context = "\n".join(f"  - {test}" for test in ctx.state.sentry_tests)
-
-        # Prepare Batches
-        # If concurrency > 1, we split the files and their related violations.
-        # For simplicity in this implementation, we allow the agent to see all
-        # violations but focus on a subset of files per worker.
-        batches = _split_into_batches(ctx.state.target_files, concurrency)
-        all_patches = {}
-
-        import anyio
-
-        async def worker(file_subset: list[str]) -> None:
-            subset_contents = {path: ctx.state.file_contents[path] for path in file_subset}
-            deps = FixerDependencies(
-                violations=violations_to_fix,
-                file_contents=subset_contents,
-                tier=ctx.state.tier,
-                project_id=ctx.state.project_id,
+        with traced_span(
+            "orchestrator.logic_draft",
+            attributes=_graph_span_attributes(ctx.state, "LogicDraftNode"),
+        ) as span:
+            prefix = f"[RETRY {ctx.state.retry_count}]" if ctx.state.retry_count else "[LOGIC]"
+            file_count = len(ctx.state.target_files)
+            is_solo = config_is_solo_mode(
+                file_count,
+                high_complexity=(ctx.state.tier == ModelTier.AUTOPILOT.value),
             )
-            prompt = (
-                f"Fix the violation(s) for the following files: {', '.join(file_subset)}. "
-                f"\nRed tests to satisfy:\n{test_plan_context or '  - None recorded.'}\n"
-                "Use fixer_read_file_context to inspect, fixer_record_patch for each fix. "
-                "Return your FixerReport."
+            concurrency = 1 if is_solo else config_get_concurrency_for_files(file_count)
+
+            logger.info(
+                "%s Running Fixer Agent (tier=%s, concurrency=%d, solo=%s)",
+                prefix,
+                ctx.state.tier,
+                concurrency,
+                is_solo,
             )
-            res = await fixer_agent.run(prompt, deps=deps)
-            for p in res.output.patches:
-                all_patches[p.file_path] = p.proposed_snippet
 
-        async with anyio.create_task_group() as tg:
-            for batch in batches:
-                tg.start_soon(worker, batch)
+            violations_to_fix = list(ctx.state.context_violations)
+            if ctx.state.validation_violations:
+                violations_to_fix = ctx.state.validation_violations
 
-        ctx.state.fixer_patches = all_patches
-        logger.info("[LOGIC] %d patch(es) produced across %d worker(s).", len(all_patches), len(batches))
-        return StyleDraftNode()
+            test_plan_context = "\n".join(
+                f"  - {test}" for test in ctx.state.sentry_tests
+            )
+            batches = _split_into_batches(ctx.state.target_files, concurrency)
+            all_patches = {}
+
+            import anyio
+
+            async def worker(file_subset: list[str]) -> None:
+                subset_contents = {
+                    path: ctx.state.file_contents[path] for path in file_subset
+                }
+                deps = FixerDependencies(
+                    violations=violations_to_fix,
+                    file_contents=subset_contents,
+                    tier=ctx.state.tier,
+                    project_id=ctx.state.project_id,
+                )
+                prompt = (
+                    f"Fix the violation(s) for the following files: {', '.join(file_subset)}. "
+                    f"\nRed tests to satisfy:\n{test_plan_context or '  - None recorded.'}\n"
+                    "Use fixer_read_file_context to inspect, fixer_record_patch for each fix. "
+                    "Return your FixerReport."
+                )
+                res = await fixer_agent.run(prompt, deps=deps)
+                for p in res.output.patches:
+                    all_patches[p.file_path] = p.proposed_snippet
+
+            async with anyio.create_task_group() as tg:
+                for batch in batches:
+                    tg.start_soon(worker, batch)
+
+            ctx.state.fixer_patches = all_patches
+            logger.info(
+                "[LOGIC] %d patch(es) produced across %d worker(s).",
+                len(all_patches),
+                len(batches),
+            )
+            span.set_attribute("orchestrator.patch_count", len(all_patches))
+            span.set_attribute("orchestrator.worker_count", len(batches))
+            next_node = StyleDraftNode()
+            span.set_attribute(_NEXT_NODE_ATTR, type(next_node).__name__)
+            return next_node
 
 
 ################
@@ -328,38 +357,62 @@ class StyleDraftNode(BaseNode[AutopilotState, None, AutopilotState]):
         from .document.scribe_agent import ScribeDependencies, scribe_agent
         from ..resources.architecture import ARCHITECTURE_GUARDRAILS
 
-        file_count = len(ctx.state.fixer_patches)
-        concurrency = config_get_concurrency_for_files(file_count)
+        with traced_span(
+            "orchestrator.style_draft",
+            attributes=_graph_span_attributes(ctx.state, "StyleDraftNode"),
+        ) as span:
+            file_count = len(ctx.state.fixer_patches)
+            concurrency = config_get_concurrency_for_files(file_count)
 
-        logger.info("[STYLE] Running Scribe Agent (language=%s, concurrency=%d)", ctx.state.language, concurrency)
-
-        batches = _split_into_batches(list(ctx.state.fixer_patches.keys()), concurrency)
-        all_styled = {}
-
-        import anyio
-
-        async def worker(file_subset: list[str]) -> None:
-            subset_contents = {path: ctx.state.fixer_patches[path] for path in file_subset}
-            deps = ScribeDependencies(
-                language=ctx.state.language,
-                file_contents=subset_contents,
-                architecture_guardrails=ARCHITECTURE_GUARDRAILS,
+            logger.info(
+                "[STYLE] Running Scribe Agent (language=%s, concurrency=%d)",
+                ctx.state.language,
+                concurrency,
             )
-            prompt = "Apply language coding standards to the provided file subset. Return StyledFilePatches."
-            res = await scribe_agent.run(prompt, deps=deps)
-            for p in res.output.styled_patches:
-                all_styled[p.file_path] = p.styled_content
 
-        async with anyio.create_task_group() as tg:
-            for batch in batches:
-                tg.start_soon(worker, batch)
+            batches = _split_into_batches(
+                list(ctx.state.fixer_patches.keys()),
+                concurrency,
+            )
+            all_styled = {}
 
-        ctx.state.styled_patches = all_styled
-        if not ctx.state.styled_patches:
-            ctx.state.styled_patches = dict(ctx.state.fixer_patches)
+            import anyio
 
-        logger.info("[STYLE] %d file(s) styled across %d worker(s).", len(all_styled), len(batches))
-        return GuardNode()
+            async def worker(file_subset: list[str]) -> None:
+                subset_contents = {
+                    path: ctx.state.fixer_patches[path] for path in file_subset
+                }
+                deps = ScribeDependencies(
+                    language=ctx.state.language,
+                    file_contents=subset_contents,
+                    architecture_guardrails=ARCHITECTURE_GUARDRAILS,
+                )
+                prompt = (
+                    "Apply language coding standards to the provided file subset. "
+                    "Return StyledFilePatches."
+                )
+                res = await scribe_agent.run(prompt, deps=deps)
+                for p in res.output.styled_patches:
+                    all_styled[p.file_path] = p.styled_content
+
+            async with anyio.create_task_group() as tg:
+                for batch in batches:
+                    tg.start_soon(worker, batch)
+
+            ctx.state.styled_patches = all_styled
+            if not ctx.state.styled_patches:
+                ctx.state.styled_patches = dict(ctx.state.fixer_patches)
+
+            logger.info(
+                "[STYLE] %d file(s) styled across %d worker(s).",
+                len(all_styled),
+                len(batches),
+            )
+            span.set_attribute("orchestrator.styled_file_count", len(ctx.state.styled_patches))
+            span.set_attribute("orchestrator.worker_count", len(batches))
+            next_node = GuardNode()
+            span.set_attribute(_NEXT_NODE_ATTR, type(next_node).__name__)
+            return next_node
 
 
 ################
@@ -382,38 +435,47 @@ class GuardNode(BaseNode[AutopilotState, None, AutopilotState]):
     ) -> Union["MemorySyncNode", "LogicDraftNode"]:
         """Run deterministic validation commands and route based on exit status."""
 
-        logger.info(
-            "[GUARD] Running CLI validation (retry=%d/%d)",
-            ctx.state.retry_count,
-            ctx.state.max_retries,
-        )
-
-        guard_success, guard_issues, guard_output = await _state_run_quality_gate()
-        ctx.state.guard_output = guard_output
-        ctx.state.validation_violations = guard_issues
-        ctx.state.validation_status = "approved" if guard_success else "rejected"
-
-        if guard_success:
-            logger.info("[GUARD] APPROVED — proceeding to memory sync.")
-            ctx.state.success = True
-            return MemorySyncNode()
-
-        ctx.state.retry_count += 1
-        if ctx.state.retry_count >= ctx.state.max_retries:
-            logger.warning(
-                "[GUARD] REJECTED after %d retries — forcing memory sync with failure.",
+        with traced_span(
+            "orchestrator.guard",
+            attributes=_graph_span_attributes(ctx.state, "GuardNode"),
+        ) as span:
+            logger.info(
+                "[GUARD] Running CLI validation (retry=%d/%d)",
                 ctx.state.retry_count,
+                ctx.state.max_retries,
             )
-            ctx.state.success = False
-            return MemorySyncNode()
 
-        logger.info(
-            "[GUARD] REJECTED (%d issue(s)) — retrying (attempt %d/%d).",
-            len(guard_issues),
-            ctx.state.retry_count,
-            ctx.state.max_retries,
-        )
-        return LogicDraftNode()
+            guard_success, guard_issues, guard_output = await _state_run_quality_gate()
+            ctx.state.guard_output = guard_output
+            ctx.state.validation_violations = guard_issues
+            ctx.state.validation_status = "approved" if guard_success else "rejected"
+            span.set_attribute("orchestrator.guard_issue_count", len(guard_issues))
+            span.set_attribute("orchestrator.guard_success", guard_success)
+
+            if guard_success:
+                logger.info("[GUARD] APPROVED — proceeding to memory sync.")
+                ctx.state.success = True
+                span.set_attribute(_NEXT_NODE_ATTR, "MemorySyncNode")
+                return MemorySyncNode()
+
+            ctx.state.retry_count += 1
+            if ctx.state.retry_count >= ctx.state.max_retries:
+                logger.warning(
+                    "[GUARD] REJECTED after %d retries — forcing memory sync with failure.",
+                    ctx.state.retry_count,
+                )
+                ctx.state.success = False
+                span.set_attribute(_NEXT_NODE_ATTR, "MemorySyncNode")
+                return MemorySyncNode()
+
+            logger.info(
+                "[GUARD] REJECTED (%d issue(s)) — retrying (attempt %d/%d).",
+                len(guard_issues),
+                ctx.state.retry_count,
+                ctx.state.max_retries,
+            )
+            span.set_attribute(_NEXT_NODE_ATTR, "LogicDraftNode")
+            return LogicDraftNode()
 
 
 ################
@@ -444,35 +506,43 @@ class MemorySyncNode(BaseNode[AutopilotState, None, AutopilotState]):
         Returns:
             End node wrapping the final AutopilotState.
         """
-        logger.info(
-            "[SYNC] Persisting autopilot outcome (success=%s, project=%s)",
-            ctx.state.success,
-            ctx.state.project_id,
-        )
-
-        outcome = "SUCCESS" if ctx.state.success else "PARTIAL"
-        status_emoji = "✅" if ctx.state.success else "⚠️"
-
-        note_content = (
-            f"{status_emoji} Autopilot run [{outcome}] — {ctx.state.language}\n"
-            f"Files: {len(ctx.state.target_files)}\n"
-            f"Tier: {ctx.state.tier}\n"
-            f"Patches applied: {len(ctx.state.styled_patches)}\n"
-            f"Retries: {ctx.state.retry_count}/{ctx.state.max_retries}\n"
-            f"Validation status: {ctx.state.validation_status}"
-        )
-
-        if ctx.state.validation_violations:
-            note_content += (
-                "\nOpen issues:\n"
-                + "\n".join(f"  - {v}" for v in ctx.state.validation_violations[:10])
+        with traced_span(
+            "orchestrator.memory_sync",
+            attributes=_graph_span_attributes(ctx.state, "MemorySyncNode"),
+        ) as span:
+            logger.info(
+                "[SYNC] Persisting autopilot outcome (success=%s, project=%s)",
+                ctx.state.success,
+                ctx.state.project_id,
             )
 
-        ctx.state.final_notes = note_content
-        _state_write_note(ctx.state.project_id, note_content)
+            outcome = "SUCCESS" if ctx.state.success else "PARTIAL"
+            status_emoji = "✅" if ctx.state.success else "⚠️"
 
-        logger.info("[SYNC] Note written to graph. Autopilot complete.")
-        return End(ctx.state)
+            note_content = (
+                f"{status_emoji} Autopilot run [{outcome}] — {ctx.state.language}\n"
+                f"Files: {len(ctx.state.target_files)}\n"
+                f"Tier: {ctx.state.tier}\n"
+                f"Patches applied: {len(ctx.state.styled_patches)}\n"
+                f"Retries: {ctx.state.retry_count}/{ctx.state.max_retries}\n"
+                f"Validation status: {ctx.state.validation_status}"
+            )
+
+            if ctx.state.validation_violations:
+                note_content += (
+                    "\nOpen issues:\n"
+                    + "\n".join(
+                        f"  - {v}" for v in ctx.state.validation_violations[:10]
+                    )
+                )
+
+            ctx.state.final_notes = note_content
+            _state_write_note(ctx.state.project_id, note_content)
+
+            logger.info("[SYNC] Note written to graph. Autopilot complete.")
+            span.set_attribute("autopilot.success", ctx.state.success)
+            span.set_attribute(_NEXT_NODE_ATTR, "End")
+            return End(ctx.state)
 
 
 ################
@@ -529,10 +599,36 @@ async def autopilot_graph_run(
         max_retries=max_retries,
     )
 
-    result = await autopilot_graph.run(ContextGatherNode(), state=initial_state)
-    if result.output is None:
-        return initial_state
-    return result.output
+    with traced_span(
+        "orchestrator.run",
+        attributes={
+            "autopilot.language": language,
+            "autopilot.file_count": len(target_files),
+            "autopilot.max_retries": max_retries,
+            "autopilot.tier": tier,
+            "project.id": project_id or "none",
+        },
+    ) as span:
+        result = await autopilot_graph.run(ContextGatherNode(), state=initial_state)
+        final_state = result.output if result.output is not None else initial_state
+        span.set_attribute("autopilot.success", final_state.success)
+        span.set_attribute("autopilot.retry_count", final_state.retry_count)
+        return final_state
+
+
+def _graph_span_attributes(
+    state: AutopilotState,
+    node_name: str,
+) -> dict[str, str | bool | int]:
+    return {
+        "graph.node": node_name,
+        "autopilot.language": state.language,
+        "autopilot.file_count": len(state.target_files),
+        "autopilot.retry_count": state.retry_count,
+        "autopilot.max_retries": state.max_retries,
+        "autopilot.tier": state.tier,
+        "project.id": state.project_id or "none",
+    }
 
 
 ################

@@ -2,6 +2,18 @@
 
 Mem-graph Memory is an agent memory store for Mem-graph implemented as an MCP (Model Context Protocol) server. It leverages the FastMCP framework to provide robust capability for capturing and inter-linking conversations, tasks, decisions, notes, and audit violations, enabling semantic recall across AI assistant sessions.
 
+## Server Metadata
+
+Package versioning now has one runtime source of truth: `pyproject.toml`, exported in code as `mem_graph.__version__`. The FastMCP server reuses that value for its advertised version metadata instead of hard-coding a separate string.
+
+Operational metadata is exposed in two stable places:
+- The core MCP tool `get_server_info`
+- The HTTP endpoint `GET /info`
+
+Both surfaces return the server name, package version, API version, and website URL. The website defaults to `https://github.com/michael/syntx-memory` and can be overridden with `MEM_GRAPH_WEBSITE` in the deployment environment.
+
+Release notes now live in `CHANGELOG.md`.
+
 ## Features & Capabilities
 
 The server provides a suite of MCP tools categorized by domain:
@@ -65,3 +77,45 @@ The MCP Server is built using:
 - **FastMCP**: Provides the foundation for routing, lifecycle, and multiple transport supports (stdio, chunked streamable HTTP, and SSE).
 - **Ladybug DB**: Serves as the underlying robust graph database where all these entities are interlinked and serialized to facilitate semantic querying across nodes.
 - **Ollama**: Generates local, dense semantic embeddings of textual data enabling nearest-neighbor concept searches natively across your tracked interactions and states.
+
+## Observability
+
+OpenTelemetry is now wired into the server lifecycle through `src/mem_graph/observability/`.
+
+- Telemetry is disabled by default unless you explicitly enable it or provide an OTLP exporter endpoint.
+- Local debugging can use the built-in console exporter by setting `MEM_GRAPH_OTEL_ENABLED=true` and `MEM_GRAPH_OTEL_CONSOLE_EXPORTER=true`.
+- Production exports can be enabled with the standard OTLP environment variables such as `OTEL_EXPORTER_OTLP_ENDPOINT`.
+- Structured logs now carry `trace_id` and `span_id` when a request is inside an active span.
+- Metrics currently cover tool duration, background task throughput, and graph-query latency/result counts.
+
+The graph-query instrumentation records query class, query fingerprint, parameter count, duration, and row counts. It does not attach raw Cypher text or query parameters to spans.
+
+## Evals
+
+The repository now includes a reusable eval framework under `src/mem_graph/evals/` plus baseline suites for audit, fix, and validate agents.
+
+Run the deterministic fixture-backed baseline from the repo root:
+
+```bash
+uv run mem-graph-evals --mode fixture
+```
+
+Run a single suite or override the stochastic run count:
+
+```bash
+uv run mem-graph-evals --mode fixture audit --runs 1
+```
+
+Run the live agent suites when model credentials are configured:
+
+```bash
+uv run mem-graph-evals --mode live
+```
+
+You can also use the direct script entry point:
+
+```bash
+uv run python scripts/run_evals.py --mode fixture
+```
+
+The default suite threshold is `0.67`, which means a case must pass at least 2 out of the default 3 runs to be considered healthy. This keeps the foundation useful for stochastic agents without turning every run into a flaky all-or-nothing gate.

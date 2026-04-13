@@ -42,16 +42,16 @@ Existing files to edit:
 
 ## Tasklist
 
-- [ ] Create an OpenTelemetry setup module that configures tracer, meter, exporter, and environment-driven enablement in one place.
-- [ ] Add shared instrumentation helpers or decorators so tool tracing is consistent instead of hand-coded per module.
-- [ ] Instrument graph queries with span metadata for query class, duration, and result count without logging full sensitive payloads.
-- [ ] Add tool-level spans and runtime metrics to the agent-facing tool modules that drive the heaviest workflows.
-- [ ] Instrument orchestrator graph transitions so node boundaries and retries appear in trace timelines.
-- [ ] Update the logging layer to attach trace and span context to structured log output.
-- [ ] Mount OpenTelemetry bootstrap into server startup with a safe disabled path for local environments that do not export telemetry.
-- [ ] Define baseline counters and histograms for tool duration, task throughput, and graph-query latency.
-- [ ] Document exporter configuration, local development defaults, and what should be redacted.
-- [ ] Validate that instrumentation does not materially change tool contracts or force new runtime dependencies into every call path.
+- [x] Create an OpenTelemetry setup module that configures tracer, meter, exporter, and environment-driven enablement in one place.
+- [x] Add shared instrumentation helpers or decorators so tool tracing is consistent instead of hand-coded per module.
+- [x] Instrument graph queries with span metadata for query class, duration, and result count without logging full sensitive payloads.
+- [x] Add tool-level spans and runtime metrics to the agent-facing tool modules that drive the heaviest workflows.
+- [x] Instrument orchestrator graph transitions so node boundaries and retries appear in trace timelines.
+- [x] Update the logging layer to attach trace and span context to structured log output.
+- [x] Mount OpenTelemetry bootstrap into server startup with a safe disabled path for local environments that do not export telemetry.
+- [x] Define baseline counters and histograms for tool duration, task throughput, and graph-query latency.
+- [x] Document exporter configuration, local development defaults, and what should be redacted.
+- [x] Validate that instrumentation does not materially change tool contracts or force new runtime dependencies into every call path.
 
 ## Out Of Scope
 
@@ -61,10 +61,10 @@ Existing files to edit:
 
 ## Done When
 
-- [ ] Traces exist for core tools, orchestrator graph runs, and graph queries.
-- [ ] Logs can be correlated with active traces.
-- [ ] Basic metrics are exposed for latency and throughput.
-- [ ] Telemetry can be disabled cleanly in environments that do not provide exporters.
+- [x] Traces exist for core tools, orchestrator graph runs, and graph queries.
+- [x] Logs can be correlated with active traces.
+- [x] Basic metrics are exposed for latency and throughput.
+- [x] Telemetry can be disabled cleanly in environments that do not provide exporters.
 
 ## References
 

@@ -1,246 +1,170 @@
 # Deployment Documentation
 
 ## Purpose
-This document explains how to deploy and run the Syntx Memory MCP Server in local development, staging, and production environments. It covers prerequisites, installation steps, run commands, and upgrade notes.
+This document explains how to run the Syntx Memory MCP Server locally and what to configure when promoting it to staging or production. It also covers the OpenTelemetry switches added for infrastructure-level observability.
 
-## Overview
-The server is a Python package that can be installed and run in various environments. It requires Ollama for embeddings and a Ladybug database for storage. Deployment supports local development, containerized staging, and production setups.
+## Runtime Requirements
 
-## Prerequisites
-### System Requirements
 - Python 3.14+
-- At least 4GB RAM (8GB recommended)
-- 10GB disk space for database and embeddings
+- Ollama reachable for embedding generation
+- A writable Ladybug database path
+- Port `9100` available unless `MCP_PORT` is overridden
 
-### Dependencies
-- Ollama service running locally or remotely
-- Required Ollama models: nomic-embed-text, llama3.2 (for summarization)
+## Local Development
 
-### Network Requirements
-- Outbound internet access for Ollama model downloads (initial setup)
-- Port 9100 available for HTTP/SSE (configurable)
-
-## Local Development Setup
 ### Installation
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd syntx-memory-mcp
-   ```
 
-2. Install dependencies:
-   ```bash
-   pip install -e .
-   ```
+```bash
+uv sync
+```
 
-3. Start Ollama service:
-   ```bash
-   ollama serve
-   ```
+If you are not using `uv`, an editable install still works:
 
-4. Pull required models:
-   ```bash
-   ollama pull nomic-embed-text
-   ollama pull llama3.2
-   ```
+```bash
+pip install -e .
+```
 
-### Configuration
-Create a `.env` file in the project root:
+### Minimal `.env`
+
 ```bash
 MCP_HOST=127.0.0.1
 MCP_PORT=9100
 MCP_TRANSPORT=http
 LADYBUG_DB_PATH=./data/syntx_memory.lbug
-OLLAMA_EMBED_MODEL=nomic-embed-text
-OLLAMA_EMBED_DIM=1536
+OLLAMA_EMBED_DIM=768
+MEM_GRAPH_WEBSITE=https://github.com/michael/syntx-memory
 ```
 
-### Running the Server
-Start the server:
+Version metadata is read from `pyproject.toml` and exposed through both the `get_server_info` MCP tool and `GET /info`.
+
+### Start the Server
+
 ```bash
-python -m mem-graph.server
+uv run main.py
 ```
 
-The server will be available at `http://127.0.0.1:9100`
+The server will be available at `http://127.0.0.1:9100`.
 
-To run the audit agent (example):
-In another terminal:
+Useful inspection endpoints:
+
 ```bash
-# The agent is invoked via MCP tools, not directly
-# Use an MCP client to call audit_package
+curl http://127.0.0.1:9100/info
+curl http://127.0.0.1:9100/health
 ```
 
-### Testing
-Run the test suite:
+## OpenTelemetry
+
+OpenTelemetry is initialized from `src/mem_graph/observability/otel_setup.py` during server startup.
+
+### Default Behavior
+
+- Telemetry stays disabled when no exporter is configured.
+- If you set `MEM_GRAPH_OTEL_ENABLED=true` without an OTLP endpoint, the server falls back to console span and metric export for local debugging.
+- If you set `OTEL_EXPORTER_OTLP_ENDPOINT` (or the trace/metric endpoint variants), the server enables OTLP export automatically.
+
+### Recommended Local Debugging Config
+
 ```bash
-pytest
+MEM_GRAPH_OTEL_ENABLED=true
+MEM_GRAPH_OTEL_CONSOLE_EXPORTER=true
 ```
 
-## Staging Deployment
-### Docker Setup
-Create a `Dockerfile`:
-```dockerfile
-FROM python:3.14-slim
-WORKDIR /app
-COPY pyproject.toml .
-RUN pip install -e .
-COPY src/ src/
-EXPOSE 9100
-CMD ["python", "-m", "mem-graph.server"]
-```
+### Recommended OTLP Export Config
 
-Build and run:
 ```bash
-docker build -t syntx-memory .
-docker run -p 9100:9100 -v ./data:/data -e OLLAMA_EMBED_DIM=1536 syntx-memory
+MEM_GRAPH_OTEL_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+OTEL_SERVICE_NAME=syntx-memory
 ```
 
-### Docker Compose
-Create `docker-compose.yml`:
-```yaml
-version: '3.8'
-services:
-  syntx-memory:
-    build: .
-    ports:
-      - "9100:9100"
-    volumes:
-      - ./data:/data
-    environment:
-      - MCP_HOST=0.0.0.0
-      - LADYBUG_DB_PATH=/data/memory.lbug
-      - OLLAMA_EMBED_DIM=1536
-  ollama:
-    image: ollama/ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-volumes:
-  ollama-data:
-```
+The implementation currently emits:
 
-Run:
+- Tool spans for the major agent-facing workflows and filesystem/memory/violation tools
+- Orchestrator graph node spans and retry transitions
+- Graph-query spans with query class, fingerprint, parameter count, duration, and row count
+- Metrics for tool duration, background task throughput, and graph-query latency/result counts
+- Structured log correlation through `trace_id` and `span_id`
+
+### Redaction Rules
+
+The telemetry path is intentionally conservative:
+
+- Graph-query spans do not store raw query text or parameters.
+- Tool spans capture names, duration, and coarse execution metadata rather than payload bodies.
+- Exceptions may still surface error types for debugging, but not full input payloads by design.
+
+## Testing and Evals
+
+Run the full test suite:
+
 ```bash
-docker-compose up -d
+uv run pytest
 ```
 
-## Production Deployment
-### Systemd Service
-Create `/etc/systemd/system/syntx-memory.service`:
+Run the baseline deterministic eval suites:
+
+```bash
+uv run mem-graph-evals --mode fixture
+```
+
+Run the live agent evals once provider credentials are configured:
+
+```bash
+uv run mem-graph-evals --mode live
+```
+
+## Staging and Production
+
+### Systemd Example
+
 ```ini
 [Unit]
 Description=Syntx Memory MCP Server
 After=network.target
+
 [Service]
 User=syntx
 Group=syntx
 WorkingDirectory=/opt/syntx-memory
-Environment=PATH=/opt/syntx-memory/venv/bin
-ExecStart=/opt/syntx-memory/venv/bin/python -m mem-graph.server
+Environment=PATH=/opt/syntx-memory/.venv/bin
+ExecStart=/opt/syntx-memory/.venv/bin/uv run main.py
 Restart=always
+
 [Install]
 WantedBy=multi-user.target
 ```
 
-Enable and start:
-```bash
-sudo systemctl enable syntx-memory
-sudo systemctl start syntx-memory
-```
+### Reverse Proxy Notes
 
-### Nginx Reverse Proxy
-Configure Nginx for production:
-```nginx
-server {
-    listen 80;
-    server_name memory.example.com;
-    location / {
-        proxy_pass http://127.0.0.1:9100;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
+If you front the server with Nginx or another proxy, forward `/mcp`, `/sse`, `/info`, `/health`, and any dashboard routes you expose to operators.
 
-### Database Backup
-Regular backups of the Ladybug database:
-```bash
-# Daily backup script
-#!/bin/bash
-DATE=$(date +%Y%m%d)
-cp /var/lib/syntx/memory.lbug /var/backups/syntx-memory-$DATE.lbug
-```
+### Backups
 
-## Upgrade Notes
-### Version Upgrades
-1. Stop the server:
-   ```bash
-   sudo systemctl stop syntx-memory
-   ```
-
-2. Backup database:
-   ```bash
-   cp /var/lib/syntx/memory.lbug /var/backups/pre-upgrade.lbug
-   ```
-
-3. Update code:
-   ```bash
-   cd /opt/syntx-memory
-   git pull
-   pip install -e . --upgrade
-   ```
-
-4. Check for configuration changes in release notes
-
-5. Update Ollama models if required:
-   ```bash
-   ollama pull nomic-embed-text:latest
-   ```
-
-6. Start the server:
-   ```bash
-   sudo systemctl start syntx-memory
-   ```
-
-### Breaking Changes
-- v0.2.0: Embedding dimension changed to 1536, update `OLLAMA_EMBED_DIM`
-- v0.1.5: Database schema migration required, backup before upgrade
+Back up the Ladybug database file regularly before upgrades or schema changes.
 
 ## Troubleshooting
-### Common Issues
-**Server won't start:**
-- Check Ollama is running: `ollama list`
-- Verify port 9100 is available: `netstat -tlnp | grep 9100`
-- Check logs: `journalctl -u syntx-memory`
 
-**Embedding failures:**
-- Pull latest models: `ollama pull nomic-embed-text`
-- Check model compatibility
+### Server Fails to Start
 
-**Database errors:**
-- Ensure write permissions on database directory
-- Check disk space
+- Verify Ollama is reachable: `ollama list`
+- Confirm the database directory is writable
+- Check logs for startup failures: `journalctl -u syntx-memory`
 
-## Monitoring
-### Health Checks
-Basic health check endpoint (if implemented):
-```bash
-curl http://localhost:9100/health
-```
+### No Telemetry Appears
 
-### Logs
-Monitor systemd logs:
-```bash
-journalctl -u syntx-memory -f
-```
+- Confirm `MEM_GRAPH_OTEL_ENABLED=true` or an OTLP endpoint is set
+- For local debugging, enable `MEM_GRAPH_OTEL_CONSOLE_EXPORTER=true`
+- Check whether `OTEL_SDK_DISABLED=true` is set anywhere in the environment
 
-### Metrics
-No built-in metrics, consider integrating with Prometheus for production monitoring.
+### No Eval Output Appears
+
+- Use `--mode fixture` first to verify the framework without model calls
+- Use `--json` if you want the full report payload instead of the text summary
 
 ## References to Code
-- Server startup: `src/mem-graph/server.py`
-- Database initialization: `src/mem-graph/db.py`
-- Configuration loading: `src/mem-graph/server.py:41-45`
+
+- `main.py`
+- `src/mem_graph/server.py`
+- `src/mem_graph/db.py`
+- `src/mem_graph/observability/otel_setup.py`
+- `src/mem_graph/evals/evaluator.py`

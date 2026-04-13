@@ -22,6 +22,7 @@ from mcp.types import Icon
 from pydantic import Field
 
 from ...agents.map.map_agent import MapDependencies, map_agent
+from ...observability import traced_tool
 from ...services.task_queue import task_queue
 from ..background.progress import ContextProgressReporter, ProgressReporter, report_step
 from ..background.task_status import build_task_submission
@@ -94,8 +95,7 @@ async def map_codebase(
         ),
     )
     return build_task_submission(task)
-
-
+@traced_tool("map_codebase", component="tool.worker")
 async def _map_codebase_worker(
     *,
     package_path: str,

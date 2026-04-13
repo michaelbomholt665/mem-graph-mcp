@@ -25,6 +25,8 @@ import anyio
 from fastmcp import FastMCP
 from pydantic import Field
 
+from ...observability import traced_tool
+
 logger = logging.getLogger(__name__)
 mcp = FastMCP("filesystem", instructions="Core filesystem read, search, and edit tools.")
 
@@ -37,6 +39,7 @@ _TAG = {"namespace:filesystem"}
 
 
 @mcp.tool(tags=_TAG)
+@traced_tool("file_read")
 async def file_read(
     path: Annotated[str, Field(description="Absolute path to the file to read.")],
     start_line: Annotated[int, Field(description="First line to return (1-indexed). Defaults to 1.", ge=1)] = 1,
@@ -77,6 +80,7 @@ async def file_read(
 
 
 @mcp.tool(tags=_TAG)
+@traced_tool("file_search")
 async def file_search(
     directory: Annotated[str, Field(description="Absolute path to the root directory to search.")],
     pattern: Annotated[str, Field(description="Filename glob pattern, e.g. '*.py' or 'main.go'.")],
@@ -111,6 +115,7 @@ async def file_search(
 
 
 @mcp.tool(tags=_TAG)
+@traced_tool("file_grep")
 async def file_grep(
     directory: Annotated[str, Field(description="Absolute path to the root directory to search.")],
     pattern: Annotated[str, Field(description="Text or regex pattern to search for across files.")],
@@ -176,6 +181,7 @@ async def _grep_file(path: str, compiled: re.Pattern[str], limit: int) -> list[d
 
 
 @mcp.tool(tags=_TAG)
+@traced_tool("file_write")
 async def file_write(
     path: Annotated[str, Field(description="Absolute path to the file to create or overwrite.")],
     content: Annotated[str, Field(description="Full file content to write.")],
@@ -206,6 +212,7 @@ async def file_write(
 
 
 @mcp.tool(tags=_TAG)
+@traced_tool("file_edit")
 async def file_edit(
     path: Annotated[str, Field(description="Absolute path to the file to edit.")],
     old_text: Annotated[str, Field(description="Exact text block to replace. Must appear exactly once in the file.")],
@@ -251,6 +258,7 @@ async def file_edit(
 
 
 @mcp.tool(tags=_TAG)
+@traced_tool("file_delete")
 async def file_delete(
     path: Annotated[str, Field(description="Absolute path to the file to delete.")],
 ) -> dict:

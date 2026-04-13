@@ -1,0 +1,107 @@
+"""Scoring helpers for mem-graph eval suites."""
+
+from __future__ import annotations
+
+import json
+import logging
+import re
+from functools import lru_cache
+
+from ..models.evals import EvalCase, ScorerName
+
+logger = logging.getLogger(__name__)
+
+
+def _normalize_text(value: str) -> str:
+    return " ".join(value.strip().lower().split())
+
+
+def exact_match_score(output: str, expected: str) -> float:
+    """Return 1.0 for exact semantic equality, otherwise 0.0."""
+    if not expected:
+        return 1.0 if not output.strip() else 0.0
+
+    try:
+        parsed_output = json.loads(output)
+        parsed_expected = json.loads(expected)
+    except json.JSONDecodeError:
+        return 1.0 if _normalize_text(output) == _normalize_text(expected) else 0.0
+
+    return 1.0 if parsed_output == parsed_expected else 0.0
+
+
+def keyword_score(output: str, expected_keywords: list[str]) -> float:
+    """Score based on how many expected keywords appear in the output."""
+    if not expected_keywords:
+        return 0.0
+
+    output_normalized = _normalize_text(output)
+    matches = sum(
+        1 for keyword in expected_keywords if _normalize_text(keyword) in output_normalized
+    )
+    return matches / len(expected_keywords)
+
+
+def regex_score(output: str, pattern: str) -> float:
+    """Return 1.0 if the output matches the expected regex pattern."""
+    if not pattern:
+        return 0.0
+    return 1.0 if re.search(pattern, output, re.IGNORECASE | re.MULTILINE) else 0.0
+
+
+def _semantic_token_overlap(output: str, expected: str) -> float:
+    output_tokens = {token for token in re.findall(r"[a-z0-9_]+", _normalize_text(output)) if token}
+    expected_tokens = {token for token in re.findall(r"[a-z0-9_]+", _normalize_text(expected)) if token}
+    if not output_tokens or not expected_tokens:
+        return exact_match_score(output, expected)
+
+    overlap = len(output_tokens & expected_tokens)
+    return overlap / len(output_tokens | expected_tokens)
+
+
+@lru_cache(maxsize=1)
+def _load_sentence_model():
+    try:
+        from sentence_transformers import SentenceTransformer
+
+        return SentenceTransformer("all-MiniLM-L6-v2")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Falling back to token-overlap semantic scorer: %s", exc)
+        return None
+
+
+def semantic_similarity_score(output: str, expected: str) -> float:
+    """Score semantic similarity using embeddings when available, otherwise token overlap."""
+    if not expected:
+        return 0.0
+
+    model = _load_sentence_model()
+    if model is None:
+        return _semantic_token_overlap(output, expected)
+
+    try:
+        from sentence_transformers import util
+
+        embeddings = model.encode([output, expected], convert_to_tensor=True)
+        similarity = float(util.pytorch_cos_sim(embeddings[0], embeddings[1])[0][0])
+        return max(0.0, min(1.0, similarity))
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Embedding-based semantic scorer failed, using fallback: %s", exc)
+        return _semantic_token_overlap(output, expected)
+
+
+def score_case_output(
+    case: EvalCase,
+    output: str,
+    *,
+    default_scorer: ScorerName,
+) -> tuple[ScorerName, float]:
+    """Score one case output using either its override or the suite default scorer."""
+    scorer = case.scorer or default_scorer
+    if scorer == "exact":
+        return scorer, exact_match_score(output, case.expected_output)
+    if scorer == "keywords":
+        return scorer, keyword_score(output, case.expected_keywords)
+    if scorer == "regex":
+        return scorer, regex_score(output, case.expected_pattern or "")
+    return scorer, semantic_similarity_score(output, case.expected_output)
