@@ -36,6 +36,8 @@ CREATE NODE TABLE IF NOT EXISTS Agent (
     name        STRING,               -- e.g. "claude-opus-4-6", "codex-cli"
     role        STRING,               -- planner | coder | auditor | reviewer
     model       STRING,               -- raw model string
+    last_run_at TIMESTAMP,
+    status_metadata STRING,
     created_at  TIMESTAMP DEFAULT current_timestamp()
 );
 
@@ -230,6 +232,7 @@ CREATE NODE TABLE IF NOT EXISTS EvalRun (
     mode              STRING,
     label             STRING,
     trigger           STRING,
+    logfire_run_id    STRING,
     total_suites      INT64,
     passed_suites     INT64,
     suite_pass_rate   DOUBLE,
@@ -241,6 +244,19 @@ CREATE NODE TABLE IF NOT EXISTS EvalRun (
     started_at        TIMESTAMP,
     completed_at      TIMESTAMP,
     persisted_at      TIMESTAMP DEFAULT current_timestamp()
+);
+
+// ---------------------------------------------------------------------------
+// DashboardConfig — persisted dashboard preferences per project/user surface
+// ---------------------------------------------------------------------------
+CREATE NODE TABLE IF NOT EXISTS DashboardConfig (
+    id              STRING PRIMARY KEY,
+    project_id      STRING,
+    pinned_projects STRING[],
+    theme           STRING,
+    filters_json    STRING,
+    created_at      TIMESTAMP DEFAULT current_timestamp(),
+    updated_at      TIMESTAMP DEFAULT current_timestamp()
 );
 
 // ---------------------------------------------------------------------------

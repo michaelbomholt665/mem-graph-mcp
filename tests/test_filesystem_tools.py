@@ -10,7 +10,7 @@ All tests are synchronous (tools are async, run via pytest-asyncio).
 from __future__ import annotations
 
 import os
-import anyio
+
 import pytest
 
 from mem_graph.tools.filesystem.filesystem import (
@@ -33,8 +33,7 @@ async def test_file_write_creates_file(tmp_path):
     result = await file_write(path, "hello world\n")
     assert result["status"] == "ok"
     assert os.path.isfile(path)
-    async with await anyio.open_file(path, "r", encoding="utf-8") as f:
-        assert await f.read() == "hello world\n"
+    assert (tmp_path / "test.txt").read_text(encoding="utf-8") == "hello world\n"
 
 
 @pytest.mark.asyncio
@@ -42,8 +41,7 @@ async def test_file_write_overwrites(tmp_path):
     path = str(tmp_path / "test.txt")
     await file_write(path, "first\n")
     await file_write(path, "second\n")
-    async with await anyio.open_file(path, "r", encoding="utf-8") as f:
-        assert await f.read() == "second\n"
+    assert (tmp_path / "test.txt").read_text(encoding="utf-8") == "second\n"
 
 
 @pytest.mark.asyncio
@@ -148,8 +146,7 @@ async def test_file_edit_replaces_once(tmp_path):
     await file_write(path, "def foo():\n    return 1\n")
     result = await file_edit(path, "return 1", "return 42")
     assert result["status"] == "ok"
-    async with await anyio.open_file(path, "r", encoding="utf-8") as f:
-        assert "return 42" in await f.read()
+    assert "return 42" in (tmp_path / "edit.py").read_text(encoding="utf-8")
 
 
 @pytest.mark.asyncio

@@ -56,6 +56,7 @@ import json
 import logging
 import os
 import sys
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any, AsyncGenerator, Literal, cast
@@ -98,9 +99,10 @@ from mcp.types import Icon
 from pydantic import Field
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 
+from .agents.discovery import discover_agent_modules, workflow_definitions
 from .db import db_close_engine, db_get_connection, db_init_engine
 from .logging import logging_setup_engine
 
@@ -128,6 +130,7 @@ SERVER_API_VERSION = "1.0"
 SERVER_WEBSITE = os.getenv(
     "MEM_GRAPH_WEBSITE", "https://github.com/michael/syntx-memory"
 )
+_SERVER_STARTED_AT = time.monotonic()
 
 # Consolidated namespaces
 _LAZY_NAMESPACES: frozenset[str] = frozenset(
@@ -807,6 +810,239 @@ def _dashboard_css(request: Request) -> FileResponse:  # noqa: ARG001
     return FileResponse(_STATIC_DIR / "dashboard.css", media_type="text/css")
 
 
+def _force_graph_js(request: Request) -> Response:  # noqa: ARG001
+    return Response(
+        (_STATIC_DIR / "force-graph.js").read_text(encoding="utf-8"),
+        media_type="text/javascript",
+    )
+
+
+def _query_rows(query: str, params: dict[str, Any] | None = None) -> list[list[Any]]:
+    conn = db_get_connection()
+    result = conn.execute(query, params or {})
+    if isinstance(result, list):
+        result = result[0]
+    return cast(list[list[Any]], result.get_all())
+
+
+def _safe_count(query: str, params: dict[str, Any] | None = None) -> int:
+    try:
+        rows = _query_rows(query, params)
+    except Exception:  # noqa: BLE001
+        return 0
+    return int(rows[0][0]) if rows else 0
+
+
+def _dashboard_graph_telemetry() -> dict[str, Any]:
+    node_labels = [
+        "Agent",
+        "Project",
+        "Backend",
+        "Task",
+        "Decision",
+        "Note",
+        "Violation",
+        "Memory",
+        "Message",
+        "CodeFile",
+        "CodeSymbol",
+        "JinaIssue",
+        "EvalRun",
+    ]
+    relationship_names = [
+        "HAS_BACKEND",
+        "HAS_TASK",
+        "HAS_DECISION",
+        "HAS_NOTE",
+        "HAS_VIOLATION",
+        "HAS_FILE",
+        "HAS_JINA_ISSUE",
+        "HAS_EVAL_RUN",
+        "PROJECT_MEMORY",
+        "BACKEND_TASK",
+        "BACKEND_DECISION",
+        "BACKEND_SYMBOL",
+        "BACKEND_VIOLATION",
+        "TASK_BLOCKS",
+        "TASK_SPAWNS",
+        "TASK_DECISION",
+        "TASK_VIOLATION",
+        "TASK_NOTE",
+        "DECISION_NOTE",
+        "SUPERSEDES",
+        "VIOLATION_RECURS",
+        "SYMBOL_TASK",
+        "SYMBOL_VIOLATION",
+        "SYMBOL_DECISION",
+        "AUTHORED_BY",
+    ]
+    node_counts = {
+        label: _safe_count(f"MATCH (n:{label}) RETURN count(n)") for label in node_labels
+    }
+    edge_counts = {
+        rel: _safe_count(f"MATCH ()-[r:{rel}]->() RETURN count(r)")
+        for rel in relationship_names
+    }
+    task_status = {
+        str(row[0] or "unknown"): int(row[1])
+        for row in _query_rows(
+            "MATCH (t:Task) RETURN t.status, count(t) ORDER BY t.status"
+        )
+    }
+    violation_severity = {
+        str(row[0] or "unknown"): int(row[1])
+        for row in _query_rows(
+            "MATCH (v:Violation) RETURN v.severity, count(v) ORDER BY v.severity"
+        )
+    }
+    return {
+        "node_count": sum(node_counts.values()),
+        "edge_count": sum(edge_counts.values()),
+        "node_counts": node_counts,
+        "edge_counts": edge_counts,
+        "task_status": task_status,
+        "violation_severity": violation_severity,
+    }
+
+
+async def _dashboard_system(request: Request) -> JSONResponse:  # noqa: ARG001
+    db_status = "connected"
+    telemetry: dict[str, Any] = {}
+    try:
+        _query_rows("MATCH (s:SchemaMeta) RETURN s LIMIT 1")
+        telemetry = _dashboard_graph_telemetry()
+    except Exception as exc:  # noqa: BLE001
+        db_status = f"error: {exc}"
+
+    status = "ok" if db_status == "connected" else "degraded"
+    return JSONResponse(
+        {
+            "server": _server_info_payload(),
+            "status": status,
+            "uptime_seconds": round(time.monotonic() - _SERVER_STARTED_AT, 3),
+            "db": {"status": db_status},
+            "telemetry": telemetry,
+        },
+        status_code=200 if status == "ok" else 503,
+    )
+
+
+async def _dashboard_agents(request: Request) -> JSONResponse:  # noqa: ARG001
+    agents = discover_agent_modules()
+    return JSONResponse({"agents": agents, "count": len(agents)})
+
+
+async def _dashboard_workflows(request: Request) -> JSONResponse:  # noqa: ARG001
+    workflows = workflow_definitions()
+    return JSONResponse({"workflows": workflows, "count": len(workflows)})
+
+
+def _jsonable_tool_schema(value: Any) -> Any:
+    if value is None:
+        return None
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    if isinstance(value, (dict, list, str, int, float, bool)):
+        return value
+    return str(value)
+
+
+async def _dashboard_tools(request: Request) -> JSONResponse:  # noqa: ARG001
+    tool_defs: list[Any] = []
+    for provider in mcp.providers:
+        if provider.__class__.__name__ == "SkillsDirectoryProvider":
+            continue
+        try:
+            tool_defs.extend(await provider.list_tools())
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "dashboard_tool_provider_failed provider=%s error=%s",
+                provider,
+                exc,
+            )
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for tool_def in tool_defs:
+        namespace = _get_namespace(tool_def)
+        tags = list(getattr(tool_def, "tags", []) or [])
+        input_schema = (
+            getattr(tool_def, "inputSchema", None)
+            or getattr(tool_def, "parameters", None)
+            or getattr(tool_def, "input_schema", None)
+        )
+        groups.setdefault(namespace, []).append(
+            {
+                "name": tool_def.name,
+                "description": tool_def.description or "",
+                "namespace": namespace,
+                "tags": tags,
+                "input_schema": _jsonable_tool_schema(input_schema),
+            }
+        )
+    for tools in groups.values():
+        tools.sort(key=lambda item: item["name"])
+    return JSONResponse(
+        {
+            "namespaces": [
+                {"namespace": key, "tools": value, "count": len(value)}
+                for key, value in sorted(groups.items())
+            ],
+            "count": sum(len(value) for value in groups.values()),
+        }
+    )
+
+
+async def _dashboard_evals(request: Request) -> JSONResponse:
+    project_id = request.query_params.get("project_id")
+    limit = min(max(int(request.query_params.get("limit", 20)), 1), 100)
+    if project_id:
+        query = f"""
+            MATCH (p:Project {{id: $project_id}})-[:HAS_EVAL_RUN]->(e:EvalRun)
+            RETURN e.id, e.mode, e.label, e.trigger, e.total_suites, e.passed_suites,
+                   e.suite_pass_rate, e.total_duration_ms, e.report_path, e.summary,
+                   e.started_at, e.completed_at, e.persisted_at, e.logfire_run_id, p.id
+            ORDER BY e.started_at DESC, e.persisted_at DESC
+            LIMIT {limit}
+        """
+        params: dict[str, Any] = {"project_id": project_id}
+    else:
+        query = f"""
+            MATCH (e:EvalRun)
+            OPTIONAL MATCH (p:Project)-[:HAS_EVAL_RUN]->(e)
+            RETURN e.id, e.mode, e.label, e.trigger, e.total_suites, e.passed_suites,
+                   e.suite_pass_rate, e.total_duration_ms, e.report_path, e.summary,
+                   e.started_at, e.completed_at, e.persisted_at, e.logfire_run_id, p.id
+            ORDER BY e.started_at DESC, e.persisted_at DESC
+            LIMIT {limit}
+        """
+        params = {}
+    rows = _query_rows(query, params)
+    return JSONResponse(
+        {
+            "evals": [
+                {
+                    "id": row[0],
+                    "mode": row[1],
+                    "label": row[2],
+                    "trigger": row[3],
+                    "total_suites": row[4],
+                    "passed_suites": row[5],
+                    "suite_pass_rate": row[6],
+                    "total_duration_ms": row[7],
+                    "report_path": row[8],
+                    "summary": row[9],
+                    "started_at": str(row[10]) if row[10] else None,
+                    "completed_at": str(row[11]) if row[11] else None,
+                    "persisted_at": str(row[12]) if row[12] else None,
+                    "logfire_run_id": row[13],
+                    "project_id": row[14],
+                }
+                for row in rows
+            ],
+            "count": len(rows),
+        }
+    )
+
+
 async def _dashboard_graph(request: Request) -> JSONResponse:
     node_types_raw = request.query_params.get("node_types")
     node_types = (
@@ -940,11 +1176,18 @@ def _run_http() -> None:
 
 
 def build_http_app(*, with_lifespan: bool = True) -> Starlette:
-    app_http = mcp.http_app(transport="streamable-http", path="/mcp")
-    app_sse = mcp.http_app(transport="sse", path="/sse")
+    app_http = (
+        mcp.http_app(transport="streamable-http", path="/mcp")
+        if with_lifespan
+        else None
+    )
+    app_sse = mcp.http_app(transport="sse", path="/sse") if with_lifespan else None
 
     @asynccontextmanager
     async def combined_lifespan(app_instance: Starlette) -> AsyncGenerator[None, None]:
+        if app_http is None or app_sse is None:
+            yield
+            return
         async with app_http.router.lifespan_context(app_instance):
             async with app_sse.router.lifespan_context(app_instance):
                 yield
@@ -955,6 +1198,12 @@ def build_http_app(*, with_lifespan: bool = True) -> Starlette:
         Route("/dashboard", _dashboard, methods=["GET"]),
         Route("/dashboard.js", _dashboard_js, methods=["GET"]),
         Route("/dashboard.css", _dashboard_css, methods=["GET"]),
+        Route("/force-graph.js", _force_graph_js, methods=["GET"]),
+        Route("/dashboard/api/system", _dashboard_system, methods=["GET"]),
+        Route("/dashboard/api/agents", _dashboard_agents, methods=["GET"]),
+        Route("/dashboard/api/workflows", _dashboard_workflows, methods=["GET"]),
+        Route("/dashboard/api/tools", _dashboard_tools, methods=["GET"]),
+        Route("/dashboard/api/evals", _dashboard_evals, methods=["GET"]),
         Route("/dashboard/api/graph", _dashboard_graph, methods=["GET"]),
         Route("/dashboard/api/node/{node_id}", _dashboard_node, methods=["GET"]),
         Route("/dashboard/api/search", _dashboard_search, methods=["GET"]),
@@ -967,6 +1216,8 @@ def build_http_app(*, with_lifespan: bool = True) -> Starlette:
     ]
 
     return Starlette(
-        routes=web_routes + app_http.router.routes + app_sse.router.routes,
+        routes=web_routes
+        if app_http is None or app_sse is None
+        else web_routes + app_http.router.routes + app_sse.router.routes,
         lifespan=combined_lifespan if with_lifespan else None,
     )

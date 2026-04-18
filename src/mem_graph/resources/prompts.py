@@ -70,10 +70,32 @@ Steps:
 4. Provide a final high-level status report to the user.
 """
 
+WORKFLOW_AGENT_PROMPT = """
+Run the requested work as an explicit managed workflow. Python owns control
+flow, retries, and stage ordering. Use LLM reasoning only inside the current
+stage, then return structured output for the graph node to route.
+"""
+
+AGENT_BUILDER_DISCOVERY_PROMPT = """
+Inspect the project files, manifests, docs, existing memory/context, and
+command surfaces. Recommend only helper agents that would materially improve
+future work. Prefer codebase-aware, command-map, and memory-bank builder specs
+for the initial project helper set.
+"""
+
+AGENT_BUILDER_UPDATE_PROMPT = """
+Update a project helper-agent spec from concrete evidence: existing spec state,
+local eval metadata, hosted Logfire dataset/eval availability, and observed
+failure patterns. Produce reviewable changes with a versioned changelog.
+"""
+
 # Registry for easy lookup
 PROMPT_REGISTRY: dict[str, str] = {
     "sync_context": SYNC_CONTEXT_PROMPT,
     "plan_feature": PLAN_FEATURE_PROMPT,
     "run_audit": RUN_AUDIT_PROMPT,
     "close_session": CLOSE_SESSION_PROMPT,
+    "workflow_agent": WORKFLOW_AGENT_PROMPT,
+    "agent_builder_discovery": AGENT_BUILDER_DISCOVERY_PROMPT,
+    "agent_builder_update": AGENT_BUILDER_UPDATE_PROMPT,
 }

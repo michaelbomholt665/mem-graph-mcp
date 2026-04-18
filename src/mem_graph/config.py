@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 from enum import Enum
+from typing import Literal
 
 from pydantic_ai.settings import ModelSettings
 
@@ -62,6 +63,43 @@ MODEL_TIER_MAP: dict[str, str] = {
     ModelTier.MICRO: os.getenv("MEM_GRAPH_MODEL_MICRO", "openai:gpt-5.4-mini"),
     ModelTier.TURBO: os.getenv("MEM_GRAPH_MODEL_TURBO", "x-ai/grok-code-fast-1:optimized:free"),
 }
+
+WorkflowStageName = Literal[
+    "context_gather",
+    "planning",
+    "implementation",
+    "audit",
+    "debug_validation",
+    "documentation",
+    "context_map_update",
+    "memory_bank_sync",
+]
+
+WORKFLOW_STAGE_MODEL_MAP: dict[WorkflowStageName, str] = {
+    "context_gather": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_CONTEXT", "openai:gpt-5.4-mini"),
+    "planning": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_PLANNING", "openai:gpt-5.4-mini"),
+    "implementation": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_IMPLEMENTATION", "openai:gpt-5.4-xhigh"),
+    "audit": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_AUDIT", "openai:gpt-5.4-xhigh"),
+    "debug_validation": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_DEBUG", "openai:gpt-5.4-xhigh"),
+    "documentation": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_DOCUMENTATION", "openai:gpt-5.4-mini"),
+    "context_map_update": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_CONTEXT_MAP", "openai:gpt-5.4-mini"),
+    "memory_bank_sync": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_MEMORY_BANK", "openai:gpt-5.4-mini"),
+}
+
+
+def config_get_model_for_workflow_stage(
+    stage: WorkflowStageName,
+    overrides: dict[str, str] | None = None,
+) -> str:
+    """
+    Resolve the model for a workflow stage with optional caller overrides.
+
+    Coding, audit, and debugging stages default to stronger models while
+    context, documentation, and memory stages default to cheaper mini models.
+    """
+    if overrides and stage in overrides:
+        return overrides[stage]
+    return WORKFLOW_STAGE_MODEL_MAP[stage]
 
 # Concurrency scaling thresholds (file count → worker count)
 _SCALE_THRESHOLD_MED: int = 10   # ≥10 files → 2 workers

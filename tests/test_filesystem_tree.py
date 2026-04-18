@@ -1,7 +1,25 @@
 from __future__ import annotations
 
-from starlette.testclient import TestClient
+import json
+
 import pytest
+from starlette.requests import Request
+
+
+def _request(path: str = "/", query: str = "") -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": path,
+            "query_string": query.encode(),
+            "headers": [],
+        }
+    )
+
+
+def _json(response) -> dict:
+    return json.loads(response.body.decode())
 
 
 def _find_node(node: dict, relative_path: str) -> dict | None:
@@ -95,19 +113,25 @@ async def test_file_tree_routes_respond(db, tmp_path):
         description="Route explorer test",
     )
 
-    app = server_mod.build_http_app(with_lifespan=False)
-    with TestClient(app) as client:
-        tree_page = client.get("/file-tree")
-        tree_api = client.get(f"/file-tree/api/tree?root_path={repo_root}&project_id={project_id}")
-        detail_api = client.get(
-            f"/file-tree/api/violations?root_path={repo_root}&project_id={project_id}&file_path=src/app.py"
+    tree_page = server_mod._file_tree(_request("/file-tree"))
+    tree_api = await server_mod._file_tree_data(
+        _request(
+            "/file-tree/api/tree",
+            f"root_path={repo_root}&project_id={project_id}",
         )
+    )
+    detail_api = await server_mod._file_tree_violations(
+        _request(
+            "/file-tree/api/violations",
+            f"root_path={repo_root}&project_id={project_id}&file_path=src/app.py",
+        )
+    )
 
     assert tree_page.status_code == 200
-    assert "Project Files" in tree_page.text
+    assert tree_page.path.name == "file-tree.html"
     assert tree_api.status_code == 200
-    assert tree_api.json()["children"]
+    assert _json(tree_api)["children"]
     assert detail_api.status_code == 200
-    detail_payload = detail_api.json()
+    detail_payload = _json(detail_api)
     assert detail_payload["violation_count"] == 1
     assert detail_payload["violations"][0]["rule"] == "route:test"

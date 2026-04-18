@@ -4,9 +4,22 @@ import asyncio
 import json
 
 import pytest
+from starlette.requests import Request
 
 from mem_graph.evals import build_suite_registry
 from mem_graph.evals.evaluator import Evaluator, main, write_json_report
+
+
+def _request(path: str = "/", query: str = "") -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": path,
+            "query_string": query.encode(),
+            "headers": [],
+        }
+    )
 
 
 @pytest.mark.asyncio
@@ -85,12 +98,23 @@ async def test_eval_report_can_be_written_and_persisted(db, tmp_path) -> None:
     result = db.execute(
         """
         MATCH (p:Project {id: $project_id})-[:HAS_EVAL_RUN]->(e:EvalRun {id: $eval_run_id})
-        RETURN e.mode, e.total_suites, e.passed_suites, e.report_path, e.label, e.trigger
+        RETURN e.mode, e.total_suites, e.passed_suites, e.report_path, e.label, e.trigger, e.logfire_run_id
         """,
         {"project_id": project["project_id"], "eval_run_id": eval_run_id},
     )
     rows = result.get_all()
-    assert rows == [["fixture", 5, 5, output_path, "fixture-ci", "pytest"]]
+    assert rows == [["fixture", 5, 5, output_path, "fixture-ci", "pytest", None]]
+
+    from mem_graph import server as server_mod
+
+    response = await server_mod._dashboard_evals(
+        _request("/dashboard/api/evals", f"project_id={project['project_id']}")
+    )
+
+    assert response.status_code == 200
+    evals = json.loads(bytes(response.body).decode())["evals"]
+    assert evals[0]["id"] == eval_run_id
+    assert evals[0]["logfire_run_id"] is None
 
 
 @pytest.mark.asyncio

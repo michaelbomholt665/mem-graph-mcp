@@ -20,7 +20,8 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any
+from pathlib import Path
+from typing import Any, Awaitable, Callable
 
 import anyio
 from pydantic import BaseModel, Field
@@ -123,6 +124,21 @@ class OrchestratorDependencies:
     timeout: float = _DEFAULT_TIMEOUT
     skills_content: str = ""
     extra_context: dict = field(default_factory=dict)
+    batch_results: list[BatchResult] = field(default_factory=list)
+    aggregate: dict[str, Any] = field(default_factory=dict)
+
+
+SubagentRunner = Callable[
+    [OrchestratorDependencies, list[BatchFileContent]],
+    Awaitable[Any],
+]
+
+SUBAGENT_REGISTRY: dict[str, SubagentRunner] = {}
+
+
+def register_subagent(name: str, runner: SubagentRunner) -> None:
+    """Register a batched sub-agent runner for deterministic orchestration."""
+    SUBAGENT_REGISTRY[name] = runner
 
 
 ################
@@ -190,11 +206,7 @@ async def list_files(ctx: RunContext[OrchestratorDependencies]) -> list[str]:
     Returns paths matching the configured extension, sorted for
     deterministic batch ordering across runs.
     """
-    import glob
-
-    pattern = os.path.join(ctx.deps.package_path, f"**/*{ctx.deps.file_extension}")
-    paths = glob.glob(pattern, recursive=True)
-    return sorted(paths)
+    return await list_source_files(ctx.deps.package_path, ctx.deps.file_extension)
 
 
 @orchestrator_agent.tool
@@ -211,8 +223,7 @@ async def process_batch(
     Call this once per batch before moving to the next group of files.
     """
     capped_paths = file_paths[: ctx.deps.batch_size]
-    state = _get_state(ctx)
-    batch_index = len(state["batch_results"])
+    batch_index = len(ctx.deps.batch_results)
 
     logger.info(
         "[ORCH] starting batch=%d subagent=%s files=%d",
@@ -224,8 +235,8 @@ async def process_batch(
     file_contents = await _read_batch(capped_paths)
     result = await _invoke_subagent(ctx, batch_index, file_contents)
 
-    state["batch_results"].append(result)
-    _merge_into_aggregate(state["aggregate"], result, ctx.deps.subagent_name)
+    ctx.deps.batch_results.append(result)
+    _merge_into_aggregate(ctx.deps.aggregate, result, ctx.deps.subagent_name)
 
     status = "FAILED" if result.failed else f"{len(capped_paths)} files processed"
     finding_summary = _summarise_batch_result(result, ctx.deps.subagent_name)
@@ -252,8 +263,7 @@ async def finalize(
     Called exactly once after all batches have been processed.
     Computes run statistics from accumulated batch results.
     """
-    state = _get_state(ctx)
-    batch_results = state["batch_results"]
+    batch_results = ctx.deps.batch_results
     failed = sum(1 for r in batch_results if r.failed)
     total_files = sum(len(r.files_processed) for r in batch_results)
 
@@ -272,7 +282,7 @@ async def finalize(
         total_batches=len(batch_results),
         failed_batches=failed,
         batch_results=batch_results,
-        aggregate=state["aggregate"],
+        aggregate=ctx.deps.aggregate,
         summary=summary,
         partial_failure=failed > 0,
     )
@@ -283,8 +293,64 @@ async def finalize(
 ################
 
 
+async def run_orchestrator_batches(
+    deps: OrchestratorDependencies,
+    *,
+    summary: str | None = None,
+    progress_callback: Callable[[int, int, BatchResult], Awaitable[None]] | None = None,
+) -> OrchestratorReport:
+    """
+    Run the full batched orchestration workflow deterministically.
+
+    Python owns file discovery, batch ordering, sub-agent dispatch, aggregation,
+    and final report construction. The LLM sub-agents only reason over the
+    pre-read batch content they receive.
+    """
+    deps.batch_results.clear()
+    deps.aggregate.clear()
+
+    files = await list_source_files(deps.package_path, deps.file_extension)
+    batches = _split_batches(files, deps.batch_size)
+
+    for batch_index, batch_paths in enumerate(batches):
+        logger.info(
+            "[ORCH] deterministic batch=%d/%d subagent=%s files=%d",
+            batch_index + 1,
+            len(batches),
+            deps.subagent_name,
+            len(batch_paths),
+        )
+        file_contents = await _read_batch(batch_paths)
+        result = await _invoke_subagent(deps, batch_index, file_contents)
+        deps.batch_results.append(result)
+        _merge_into_aggregate(deps.aggregate, result, deps.subagent_name)
+        if progress_callback is not None:
+            await progress_callback(batch_index + 1, len(batches), result)
+
+    failed = sum(1 for r in deps.batch_results if r.failed)
+    total_files = sum(len(r.files_processed) for r in deps.batch_results)
+    final_summary = summary or _summarise_orchestration(
+        deps.subagent_name,
+        total_files,
+        len(deps.batch_results),
+        failed,
+        deps.aggregate,
+    )
+    return OrchestratorReport(
+        package_path=deps.package_path,
+        subagent_name=deps.subagent_name,
+        total_files=total_files,
+        total_batches=len(deps.batch_results),
+        failed_batches=failed,
+        batch_results=list(deps.batch_results),
+        aggregate=dict(deps.aggregate),
+        summary=final_summary,
+        partial_failure=failed > 0,
+    )
+
+
 async def _invoke_subagent(
-    ctx: RunContext[OrchestratorDependencies],
+    deps: OrchestratorDependencies | RunContext[OrchestratorDependencies],
     batch_index: int,
     file_contents: list[BatchFileContent],
 ) -> BatchResult:
@@ -294,11 +360,13 @@ async def _invoke_subagent(
     Routes to audit, map, or decision agent based on subagent_name.
     Runs with a timeout and catches failures to allow partial runs.
     """
+    if isinstance(deps, RunContext):
+        deps = deps.deps
     paths = [f.path for f in file_contents]
 
     try:
-        with anyio.fail_after(ctx.deps.timeout):
-            output = await _dispatch(ctx, file_contents)
+        with anyio.fail_after(deps.timeout):
+            output = await _dispatch(deps, file_contents)
 
         return BatchResult(
             batch_index=batch_index,
@@ -307,13 +375,13 @@ async def _invoke_subagent(
         )
 
     except TimeoutError:
-        logger.warning("Batch %d timed out after %.0fs", batch_index, ctx.deps.timeout)
+        logger.warning("Batch %d timed out after %.0fs", batch_index, deps.timeout)
         return BatchResult(
             batch_index=batch_index,
             files_processed=paths,
             output=None,
             failed=True,
-            error=f"Timeout after {ctx.deps.timeout}s",
+            error=f"Timeout after {deps.timeout}s",
         )
     except Exception as exc:  # noqa: BLE001
         logger.error("Batch %d sub-agent failed: %s", batch_index, exc)
@@ -327,7 +395,7 @@ async def _invoke_subagent(
 
 
 async def _dispatch(
-    ctx: RunContext[OrchestratorDependencies],
+    deps: OrchestratorDependencies | RunContext[OrchestratorDependencies],
     file_contents: list[BatchFileContent],
 ) -> Any:
     """
@@ -336,20 +404,54 @@ async def _dispatch(
     Builds sub-agent deps with the pre-read file content injected
     so sub-agents do not need to re-read files from disk.
     """
-    name = ctx.deps.subagent_name
+    if isinstance(deps, RunContext):
+        deps = deps.deps
+    name = deps.subagent_name
+    runner = SUBAGENT_REGISTRY.get(name)
+    if runner is not None:
+        return await runner(deps, file_contents)
+    project_helper = _find_project_helper_runner(deps, name)
+    if project_helper is not None:
+        return project_helper
 
-    if name == "audit":
-        return await _run_audit_batch(ctx, file_contents)
-    if name == "map":
-        return await _run_map_batch(ctx, file_contents)
-    if name == "decision":
-        return await _run_decision_batch(ctx, file_contents)
+    supported = ", ".join(sorted(SUBAGENT_REGISTRY)) or "<none>"
+    raise ValueError(f"Unknown sub-agent: '{name}'. Supported: {supported}.")
 
-    raise ValueError(f"Unknown sub-agent: '{name}'. Supported: audit, map, decision.")
+
+def _find_project_helper_runner(
+    deps: OrchestratorDependencies,
+    name: str,
+) -> dict[str, Any] | None:
+    """
+    Resolve a project-specific helper-agent spec for orchestration.
+
+    Helper specs are structured YAML, not arbitrary executable Python. Returning
+    the validated spec lets callers see that the helper was discovered while
+    keeping execution gated until a concrete runtime is attached.
+    """
+    try:
+        from .builder.agent_builder import find_helper_agent_spec
+
+        project_root = str(deps.extra_context.get("project_root") or deps.package_path)
+        spec = find_helper_agent_spec(project_root, deps.project_id, name)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Could not resolve project helper spec %s: %s", name, exc)
+        return None
+
+    if spec is None:
+        return None
+    return {
+        "helper_agent": spec.model_dump(mode="json"),
+        "status": "spec_discovered",
+        "message": (
+            "Project helper-agent spec found. Runtime execution is pending "
+            "a concrete helper-agent adapter."
+        ),
+    }
 
 
 async def _run_audit_batch(
-    ctx: RunContext[OrchestratorDependencies],
+    deps: OrchestratorDependencies,
     file_contents: list[BatchFileContent],
 ) -> Any:
     """
@@ -358,26 +460,60 @@ async def _run_audit_batch(
     Injects file content via skills_content so the agent has all
     files available without additional read tool calls.
     """
-    from .audit.audit_agent import AuditDependencies, audit_agent
+    return await _run_audit_rule_set_batch(deps, file_contents, "default")
+
+
+async def _run_audit_rule_set_batch(
+    deps: OrchestratorDependencies,
+    file_contents: list[BatchFileContent],
+    rule_set: str,
+) -> Any:
+    """Run a preloaded audit batch with a named audit rule set."""
+    from .audit.factory import build_audit_agent_bundle
 
     file_block = _format_file_block(file_contents)
-    deps = AuditDependencies(
-        package_path=ctx.deps.package_path,
-        file_extension=ctx.deps.file_extension,
-        skills_content=ctx.deps.skills_content,
+    bundle = build_audit_agent_bundle(
+        package_path=deps.package_path,
+        rule_set=rule_set,
+        tool_mode="preloaded",
+        file_extension=deps.file_extension,
+        skills_content=deps.skills_content,
         extra_file_context=file_block,
     )
     prompt = (
         f"Analyse these {len(file_contents)} files against the rules checklist. "
-        "The file contents are provided in extra_file_context — do not call read_file. "
-        "Record findings for each file then finalize."
+        "The file contents are provided in extra_file_context. Return an AuditReport."
     )
-    result = await audit_agent.run(prompt, deps=deps)
+    result = await bundle.agent.run(prompt, deps=bundle.deps)
     return result.output
 
 
+async def _run_security_audit_batch(
+    deps: OrchestratorDependencies,
+    file_contents: list[BatchFileContent],
+) -> Any:
+    """Run security-focused preloaded audit."""
+    return await _run_audit_rule_set_batch(deps, file_contents, "security")
+
+
+async def _run_bug_audit_batch(
+    deps: OrchestratorDependencies,
+    file_contents: list[BatchFileContent],
+) -> Any:
+    """Run correctness/bug-focused preloaded audit."""
+    return await _run_audit_rule_set_batch(deps, file_contents, "bug")
+
+
+async def _run_smell_audit_batch(
+    deps: OrchestratorDependencies,
+    file_contents: list[BatchFileContent],
+) -> Any:
+    """Run maintainability/code-smell-focused preloaded audit."""
+    return await _run_audit_rule_set_batch(deps, file_contents, "smell")
+
+
 async def _run_map_batch(
-    ctx: RunContext[OrchestratorDependencies],
+    deps: OrchestratorDependencies,
     file_contents: list[BatchFileContent],
 ) -> Any:
     """
@@ -389,11 +525,11 @@ async def _run_map_batch(
     from .map.map_agent import MapDependencies, map_agent
 
     file_block = _format_file_block(file_contents)
-    deps = MapDependencies(
-        package_path=ctx.deps.package_path,
-        file_extension=ctx.deps.file_extension,
-        skills_content=ctx.deps.skills_content,
-        known_features=ctx.deps.extra_context.get("known_features", []),
+    map_deps = MapDependencies(
+        package_path=deps.package_path,
+        file_extension=deps.file_extension,
+        skills_content=deps.skills_content,
+        known_features=deps.extra_context.get("known_features", []),
         extra_file_context=file_block,
     )
     prompt = (
@@ -401,12 +537,12 @@ async def _run_map_batch(
         "File contents are in extra_file_context — do not call read_file. "
         "Record each feature and relationship then finalize."
     )
-    result = await map_agent.run(prompt, deps=deps)
+    result = await map_agent.run(prompt, deps=map_deps)
     return result.output
 
 
 async def _run_decision_batch(
-    ctx: RunContext[OrchestratorDependencies],
+    deps: OrchestratorDependencies,
     file_contents: list[BatchFileContent],
 ) -> Any:
     """
@@ -417,11 +553,11 @@ async def _run_decision_batch(
     from .document.decision_agent import DecisionDependencies, decision_agent
 
     file_block = _format_file_block(file_contents)
-    deps = DecisionDependencies(
-        project_id=ctx.deps.project_id,
-        package_path=ctx.deps.package_path,
-        decisions=ctx.deps.extra_context.get("decisions", []),
-        skills_content=ctx.deps.skills_content,
+    decision_deps = DecisionDependencies(
+        project_id=deps.project_id,
+        package_path=deps.package_path,
+        decisions=deps.extra_context.get("decisions", []),
+        skills_content=deps.skills_content,
         extra_file_context=file_block,
     )
     prompt = (
@@ -429,7 +565,7 @@ async def _run_decision_batch(
         "File contents are in extra_file_context — do not call read_file. "
         "Record each review then finalize."
     )
-    result = await decision_agent.run(prompt, deps=deps)
+    result = await decision_agent.run(prompt, deps=decision_deps)
     return result.output
 
 
@@ -541,7 +677,7 @@ async def _read_single(path: str) -> BatchFileContent:
         )
 
     try:
-        raw = await anyio.Path(path).read_bytes()
+        raw = Path(path).read_bytes()
     except Exception as exc:
         return BatchFileContent(path=path, content=f"ERROR: {exc}", truncated=False)
 
@@ -561,11 +697,46 @@ async def _read_single(path: str) -> BatchFileContent:
 ################
 
 
-def _get_state(ctx: RunContext[OrchestratorDependencies]) -> dict:
-    """Retrieve or initialise the per-run orchestrator state."""
-    if not hasattr(ctx, "_orch_state"):
-        ctx._orch_state = {"batch_results": [], "aggregate": {}}  # type: ignore[attr-defined]
-    return ctx._orch_state  # type: ignore[attr-defined]
+async def list_source_files(package_path: str, file_extension: str) -> list[str]:
+    """List source files matching an extension in deterministic order."""
+    import glob
+
+    pattern = os.path.join(package_path, f"**/*{file_extension}")
+    return sorted(glob.glob(pattern, recursive=True))
+
+
+def _split_batches(paths: list[str], batch_size: int) -> list[list[str]]:
+    """Split paths into non-empty bounded batches."""
+    safe_batch_size = max(1, batch_size)
+    return [
+        paths[index : index + safe_batch_size]
+        for index in range(0, len(paths), safe_batch_size)
+    ]
+
+
+def _summarise_orchestration(
+    subagent_name: str,
+    total_files: int,
+    total_batches: int,
+    failed_batches: int,
+    aggregate: dict[str, Any],
+) -> str:
+    """Build a deterministic final summary for a batch orchestration run."""
+    status = "partial" if failed_batches else "completed"
+    details = ""
+    if subagent_name == "audit":
+        details = f" findings={len(aggregate.get('all_findings', []))}"
+    elif subagent_name == "map":
+        details = (
+            f" features={len(aggregate.get('features', []))}"
+            f" relationships={len(aggregate.get('relationships', []))}"
+        )
+    elif subagent_name == "decision":
+        details = f" reviews={len(aggregate.get('reviews', []))}"
+    return (
+        f"{status}: {subagent_name} processed {total_files} file(s) "
+        f"across {total_batches} batch(es); failed_batches={failed_batches}.{details}"
+    )
 
 
 def _format_file_block(file_contents: list[BatchFileContent]) -> str:
@@ -602,3 +773,11 @@ def _summarise_batch_result(result: BatchResult, subagent_name: str) -> str:
         return f"{len(output.reviews)} decision(s) reviewed — {drifted} drifted."
 
     return "Completed."
+
+
+register_subagent("audit", _run_audit_batch)
+register_subagent("security_audit", _run_security_audit_batch)
+register_subagent("bug_audit", _run_bug_audit_batch)
+register_subagent("smell_audit", _run_smell_audit_batch)
+register_subagent("map", _run_map_batch)
+register_subagent("decision", _run_decision_batch)

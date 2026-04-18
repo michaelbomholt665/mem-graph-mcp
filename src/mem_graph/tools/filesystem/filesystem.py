@@ -19,9 +19,9 @@ import fnmatch
 import logging
 import os
 import re
+from pathlib import Path
 from typing import Annotated
 
-import anyio
 from fastmcp import FastMCP
 from pydantic import Field
 
@@ -55,8 +55,9 @@ async def file_read(
         return {"error": f"File not found: {path}"}
 
     try:
-        async with await anyio.open_file(path, "r", encoding="utf-8", errors="replace") as f:
-            lines = await f.readlines()
+        lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines(
+            keepends=True
+        )
     except OSError as exc:
         return {"error": f"Cannot read file: {exc}"}
 
@@ -164,12 +165,12 @@ def _compile_pattern(pattern: str, is_regex: bool) -> re.Pattern[str] | None:
 async def _grep_file(path: str, compiled: re.Pattern[str], limit: int) -> list[dict]:
     results: list[dict] = []
     try:
-        async with await anyio.open_file(path, "r", encoding="utf-8", errors="replace") as f:
-            for lineno, line in enumerate(await f.readlines(), start=1):
-                if compiled.search(line):
-                    results.append({"path": path, "line": lineno, "content": line.rstrip("\n")})
-                if len(results) >= limit:
-                    break
+        lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+        for lineno, line in enumerate(lines, start=1):
+            if compiled.search(line):
+                results.append({"path": path, "line": lineno, "content": line})
+            if len(results) >= limit:
+                break
     except OSError:
         pass
     return results
@@ -197,8 +198,7 @@ async def file_write(
         return {"error": f"Parent directory does not exist for: {path}"}
 
     try:
-        async with await anyio.open_file(path, "w", encoding="utf-8") as f:
-            await f.write(content)
+        Path(path).write_text(content, encoding="utf-8")
     except OSError as exc:
         return {"error": f"Cannot write file: {exc}"}
 
@@ -229,8 +229,7 @@ async def file_edit(
         return {"error": f"File not found: {path}"}
 
     try:
-        async with await anyio.open_file(path, "r", encoding="utf-8", errors="replace") as f:
-            original = await f.read()
+        original = Path(path).read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         return {"error": f"Cannot read file: {exc}"}
 
@@ -243,8 +242,7 @@ async def file_edit(
     updated = original.replace(old_text, new_text, 1)
 
     try:
-        async with await anyio.open_file(path, "w", encoding="utf-8") as f:
-            await f.write(updated)
+        Path(path).write_text(updated, encoding="utf-8")
     except OSError as exc:
         return {"error": f"Cannot write file after edit: {exc}"}
 

@@ -4,122 +4,280 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Memory Atlas</title>
-    <!-- External fonts removed to avoid loading remote resources in the dashboard. Use system fonts as fallback. -->
     <link rel="stylesheet" href="/dashboard.css" />
     <script src="/force-graph.js"></script>
     <script src="/dashboard.js" defer></script>
   </head>
   <body>
-    <div class="shell">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">Knowledge Graph Dashboard</p>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Dashboard navigation">
+        <div class="brand">
+          <p class="eyebrow">MCP Server</p>
           <h1>Memory Atlas</h1>
-          <p class="subhead">
-            Explore tasks, decisions, violations, memories, and symbols without leaving the server.
-          </p>
         </div>
-        <div class="tab-strip" aria-label="Planned dashboard surfaces">
-          <button type="button" class="tab is-active">Graph</button>
-          <button type="button" class="tab" disabled>Jina Soon</button>
-          <a class="tab" href="/file-tree">Files</a>
+        <nav class="nav-list" aria-label="Dashboard sections">
+          <button class="nav-item is-active" type="button" data-tab="overview">Overview</button>
+          <button class="nav-item" type="button" data-tab="explorer">Explorer</button>
+          <button class="nav-item" type="button" data-tab="agents">Agents</button>
+          <button class="nav-item" type="button" data-tab="tools">Tools</button>
+          <button class="nav-item" type="button" data-tab="evals">Evals</button>
+          <button class="nav-item" type="button" data-tab="files">Files</button>
+        </nav>
+        <div class="sidebar-footer">
+          <button id="theme-toggle" class="secondary-button" type="button">Theme</button>
+          <p id="server-version" class="muted">Loading server metadata</p>
         </div>
-      </header>
+      </aside>
 
-      <section class="workspace">
-        <aside class="controls panel" aria-label="Dashboard controls">
-          <div class="panel-header">
-            <h2>Controls</h2>
-            <p id="snapshot-status">Loading graph snapshot…</p>
+      <main class="main">
+        <header class="page-header">
+          <div>
+            <p class="eyebrow">Operations Dashboard</p>
+            <h2 id="page-title">Overview</h2>
+            <p id="page-subtitle" class="subhead">Server status, graph telemetry, and recent evaluation health.</p>
+          </div>
+          <button id="refresh-all-button" type="button">Refresh</button>
+        </header>
+
+        <section id="overview-tab" class="tab-panel is-active" data-panel="overview">
+          <div class="metric-grid">
+            <article class="metric-card">
+              <span>Health</span>
+              <strong id="metric-health">Loading</strong>
+              <p id="metric-db" class="muted">Checking database</p>
+            </article>
+            <article class="metric-card">
+              <span>Nodes</span>
+              <strong id="metric-nodes">0</strong>
+              <p class="muted">Known graph records</p>
+            </article>
+            <article class="metric-card">
+              <span>Edges</span>
+              <strong id="metric-edges">0</strong>
+              <p class="muted">Tracked relationships</p>
+            </article>
+            <article class="metric-card">
+              <span>Uptime</span>
+              <strong id="metric-uptime">0s</strong>
+              <p class="muted">Current process</p>
+            </article>
           </div>
 
-          <label class="field">
-            <span>Project ID</span>
-            <input id="project-id" type="text" placeholder="Leave blank for all projects" />
-          </label>
+          <div class="overview-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <h3>Task Status</h3>
+                <p class="muted">Current work distribution</p>
+              </div>
+              <div id="task-status-list" class="stat-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-header">
+                <h3>Violations</h3>
+                <p class="muted">Severity counts</p>
+              </div>
+              <div id="violation-severity-list" class="stat-list"></div>
+            </section>
+            <section class="panel span-2">
+              <div class="panel-header">
+                <h3>Recent Evals</h3>
+                <button class="text-button" type="button" data-tab-link="evals">Open Evals</button>
+              </div>
+              <div id="recent-evals" class="compact-table"></div>
+            </section>
+          </div>
+        </section>
 
-          <label class="field search-field">
-            <span>Search</span>
-            <div class="search-row">
-              <input id="search-input" type="search" placeholder="Find nodes by title, rule, file, or memory" />
-              <button id="search-button" type="button">Find</button>
+        <section id="explorer-tab" class="tab-panel" data-panel="explorer">
+          <div class="explorer-grid">
+            <aside class="panel controls" aria-label="Graph controls">
+              <div class="panel-header">
+                <h3>Controls</h3>
+                <p id="snapshot-status" class="muted">Loading graph snapshot</p>
+              </div>
+              <label class="field">
+                <span>Project ID</span>
+                <input id="project-id" type="text" placeholder="All projects" />
+              </label>
+              <label class="field">
+                <span>Search</span>
+                <div class="inline-row">
+                  <input id="search-input" type="search" placeholder="Find nodes" />
+                  <button id="search-button" type="button">Find</button>
+                </div>
+              </label>
+              <div class="inline-row equal">
+                <label class="field">
+                  <span>Depth</span>
+                  <select id="depth-select">
+                    <option value="1">1 hop</option>
+                    <option value="2" selected>2 hops</option>
+                    <option value="3">3 hops</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Max</span>
+                  <select id="max-nodes-select">
+                    <option value="120">120</option>
+                    <option value="180">180</option>
+                    <option value="240" selected>240</option>
+                    <option value="320">320</option>
+                  </select>
+                </label>
+              </div>
+              <div class="inline-row">
+                <button id="refresh-button" type="button">Refresh</button>
+                <button id="reset-filters-button" class="secondary-button" type="button">Reset</button>
+              </div>
+              <p id="last-updated" class="muted">Waiting for first snapshot</p>
+              <section>
+                <div class="section-heading">
+                  <h4>Node Types</h4>
+                </div>
+                <div id="type-filters" class="type-filters"></div>
+              </section>
+              <section>
+                <div class="section-heading">
+                  <h4>Search Results</h4>
+                </div>
+                <ul id="search-results" class="results-list">
+                  <li class="muted">Search to focus a graph node.</li>
+                </ul>
+              </section>
+            </aside>
+
+            <section class="panel graph-panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Graph</h3>
+                  <p id="graph-summary" class="muted">Preparing canvas</p>
+                </div>
+                <div id="legend" class="legend"></div>
+              </div>
+              <div id="graph-canvas" class="graph-canvas" aria-label="Knowledge graph canvas"></div>
+            </section>
+
+            <aside class="panel details" aria-label="Node details">
+              <div class="panel-header">
+                <h3>Details</h3>
+                <p class="muted">Select a node</p>
+              </div>
+              <div id="details-empty" class="empty-state">Select a node from the graph or search results.</div>
+              <article id="details-card" class="details-card is-hidden">
+                <p id="details-type" class="pill"></p>
+                <h4 id="details-title">Node</h4>
+                <dl id="details-metadata" class="metadata-list"></dl>
+                <h4>Relationships</h4>
+                <ul id="details-relationships" class="relationship-list"></ul>
+              </article>
+            </aside>
+          </div>
+        </section>
+
+        <section id="agents-tab" class="tab-panel" data-panel="agents">
+          <div class="agents-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <h3>Agents</h3>
+                <p id="agents-status" class="muted">Loading</p>
+              </div>
+              <div id="agents-list" class="card-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-header">
+                <h3>Workflows</h3>
+                <p id="workflows-status" class="muted">Loading</p>
+              </div>
+              <div id="workflow-list" class="workflow-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="tools-tab" class="tab-panel" data-panel="tools">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h3>Tools</h3>
+                <p id="tools-status" class="muted">Loading MCP catalog</p>
+              </div>
+              <input id="tools-filter" class="table-filter" type="search" placeholder="Filter tools" />
             </div>
-          </label>
-
-          <div class="field-inline">
-            <label class="field compact">
-              <span>Depth</span>
-              <select id="depth-select">
-                <option value="1">1 hop</option>
-                <option value="2" selected>2 hops</option>
-                <option value="3">3 hops</option>
-              </select>
-            </label>
-
-            <label class="field compact">
-              <span>Max Nodes</span>
-              <select id="max-nodes-select">
-                <option value="120">120</option>
-                <option value="180">180</option>
-                <option value="240" selected>240</option>
-                <option value="320">320</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="actions">
-            <button id="refresh-button" type="button">Refresh</button>
-            <span id="last-updated">Waiting for first snapshot</span>
-          </div>
-
-          <section class="filter-section">
-            <div class="section-heading">
-              <h3>Node Types</h3>
-              <button id="reset-filters-button" type="button" class="ghost-button">Reset</button>
-            </div>
-            <div id="type-filters" class="type-filters"></div>
+            <div id="tools-table" class="data-table"></div>
           </section>
+        </section>
 
-          <section class="results-section">
-            <div class="section-heading">
-              <h3>Search Results</h3>
+        <section id="evals-tab" class="tab-panel" data-panel="evals">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h3>Evaluation Runs</h3>
+                <p id="evals-status" class="muted">Loading recent runs</p>
+              </div>
+              <div class="inline-row">
+                <input id="evals-project-id" class="table-filter" type="text" placeholder="Project ID" />
+                <button id="evals-refresh-button" type="button">Load</button>
+              </div>
             </div>
-            <ul id="search-results" class="results-list">
-              <li class="muted">Search to focus the graph on a matching node.</li>
-            </ul>
+            <div id="evals-table" class="data-table"></div>
           </section>
-        </aside>
+        </section>
 
-        <main class="graph-stage panel">
-          <div class="stage-header">
-            <div>
-              <h2>Graph</h2>
-              <p id="graph-summary">Preparing the canvas…</p>
-            </div>
-            <div class="legend" id="legend"></div>
+        <section id="files-tab" class="tab-panel" data-panel="files">
+          <section class="panel file-controls">
+            <label class="field grow">
+              <span>Root Path</span>
+              <input id="file-root-path" type="text" placeholder="Project repo path or current working directory" />
+            </label>
+            <label class="field">
+              <span>Project ID</span>
+              <input id="file-project-id" type="text" placeholder="Optional" />
+            </label>
+            <label class="check-field">
+              <input id="file-problems-only" type="checkbox" />
+              <span>Problems only</span>
+            </label>
+            <label class="check-field">
+              <input id="file-include-hidden" type="checkbox" />
+              <span>Hidden</span>
+            </label>
+            <label class="field grow">
+              <span>Filter</span>
+              <input id="file-filter-input" type="search" placeholder="Match paths" />
+            </label>
+            <button id="file-refresh-button" type="button">Refresh</button>
+          </section>
+          <div class="files-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <h3>Files</h3>
+                <p id="file-tree-status" class="muted">Loading file tree</p>
+              </div>
+              <p id="file-tree-summary" class="muted">Preparing explorer</p>
+              <div id="file-tree-root" class="tree-root"></div>
+            </section>
+            <section class="panel details">
+              <div class="panel-header">
+                <div>
+                  <h3>File Details</h3>
+                  <p id="file-details-subhead" class="muted">Select a file or directory.</p>
+                </div>
+                <a id="file-dashboard-link" class="text-button is-hidden" href="/dashboard">Open Node</a>
+              </div>
+              <div id="file-details-empty" class="empty-state">Choose an item in the tree.</div>
+              <article id="file-details-card" class="details-card is-hidden">
+                <p id="file-details-kind" class="pill"></p>
+                <h4 id="file-details-title">File</h4>
+                <dl id="file-details-meta" class="metadata-list"></dl>
+                <div class="panel-header">
+                  <h4>Violations</h4>
+                  <p id="file-details-count" class="muted"></p>
+                </div>
+                <ul id="file-violation-list" class="relationship-list"></ul>
+              </article>
+            </section>
           </div>
-          <div id="graph-canvas" class="graph-canvas" aria-label="Knowledge graph canvas"></div>
-        </main>
-
-        <aside class="details panel" aria-label="Node details">
-          <div class="panel-header">
-            <h2>Details</h2>
-            <p>Click a node to inspect its metadata and relationships.</p>
-          </div>
-          <div id="details-empty" class="details-empty">
-            Select a node from the graph or search results to inspect it.
-          </div>
-          <article id="details-card" class="details-card is-hidden">
-            <p id="details-type" class="details-type"></p>
-            <h3 id="details-title">Select a node</h3>
-            <dl id="details-metadata" class="metadata-list"></dl>
-            <div class="relationship-block">
-              <h4>Relationships</h4>
-              <ul id="details-relationships" class="relationship-list"></ul>
-            </div>
-          </article>
-        </aside>
-      </section>
+        </section>
+      </main>
     </div>
   </body>
-  </html>
+</html>

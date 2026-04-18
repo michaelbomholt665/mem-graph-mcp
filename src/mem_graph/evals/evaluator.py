@@ -256,6 +256,7 @@ class Evaluator:
         trigger: str = "manual",
         report_path: str | None = None,
         label: str | None = None,
+        logfire_run_id: str | None = None,
     ) -> str:
         """Persist a compact eval summary to the graph for trend tracking."""
         eval_run_id = id_generate_v7()
@@ -272,6 +273,7 @@ class Evaluator:
                 mode: $mode,
                 label: $label,
                 trigger: $trigger,
+                logfire_run_id: $logfire_run_id,
                 total_suites: $total_suites,
                 passed_suites: $passed_suites,
                 suite_pass_rate: $suite_pass_rate,
@@ -290,6 +292,7 @@ class Evaluator:
                 "mode": report.mode,
                 "label": label,
                 "trigger": trigger,
+                "logfire_run_id": logfire_run_id,
                 "total_suites": report.total_suites,
                 "passed_suites": report.passed_suites,
                 "suite_pass_rate": report.suite_pass_rate,

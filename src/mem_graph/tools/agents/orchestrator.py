@@ -19,9 +19,14 @@ from fastmcp.server.context import Context
 from mcp.types import Icon
 from pydantic import Field
 
-from ...agents.orchestrator_agent import OrchestratorDependencies, orchestrator_agent
+from ...agents.orchestrator_agent import (
+    BatchResult,
+    OrchestratorDependencies,
+    run_orchestrator_batches,
+)
 from ...agents.orchestrator_graph import autopilot_graph_run
-from ...agents.router_agent import RouterDependencies, router_agent
+from ...agents.router_agent import RouterDependencies, WorkflowPlan, router_agent
+from ...agents.workflow_graph import run_managed_workflow
 from ...services.task_queue import task_queue
 from ..background.progress import ContextProgressReporter, ProgressReporter, report_step
 from ..background.task_status import build_task_submission
@@ -125,7 +130,7 @@ async def orchestrate_codebase(
     package_path: Annotated[str, Field(description="Absolute path to the package directory to analyse in batches.")],
     project_id: Annotated[str, Field(description="Project ID used by downstream sub-agents.")],
     subagent_name: Annotated[
-        Literal["audit", "map", "decision"],
+        Literal["audit", "security_audit", "bug_audit", "smell_audit", "map", "decision"],
         Field(description="Which sub-agent to run for each batch."),
     ] = "audit",
     batch_size: Annotated[int, Field(description="Maximum files to analyse per batch.", ge=1, le=20)] = 5,
@@ -186,11 +191,83 @@ async def orchestrate_codebase(
     return build_task_submission(task)
 
 
+@mcp.tool(tags={"namespace:audit"}, task=True)
+async def run_subagent_workflow(
+    objective: Annotated[str, Field(description="One starting prompt/objective for the full workflow.")],
+    project_id: Annotated[str, Field(description="Project ID to ground the workflow in.")],
+    target_files: Annotated[list[str], Field(description="Files initially in scope.")],
+    project_root: Annotated[str, Field(description="Project root for helper-agent lookup.")] = "",
+    max_retries: Annotated[int, Field(description="Maximum validation/debug retries.", ge=0, le=10)] = 3,
+    model_overrides: Annotated[
+        dict[str, str] | None,
+        Field(description="Optional per-stage model overrides keyed by workflow stage."),
+    ] = None,
+    ctx: Context = None,  # type: ignore[assignment]
+) -> dict[str, Any]:
+    """
+    Run the opt-in full router-driven sub-agent workflow.
+
+    Default router behavior remains route_only; this tool explicitly requests
+    subagent_workflow and then launches the managed pydantic_graph workflow.
+    """
+    if ctx is not None:
+        await ctx.info(f"Routing managed workflow for project {project_id}")
+        await ctx.report_progress(progress=0, total=3)
+
+    router_deps = RouterDependencies(
+        project_id=project_id,
+        request=objective,
+        file_paths=target_files,
+        project_root=project_root,
+        workflow_mode="subagent_workflow",
+        model_overrides=model_overrides or {},
+        max_retries=max_retries,
+    )
+    router_result = await router_agent.run(
+        "Classify this objective and return a subagent_workflow plan.",
+        deps=router_deps,
+    )
+    decision = router_result.output
+    plan = decision.workflow_plan or WorkflowPlan(
+        objective=objective,
+        project_id=project_id,
+        target_files=target_files,
+        model_overrides=model_overrides or {},
+        max_retries=max_retries,
+    )
+
+    if ctx is not None:
+        await ctx.info("Starting managed workflow graph")
+        await ctx.report_progress(progress=1, total=3)
+
+    state = await run_managed_workflow(plan, execute_agents=True)
+
+    if ctx is not None:
+        await ctx.report_progress(progress=3, total=3)
+        await ctx.info(state.final_report)
+
+    return {
+        "status": "blocked" if state.blockers else "completed",
+        "project_id": state.project_id,
+        "objective": state.objective,
+        "stages": [result.model_dump(mode="json") for result in state.stage_results],
+        "blockers": state.blockers,
+        "summary": state.final_report,
+    }
+
+
 async def _orchestrate_codebase_worker(
     *,
     package_path: str,
     project_id: str,
-    subagent_name: Literal["audit", "map", "decision"],
+    subagent_name: Literal[
+        "audit",
+        "security_audit",
+        "bug_audit",
+        "smell_audit",
+        "map",
+        "decision",
+    ],
     batch_size: int,
     file_extension: str,
     batch_timeout_seconds: float,
@@ -223,25 +300,37 @@ async def _orchestrate_codebase_worker(
         extra_context=extra_context or {},
     )
 
-    prompt = (
-        "List the files, process every batch in order using process_batch, "
-        "and call finalize once all batches are complete."
-    )
-
     await report_step(
         reporter,
         24,
         100,
         "orchestrate",
-        f"Running the orchestrator agent for the {subagent_name} workflow.",
+        f"Running deterministic {subagent_name} batch orchestration.",
     )
 
     try:
-        async with orchestrator_agent.run_stream(prompt, deps=deps) as result:
-            report = await result.get_output()
+        async def on_batch(
+            batch_number: int,
+            total_batches: int,
+            result: BatchResult,
+        ) -> None:
+            progress = 24 + int((batch_number / max(total_batches, 1)) * 70)
+            status = "failed" if result.failed else "completed"
+            await report_step(
+                reporter,
+                min(progress, 94),
+                100,
+                "batch",
+                (
+                    f"Batch {batch_number}/{total_batches} {status} "
+                    f"for {len(result.files_processed)} file(s)."
+                ),
+            )
+
+        report = await run_orchestrator_batches(deps, progress_callback=on_batch)
     except Exception as exc:
         logger.error("Orchestrator execution failed: %s", exc)
-        return {"error": f"Agent failed: {exc}"}
+        return {"error": f"Orchestration failed: {exc}"}
 
     await report_step(
         reporter,

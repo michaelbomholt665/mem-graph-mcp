@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import Literal
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
@@ -65,6 +66,34 @@ class RouterSubTask(BaseModel):
     )
 
 
+class WorkflowStagePlan(BaseModel):
+    """A single stage in the opt-in sub-agent workflow."""
+
+    name: str = Field(description="Workflow stage name.")
+    depends_on: list[str] = Field(default_factory=list)
+    model: str | None = Field(default=None, description="Optional model override.")
+    allowed_tools: list[str] = Field(default_factory=list)
+
+
+class WorkflowPlan(BaseModel):
+    """Structured plan for the optional full router-driven workflow."""
+
+    objective: str
+    project_id: str
+    target_files: list[str] = Field(default_factory=list)
+    required_stages: list[WorkflowStagePlan] = Field(default_factory=list)
+    stage_dependencies: dict[str, list[str]] = Field(default_factory=dict)
+    model_overrides: dict[str, str] = Field(default_factory=dict)
+    allowed_tools: dict[str, list[str]] = Field(default_factory=dict)
+    max_retries: int = Field(default=3, ge=0, le=10)
+    ask_user_policy: str = Field(
+        default=(
+            "Continue without stopping unless there is a hard blocker, "
+            "destructive action, or missing required credentials/config."
+        )
+    )
+
+
 class RouterDecision(BaseModel):
     """
     Classification and decomposition result from the Router Agent.
@@ -87,6 +116,14 @@ class RouterDecision(BaseModel):
     sub_tasks: list[RouterSubTask] = Field(
         default_factory=list,
         description="Ordered sub-tasks for the downstream pipeline.",
+    )
+    workflow_mode: Literal["route_only", "subagent_workflow"] = Field(
+        default="route_only",
+        description="Default route_only keeps the lightweight router behavior.",
+    )
+    workflow_plan: WorkflowPlan | None = Field(
+        default=None,
+        description="Only populated when workflow_mode is subagent_workflow.",
     )
 
 
@@ -115,6 +152,10 @@ class RouterDependencies:
     context_violations: list[str] = field(default_factory=list)
     context_decisions: list[str] = field(default_factory=list)
     skills_content: str = ""
+    project_root: str = ""
+    workflow_mode: Literal["route_only", "subagent_workflow"] = "route_only"
+    model_overrides: dict[str, str] = field(default_factory=dict)
+    max_retries: int = 3
 
 
 ################
@@ -146,12 +187,20 @@ async def router_build_system_prompt(ctx: RunContext[RouterDependencies]) -> str
     """
     file_count = len(ctx.deps.file_paths)
     concurrency = config_get_concurrency_for_files(file_count)
+    mode_note = (
+        "Default mode is route_only. Produce workflow_plan only because the "
+        "caller explicitly requested subagent_workflow."
+        if ctx.deps.workflow_mode == "subagent_workflow"
+        else "Default mode is route_only. Do not produce a workflow_plan."
+    )
 
     return f"""{ROUTER_PERSONA.get_system_instructions()}
 
 ## Your Task
 Classify the incoming request, select the appropriate model tier, and
 decompose the work into ordered sub-tasks.
+
+Workflow mode: {ctx.deps.workflow_mode}. {mode_note}
 
 ## File Scope
 {file_count} file(s) in scope. Recommended concurrency: {concurrency} worker(s).
@@ -162,15 +211,20 @@ decompose the work into ordered sub-tasks.
 ## Active Decisions (graph context)
 {chr(10).join(ctx.deps.context_decisions[:10]) or 'None'}
 
-## Tier Selection Rules
-- TURBO: Classification, pattern matching, simple single-file queries.
-- MICRO: Single-file edits, typo fixes, docstring additions.
-- STANDARD: Multi-file audits, task decomposition, mapping (default).
-- AUTOPILOT: 10+ edits, 10+ new files, deep debugging, full refactors.
+## Project Helper Agents
+Call `router_list_project_helper_agents` when project_root is available and
+project-specific helper agents could improve routing.
+
+## Tier Selection
+Use `router_compute_tier_hint` for deterministic tier, concurrency, and
+solo-mode hints. Explain only intentional overrides.
 
 ## Output Requirements
 Return a RouterDecision with tier, file_count, concurrency, solo_mode,
-intent, summary, and a sub_tasks list ordered by execution dependency.
+intent, summary, workflow_mode, and a sub_tasks list ordered by execution
+dependency. If workflow_mode is subagent_workflow, also return a WorkflowPlan
+with objective, project_id, target_files, required_stages, stage dependencies,
+model overrides, allowed tools per stage, max_retries, and ask-user policy.
 
 {ctx.deps.skills_content}
 """
@@ -233,3 +287,21 @@ async def router_compute_tier_hint(
         f"Concurrency: {concurrency}. "
         f"Solo mode: {solo}."
     )
+
+
+@router_agent.tool
+async def router_list_project_helper_agents(
+    ctx: RunContext[RouterDependencies],
+) -> list[dict[str, object]]:
+    """Return registered project-specific helper-agent specs for routing."""
+    if not ctx.deps.project_root:
+        return []
+    try:
+        from .builder.agent_builder import list_helper_agent_specs
+
+        return [
+            spec.model_dump(mode="json")
+            for spec in list_helper_agent_specs(ctx.deps.project_root, ctx.deps.project_id)
+        ]
+    except FileNotFoundError:
+        return []

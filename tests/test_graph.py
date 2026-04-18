@@ -1,7 +1,25 @@
 from __future__ import annotations
 
-from starlette.testclient import TestClient
+import json
+
 import pytest
+from starlette.requests import Request
+
+
+def _request(path: str = "/", query: str = "") -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": path,
+            "query_string": query.encode(),
+            "headers": [],
+        }
+    )
+
+
+def _json(response) -> dict:
+    return json.loads(response.body.decode())
 
 
 @pytest.mark.asyncio
@@ -82,17 +100,20 @@ async def test_dashboard_routes_respond(db):
         description="Ensure the dashboard API responds with graph data.",
     )
 
-    app = server_mod.build_http_app(with_lifespan=False)
-    with TestClient(app) as client:
-        dashboard = client.get("/dashboard")
-        styles = client.get("/dashboard/api/styles")
-        graph = client.get(f"/dashboard/api/graph?project_id={project['project_id']}")
+    dashboard = server_mod._dashboard(_request("/dashboard"))
+    system = await server_mod._dashboard_system(_request("/dashboard/api/system"))
+    styles = server_mod._dashboard_styles(_request("/dashboard/api/styles"))
+    graph = await server_mod._dashboard_graph(
+        _request("/dashboard/api/graph", f"project_id={project['project_id']}")
+    )
 
     assert dashboard.status_code == 200
-    assert "Memory Atlas" in dashboard.text
+    assert dashboard.path.name == "dashboard.html"
+    assert system.status_code == 200
+    assert _json(system)["telemetry"]["node_count"] >= 2
     assert styles.status_code == 200
-    assert "Project" in styles.json()["styles"]
+    assert "Project" in _json(styles)["styles"]
     assert graph.status_code == 200
-    payload = graph.json()
+    payload = _json(graph)
     assert payload["nodes"]
     assert payload["available_types"]

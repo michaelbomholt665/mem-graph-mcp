@@ -8,6 +8,18 @@ import json
 
 from dotenv import load_dotenv
 from logfire.experimental.api_client import AsyncLogfireAPIClient, LogfireAPIClient
+from pydantic import BaseModel
+
+
+class LogfireDatasetCapabilities(BaseModel):
+    """Hosted Logfire dataset API methods exposed by the installed client."""
+
+    can_list_datasets: bool
+    can_get_dataset: bool
+    can_create_dataset: bool
+    can_push_dataset: bool
+    can_update_dataset: bool
+    can_delete_dataset: bool
 
 
 def _repo_root() -> Path:
@@ -61,3 +73,24 @@ def get_client() -> LogfireAPIClient:
 def get_async_client() -> AsyncLogfireAPIClient:
     """Return an asynchronous Logfire API client for hosted datasets."""
     return AsyncLogfireAPIClient(api_key=_api_key(), base_url=_base_url())
+
+
+def describe_dataset_capabilities(
+    client_type: type[LogfireAPIClient] = LogfireAPIClient,
+) -> LogfireDatasetCapabilities:
+    """
+    Describe hosted dataset/eval API support without making live calls.
+
+    The installed Logfire client currently exposes dataset listing and fetching
+    methods, so integration code can use them behind explicit hosted commands
+    while unit tests remain credential-free.
+    """
+    names = set(dir(client_type))
+    return LogfireDatasetCapabilities(
+        can_list_datasets="list_datasets" in names,
+        can_get_dataset="get_dataset" in names,
+        can_create_dataset="create_dataset" in names,
+        can_push_dataset="push_dataset" in names,
+        can_update_dataset="update_dataset" in names,
+        can_delete_dataset="delete_dataset" in names,
+    )

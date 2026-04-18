@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 
 from ..embeddings import embeddings_query
@@ -94,12 +94,13 @@ class MemoryService:
             attributes={"memory.id": memory_id},
         ):
             timestamp = _now()
+            expired_at = timestamp - timedelta(seconds=1)
             self._conn.execute(
                 """
                 MATCH (m:Memory {id: $id})
-                SET m.expires_at = $ts, m.updated_at = $ts
+                SET m.expires_at = $expires_at, m.updated_at = $ts
                 """,
-                {"id": memory_id, "ts": timestamp},
+                {"id": memory_id, "expires_at": expired_at, "ts": timestamp},
             )
 
         logfire_info("Memory expired", memory_id=memory_id)
