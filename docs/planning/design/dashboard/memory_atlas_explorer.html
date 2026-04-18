@@ -1,0 +1,177 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700&display=swap');
+  .ma-root{font-family:'Syne',sans-serif;background:#0a0c0f;color:#e8eaed;min-height:600px;display:flex;flex-direction:column;border-radius:12px;overflow:hidden;}
+  .ma-topbar{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:56px;background:#0d1014;border-bottom:1px solid #1e2530;flex-shrink:0;}
+  .ma-logo{display:flex;align-items:center;gap:10px;}
+  .ma-logo-mark{width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#00d4a8 0%,#0099cc 100%);display:flex;align-items:center;justify-content:center;}
+  .ma-logo-text{font-size:15px;font-weight:700;letter-spacing:-.3px;color:#fff;}
+  .ma-logo-sub{font-size:10px;font-weight:400;color:#4a5568;text-transform:uppercase;letter-spacing:1.5px;margin-top:-2px;font-family:'DM Mono',monospace;}
+  .ma-topbar-right{display:flex;align-items:center;gap:12px;}
+  .ma-badge{font-family:'DM Mono',monospace;font-size:11px;padding:3px 8px;border-radius:4px;background:#162820;color:#00d4a8;border:1px solid #00d4a822;}
+  .ma-btn{display:flex;align-items:center;gap:6px;font-size:12px;font-family:'DM Mono',monospace;color:#8899aa;background:#141820;border:1px solid #1e2530;border-radius:6px;padding:6px 12px;cursor:pointer;transition:all .15s;}
+  .ma-btn:hover{color:#e8eaed;border-color:#2d3a4a;}
+  .ma-layout{display:flex;flex:1;overflow:hidden;}
+  .ma-sidebar{width:200px;background:#0d1014;border-right:1px solid #1e2530;display:flex;flex-direction:column;padding:20px 0;flex-shrink:0;}
+  .ma-nav-section{padding:0 12px;margin-bottom:24px;}
+  .ma-nav-label{font-size:9px;text-transform:uppercase;letter-spacing:1.8px;color:#3a4555;font-family:'DM Mono',monospace;padding:0 8px;margin-bottom:6px;}
+  .ma-nav-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;font-size:13px;font-weight:500;color:#5a6a7a;cursor:pointer;transition:all .12s;margin-bottom:1px;}
+  .ma-nav-item:hover{color:#c0ccd8;background:#141820;}
+  .ma-nav-item.active{color:#00d4a8;background:#0d2420;}
+  .ma-nav-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+  .ma-nav-item.active .ma-nav-dot{background:#00d4a8;}
+  .ma-nav-item:not(.active) .ma-nav-dot{background:#2a3545;}
+  .ma-sidebar-footer{margin-top:auto;padding:12px 20px;border-top:1px solid #1a2030;}
+  .ma-version{font-family:'DM Mono',monospace;font-size:10px;color:#2d3d4d;}
+  .ma-explore-layout{display:grid;grid-template-columns:220px 1fr 240px;flex:1;overflow:hidden;min-height:0;}
+  .ma-controls{background:#0d1014;border-right:1px solid #1e2530;display:flex;flex-direction:column;overflow-y:auto;padding:16px;}
+  .ma-ctrl-title{font-size:9px;text-transform:uppercase;letter-spacing:1.8px;color:#3a4555;font-family:'DM Mono',monospace;margin-bottom:12px;}
+  .ma-ctrl-group{margin-bottom:16px;}
+  .ma-ctrl-label{font-size:10px;color:#3a4a5a;font-family:'DM Mono',monospace;margin-bottom:5px;}
+  .ma-ctrl-select{width:100%;background:#141820;border:1px solid #1e2530;border-radius:6px;color:#8899aa;font-family:'DM Mono',monospace;font-size:11px;padding:6px 8px;outline:none;}
+  .ma-ctrl-input{width:100%;background:#141820;border:1px solid #1e2530;border-radius:6px;color:#c0ccd8;font-family:'DM Mono',monospace;font-size:11px;padding:6px 8px;outline:none;box-sizing:border-box;}
+  .ma-ctrl-input:focus{border-color:#00d4a850;}
+  .ma-ctrl-row{display:flex;gap:6px;margin-top:8px;}
+  .ma-btn-primary{flex:1;background:#0d2420;border:1px solid #00d4a830;color:#00d4a8;font-family:'DM Mono',monospace;font-size:11px;padding:6px 10px;border-radius:6px;cursor:pointer;transition:all .15s;}
+  .ma-btn-primary:hover{background:#142e28;}
+  .ma-btn-secondary{flex:1;background:#141820;border:1px solid #1e2530;color:#5a6a7a;font-family:'DM Mono',monospace;font-size:11px;padding:6px 10px;border-radius:6px;cursor:pointer;}
+  .ma-divider{border:none;border-top:1px solid #1a2030;margin:12px 0;}
+  .ma-node-type-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;}
+  .ma-node-type-label{display:flex;align-items:center;gap:7px;font-size:11px;font-family:'DM Mono',monospace;color:#6a7a8a;}
+  .ma-type-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+  .ma-checkbox{width:13px;height:13px;accent-color:#00d4a8;}
+  .ma-graph-area{background:#080b0e;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;}
+  .ma-graph-meta{position:absolute;top:14px;left:16px;font-family:'DM Mono',monospace;font-size:10px;color:#2d3d4d;}
+  .ma-graph-updated{position:absolute;bottom:14px;left:16px;font-family:'DM Mono',monospace;font-size:10px;color:#2d3d4d;}
+  .ma-graph-node{cursor:pointer;}
+  .ma-details-panel{background:#0d1014;border-left:1px solid #1e2530;display:flex;flex-direction:column;overflow-y:auto;}
+  .ma-details-header{padding:14px 16px;border-bottom:1px solid #141c24;}
+  .ma-details-title{font-size:9px;text-transform:uppercase;letter-spacing:1.8px;color:#3a4555;font-family:'DM Mono',monospace;margin-bottom:10px;}
+  .ma-node-name{font-size:18px;font-weight:700;letter-spacing:-.3px;color:#fff;}
+  .ma-node-type-badge{display:inline-block;font-size:10px;font-family:'DM Mono',monospace;padding:2px 7px;border-radius:3px;background:#0d2420;color:#00d4a8;border:1px solid #00d4a822;margin-top:4px;}
+  .ma-detail-field{padding:10px 16px;border-bottom:1px solid #0f161e;}
+  .ma-field-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#2d3d4d;font-family:'DM Mono',monospace;margin-bottom:4px;}
+  .ma-field-value{font-size:12px;font-family:'DM Mono',monospace;color:#8899aa;}
+  .ma-relationships-section{padding:12px 16px;}
+  .ma-rel-empty{font-size:11px;color:#2d3d4d;font-family:'DM Mono',monospace;padding:8px 0;}
+  .ma-node-tags{display:flex;flex-wrap:wrap;gap:4px;padding:12px 16px;border-bottom:1px solid #0f161e;}
+  .ma-type-tag{font-size:10px;font-family:'DM Mono',monospace;padding:2px 7px;border-radius:3px;background:#141820;color:#3a4a5a;border:1px solid #1a2030;cursor:pointer;transition:all .12s;}
+  .ma-type-tag:hover{color:#00d4a8;border-color:#00d4a830;}
+  .ma-type-tag.active-tag{background:#0d2420;color:#00d4a8;border-color:#00d4a830;}
+  .ma-scrollbar{scrollbar-width:thin;scrollbar-color:#1e2530 transparent;}
+</style>
+<div class="ma-root">
+  <div class="ma-topbar">
+    <div class="ma-logo">
+      <div class="ma-logo-mark">
+        <svg viewBox="0 0 16 16" fill="none" width="16" height="16"><circle cx="4" cy="8" r="2.5" fill="white" opacity=".9"/><circle cx="12" cy="4" r="1.8" fill="white" opacity=".7"/><circle cx="12" cy="12" r="1.8" fill="white" opacity=".7"/><line x1="6.4" y1="7.1" x2="10.2" y2="4.7" stroke="white" stroke-width=".8" opacity=".5"/><line x1="6.4" y1="8.9" x2="10.2" y2="11.3" stroke="white" stroke-width=".8" opacity=".5"/></svg>
+      </div>
+      <div><div class="ma-logo-text">Memory Atlas</div><div class="ma-logo-sub">MCP Server</div></div>
+    </div>
+    <div class="ma-topbar-right">
+      <div class="ma-badge">syntx-memory v0.2.0</div>
+      <button class="ma-btn">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M10 6a4 4 0 1 1-1.1-2.75" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M10 2.5V5.5H7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Refresh
+      </button>
+    </div>
+  </div>
+  <div class="ma-layout">
+    <div class="ma-sidebar">
+      <div class="ma-nav-section">
+        <div class="ma-nav-label">Monitor</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Overview</div>
+        <div class="ma-nav-item active"><div class="ma-nav-dot"></div>Explorer</div>
+      </div>
+      <div class="ma-nav-section">
+        <div class="ma-nav-label">System</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Agents</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Tools</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Evals</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Files</div>
+      </div>
+      <div class="ma-sidebar-footer"><div class="ma-version">v0.2.0 · local</div></div>
+    </div>
+    <div class="ma-explore-layout">
+      <div class="ma-controls ma-scrollbar">
+        <div class="ma-ctrl-title">Controls</div>
+        <div class="ma-ctrl-group">
+          <div class="ma-ctrl-label">Project ID</div>
+          <select class="ma-ctrl-select"><option>memory</option></select>
+        </div>
+        <div class="ma-ctrl-group">
+          <div class="ma-ctrl-label">Search</div>
+          <input class="ma-ctrl-input" type="text" placeholder="Find nodes…"/>
+          <div class="ma-ctrl-row">
+            <button class="ma-btn-primary">Find</button>
+            <button class="ma-btn-secondary">Reset</button>
+          </div>
+        </div>
+        <div class="ma-ctrl-group">
+          <div class="ma-ctrl-label">Depth</div>
+          <select class="ma-ctrl-select"><option>2 hops</option><option>1 hop</option><option>3 hops</option></select>
+        </div>
+        <div class="ma-ctrl-group">
+          <div class="ma-ctrl-label">Max nodes</div>
+          <select class="ma-ctrl-select"><option>240</option><option>120</option><option>480</option></select>
+        </div>
+        <hr class="ma-divider"/>
+        <div class="ma-ctrl-title">Node Types</div>
+        ${[['#00d4a8','Project'],['#f5a623','Backend'],['#3b9eff','Task'],['#cc66ff','Decision'],['#ff4f4f','Violation'],['#ffd166','Memory'],['#8899aa','Note'],['#5dcaa5','CodeSymbol'],['#4a90d9','CodeFile'],['#b8d4ff','JiraIssue']].map(([c,n])=>`
+        <div class="ma-node-type-row">
+          <div class="ma-node-type-label"><div class="ma-type-dot" style="background:${c}"></div>${n}</div>
+          <input type="checkbox" class="ma-checkbox" checked/>
+        </div>`).join('')}
+        <div style="margin-top:10px;font-family:'DM Mono',monospace;font-size:9px;color:#2d3d4d;">Updated 3:44:32 PM</div>
+      </div>
+
+      <div class="ma-graph-area">
+        <div class="ma-graph-meta">1 nodes · 0 edges</div>
+        <div class="ma-graph-updated">Graph snapshot ready</div>
+        <svg width="100%" height="100%" viewBox="0 0 500 380" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="bg-glow" cx="50%" cy="50%" r="40%">
+              <stop offset="0%" stop-color="#00d4a8" stop-opacity="0.04"/>
+              <stop offset="100%" stop-color="#00d4a8" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <rect width="500" height="380" fill="url(#bg-glow)"/>
+          <circle cx="250" cy="190" r="60" fill="none" stroke="#1a2a3a" stroke-width="1" stroke-dasharray="4 6" opacity="0.4"/>
+          <circle cx="250" cy="190" r="110" fill="none" stroke="#1a2a3a" stroke-width="1" stroke-dasharray="2 8" opacity="0.2"/>
+          <circle cx="250" cy="190" r="26" fill="#0d2420" stroke="#00d4a8" stroke-width="1.5"/>
+          <text x="250" y="194" text-anchor="middle" font-size="10" fill="#00d4a8" font-family="'DM Mono',monospace">memory</text>
+          <text x="250" y="226" text-anchor="middle" font-size="9" fill="#2d3d4d" font-family="'DM Mono',monospace">Project</text>
+        </svg>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,60px);text-align:center;">
+        </div>
+        <div class="ma-node-tags" style="position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;gap:4px;justify-content:center;max-width:340px;background:transparent;border:none;padding:0;">
+          ${[['#00d4a8','Project'],['#f5a623','Backend'],['#3b9eff','Task'],['#cc66ff','Decision'],['#ff4f4f','Violation'],['#ffd166','Memory'],['#8899aa','Note'],['#5dcaa5','CodeSymbol'],['#4a90d9','CodeFile'],['#b8d4ff','JiraIssue']].map(([c,n])=>`<div class="ma-type-tag active-tag" style="border-color:${c}22;color:${c}">${n}</div>`).join('')}
+        </div>
+      </div>
+
+      <div class="ma-details-panel ma-scrollbar">
+        <div class="ma-details-header">
+          <div class="ma-details-title">Details</div>
+          <div class="ma-node-name">memory</div>
+          <div class="ma-node-type-badge">Project</div>
+        </div>
+        <div class="ma-detail-field">
+          <div class="ma-field-label">Description</div>
+          <div class="ma-field-value">Python memory management project</div>
+        </div>
+        <div class="ma-detail-field">
+          <div class="ma-field-label">Status</div>
+          <div class="ma-field-value" style="color:#00d4a8;">active</div>
+        </div>
+        <div class="ma-detail-field">
+          <div class="ma-field-label">Created At</div>
+          <div class="ma-field-value">2026-04-13 08:36:06</div>
+        </div>
+        <div class="ma-relationships-section">
+          <div class="ma-field-label" style="margin-bottom:8px;">Relationships</div>
+          <div class="ma-rel-empty">No related nodes in the current snapshot.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -29,10 +29,15 @@ class FileTreeNode(BaseModel):
 
 
 def _sort_entries(entries: list[Path]) -> list[Path]:
-    return sorted(entries, key=lambda item: (not item.is_dir(), item.name.lower(), item.as_posix()))
+    return sorted(
+        entries,
+        key=lambda item: (not item.is_dir(), item.name.lower(), item.as_posix()),
+    )
 
 
-def _apply_status(node: FileTreeNode, status_map: dict[str, FileStatus]) -> FileTreeNode:
+def _apply_status(
+    node: FileTreeNode, status_map: dict[str, FileStatus]
+) -> FileTreeNode:
     if not node.is_dir:
         status = status_map.get(node.path)
         if status is None:
@@ -71,7 +76,11 @@ def _visible_entries(path: Path, include_hidden: bool) -> list[Path]:
         entries = list(path.iterdir())
     except OSError:
         return []
-    return [entry for entry in _sort_entries(entries) if not _should_skip_entry(entry, include_hidden)]
+    return [
+        entry
+        for entry in _sort_entries(entries)
+        if not _should_skip_entry(entry, include_hidden)
+    ]
 
 
 def _build_tree(
@@ -113,11 +122,15 @@ def _build_tree(
 async def get_file_tree(
     root_path: Annotated[
         str | None,
-        Field(description="Optional root directory to explore. Defaults to the project repo_path or current working directory."),
+        Field(
+            description="Optional root directory to explore. Defaults to the project repo_path or current working directory."
+        ),
     ] = None,
     project_id: Annotated[
         str | None,
-        Field(description="Optional project node ID used to resolve repo_path and enrich graph metadata."),
+        Field(
+            description="Optional project node ID used to resolve repo_path and enrich graph metadata."
+        ),
     ] = None,
     include_hidden: Annotated[
         bool,
@@ -125,16 +138,26 @@ async def get_file_tree(
     ] = False,
     include_graph_metadata: Annotated[
         bool,
-        Field(description="Include violation counts, graph node IDs, and last-audited timestamps when available."),
+        Field(
+            description="Include violation counts, graph node IDs, and last-audited timestamps when available."
+        ),
     ] = True,
     max_depth: Annotated[
         int,
-        Field(description="Maximum depth to traverse from the root directory.", ge=1, le=16),
+        Field(
+            description="Maximum depth to traverse from the root directory.",
+            ge=1,
+            le=16,
+        ),
     ] = 8,
 ) -> FileTreeNode | dict[str, str]:
     """Return a stable, directories-first file tree enriched with violation metadata."""
     try:
-        root = resolve_root_path(root_path=root_path, project_id=project_id)
+        # Automatically resolve repository root from project_id if not provided
+        if root_path is None and project_id is not None:
+            root = resolve_root_path(project_id=project_id)
+        else:
+            root = resolve_root_path(root_path=root_path, project_id=project_id)
     except FileNotFoundError as exc:
         return {"error": str(exc)}
 
@@ -149,7 +172,9 @@ async def get_file_tree(
     )
 
     if include_graph_metadata and files:
-        statuses = load_file_status_map(root=root, file_paths=files, project_id=project_id)
+        statuses = load_file_status_map(
+            root=root, file_paths=files, project_id=project_id
+        )
         _apply_status(tree, statuses)
 
     return tree

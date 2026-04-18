@@ -1,123 +1,61 @@
-# Last Session Summary: Dashboard Overhaul Complete
+# Last Session Summary
 
-**Date:** April 18, 2026  
-**Status:** Dashboard overhaul implemented / full tests passed / ruff and mypy clean
+**Date:** 2026-04-18
+**Task:** 023 — Tree-sitter SCM Autogeneration and Validation
 
-## Objective
-Implement `docs/planning/tasks/019-dashboard-overhaul.md` end to end by replacing the graph-only Memory Atlas page with a unified MCP server dashboard, adding metadata APIs, fixing the force graph renderer, wiring local eval visibility, and preserving existing graph and file-tree compatibility routes.
+## What was implemented
 
-## Changes Implemented
+### New files created
 
-### 1. Dashboard Metadata APIs
-- **Files:**
-  - `src/mem_graph/server.py`
-  - `src/mem_graph/agents/discovery.py`
-- **Action:** Added dashboard-safe AST discovery for checked-in Python agent modules without importing arbitrary helper YAML specs or executing project-local definitions.
-- **Action:** Added workflow metadata for:
-  - `autopilot_graph` from `agents/orchestrator_graph.py`
-  - `managed_workflow_graph` from `agents/workflow_graph.py`
-- **Action:** Added dashboard routes:
-  - `GET /dashboard/api/system`
-  - `GET /dashboard/api/agents`
-  - `GET /dashboard/api/workflows`
-  - `GET /dashboard/api/tools`
-  - `GET /dashboard/api/evals`
-  - `GET /force-graph.js`
-- **Action:** Preserved existing routes and contracts for graph snapshot, node details, search, styles, file tree, and file violations.
-- **Note:** `/dashboard/api/tools` uses mounted FastMCP providers directly. In-process `mcp.list_tools()` hung under the current CodeMode/TestClient stack, while provider-level listing returned the tool definitions needed by the dashboard.
+**Parser module** (`src/mem_graph/app/parsers/`):
+- `__init__.py` — module marker
+- `query_codegen.py` — generates `{language}.generated.scm` and `{language}.custom.scm` files from per-language `IMPORTANT_NODES` allowlists; never overwrites vendor files; writes to `data/tree-sitter/grammar/{language}/queries/`
+- `query_validate.py` — two-layer validator: (1) static check against `node-types.json` to catch unknown node types, (2) `tree-sitter query` CLI validation against fixture files with capture counting and noise budget checks; also runs vendor `tags.scm` validation
 
-### 2. Schema and Eval Persistence
-- **Files:**
-  - `schema/agent_memory_schema.cypher`
-  - `src/mem_graph/evals/evaluator.py`
-- **Action:** Added nullable `EvalRun.logfire_run_id`.
-- **Action:** Added optional `logfire_run_id` argument to `Evaluator.persist_report_summary(...)`, defaulting to `None` for current call sites.
-- **Action:** Added `DashboardConfig` node table with project, pinned project, theme, filter, and timestamp fields.
-- **Action:** Extended the existing `Agent` table with `last_run_at` and `status_metadata`.
-- **Deferred:** Hosted Logfire sync remains follow-up work. Local eval summaries are now dashboard-visible and can be linked to hosted runs later through `logfire_run_id`.
+**Fixture files** (`tests/fixtures/tree_sitter/`):
+- `python/sample.py` — realistic Python with classes, async functions, typed parameters, type aliases, Protocol, decorators
+- `go/sample.go` — Go with interfaces, structs, methods, goroutines, channels, select statements
+- `typescript/sample.ts` — TypeScript with interfaces, enums, classes, generics, async functions, arrow functions
+- `tsx/sample.tsx` — TSX with React functional components, JSX elements, hooks, props
+- `cypher/sample.cypher` — Cypher queries: MATCH, CREATE, MERGE, DELETE, WITH, UNWIND, CALL subquery
+- `sql/sample.sql` — SQL with CTEs, window functions, DML, DDL, JOINs, parameters
 
-### 3. Unified Static Dashboard
-- **Files:**
-  - `src/mem_graph/static/dashboard.html`
-  - `src/mem_graph/static/dashboard.css`
-  - `src/mem_graph/static/dashboard.js`
-- **Action:** Replaced the one-view graph page with a unified shell containing:
-  - Overview
-  - Explorer
-  - Agents
-  - Tools
-  - Evals
-  - Files
-- **Action:** Removed the disabled Jina navigation item.
-- **Action:** Added light/dark theme support with CSS variables, `prefers-color-scheme`, and `localStorage` persistence.
-- **Action:** Integrated file-tree browsing and file violation details into the Files tab while keeping `/file-tree` functional.
-- **Action:** Added loading, empty, and error states for dashboard API calls.
-- **Action:** Rendered workflow diagrams locally with SVG from workflow metadata instead of pulling remote Mermaid assets.
+**Generated query files** (`data/tree-sitter/grammar/{language}/queries/`):
+- `python.generated.scm` + `python.custom.scm`
+- `go.generated.scm` + `go.custom.scm`
+- `typescript.generated.scm` + `typescript.custom.scm`
+- `tsx.generated.scm` + `tsx.custom.scm`
+- `sql.generated.scm` (no custom file — no existing .scm to conflict with)
+- `cypher.generated.scm` (no custom file — CLI validation not possible)
 
-### 4. Working Force Graph
-- **File:** `src/mem_graph/static/force-graph.js`
-- **Action:** Replaced the no-op stub with a dependency-free canvas renderer.
-- **Action:** Preserved the chainable API expected by `dashboard.js`:
-  - `backgroundColor`
-  - `linkColor`
-  - `linkDirectionalParticles`
-  - `nodeCanvasObject`
-  - `nodePointerAreaPaint`
-  - `onNodeClick`
-  - `graphData`
-  - `refresh`
-  - `centerAt`
-  - `zoom`
-- **Action:** Added force simulation, pan, zoom, drag, hover hit testing, node click selection, link rendering, resize handling, and animated centering/zooming.
+Generated files use new capture namespaces (`@scope.*`, `@flow.*`, `@var.*`, `@type.*`, `@struct.*`, `@sql.*`, `@jsx.*`) that do not conflict with existing vendor files (`@symbol.*`, `@import.*`, `@call.*`).
 
-### 5. Dashboard Styling
-- **File:** `src/mem_graph/static/dashboard.css`
-- **Action:** Reworked the dashboard into a high-density operational UI with flat panels, stable grid layouts, and 8px-or-less radius tokens.
-- **Action:** Removed the previous paper aesthetic, decorative radial/orb backgrounds, oversized radii, and remote font dependency.
-- **Action:** Avoided the banned dominant beige/brown/dark-blue/purple-blue palette families.
+### Validation results
 
-### 6. Test and Runtime Stability Fixes
-- **Files:**
-  - `tests/test_server_metadata.py`
-  - `tests/test_graph.py`
-  - `tests/test_filesystem_tree.py`
-  - `tests/test_evals.py`
-  - `tests/test_filesystem_tools.py`
-  - `src/mem_graph/tools/filesystem/filesystem.py`
-  - `src/mem_graph/services/memory.py`
-- **Action:** Added focused coverage for dashboard metadata, workflow metadata, system telemetry, and eval dashboard output.
-- **Action:** Replaced Starlette `TestClient`/httpx ASGI route tests with direct route-handler calls because in-process ASGI clients hang in this Python 3.14 environment.
-- **Action:** Replaced hanging `anyio.open_file` filesystem tool paths with synchronous `Path` reads/writes inside async tool functions.
-- **Action:** Made memory expiration deterministic by setting `expires_at` slightly before `updated_at`, preventing immediate list calls from seeing just-expired memories when timestamps compare equal.
+All 5 validatable languages pass both static and CLI validation:
 
-### 7. Task Documentation
-- **File:** `docs/planning/tasks/019-dashboard-overhaul.md`
-- **Action:** Marked implementation checkboxes complete and documented the practical deviations:
-  - provider-level tool catalog listing instead of `mcp.list_tools()`
-  - hosted Logfire sync deferred
-  - browser automation unavailable, so static verification used route smoke tests and JS syntax checks
-  - filesystem `anyio.open_file` hang fixed as part of full-suite completion
+| Language | Static | CLI captures | Vendor captures |
+|---|---|---|---|
+| Python | ✅ | 72 | 44 (tags.scm) |
+| Go | ✅ | 60 | 118 (tags.scm) |
+| TypeScript | ✅ | 141 | 22 (tags.scm) |
+| TSX | ✅ | 108 | 8 (tags.scm) |
+| SQL | ✅ | 233 | — |
+| Cypher | ⏩ skipped | ⏩ skipped | — |
 
-## Prior Session Work Still Present
-The previous session's task 017 changes remain in the working tree and were included in the successful full test run:
-- deterministic orchestrator batching
-- audit rule decomposition and factory
-- helper-agent builder foundation
-- router workflow mode
-- managed workflow graph execution
-- workflow model defaults
-- offline Logfire capability detection
-- tests for agent workflow updates
+**Cypher finding:** The `cypher-v0.0.1-linux-amd64.so` binary in the repo is a tree-sitter-haskell parser (mis-packaged). The `node-types.json` is also Haskell. CLI validation is impossible until replaced with a real Cypher parser binary.
 
-## Verification Results
-- **Focused dashboard/eval tests:** `env MEM_GRAPH_LOGFIRE_ENABLED=0 UV_CACHE_DIR=/tmp/uv-cache PYTHONPATH=src uv run pytest tests/test_server_metadata.py tests/test_graph.py tests/test_filesystem_tree.py tests/test_evals.py` passed: 12 tests.
-- **Filesystem focused tests:** `env MEM_GRAPH_LOGFIRE_ENABLED=0 UV_CACHE_DIR=/tmp/uv-cache PYTHONPATH=src uv run pytest tests/test_filesystem_tools.py -q` passed: 19 tests.
-- **Full test suite:** `env MEM_GRAPH_LOGFIRE_ENABLED=0 UV_CACHE_DIR=/tmp/uv-cache PYTHONPATH=src uv run pytest` passed: 95 tests.
-- **Ruff:** `env UV_CACHE_DIR=/tmp/uv-cache uv run ruff check` passed.
-- **Mypy:** `env UV_CACHE_DIR=/tmp/uv-cache uv run mypy .` passed: 140 source files.
-- **Static JS syntax:** `node --check src/mem_graph/static/dashboard.js` and `node --check src/mem_graph/static/force-graph.js` passed.
+### SQL grammar note
 
-## Notes / Follow-Up
-- Hosted Logfire eval sync is intentionally not implemented yet; the local schema and evaluator now have `logfire_run_id` support for a future sync worker.
-- Existing databases created before this schema update may need a migration path for newly added node properties/tables depending on Ladybug's `CREATE TABLE IF NOT EXISTS` behavior.
-- Browser-level visual verification was not run in this environment. The dashboard static assets passed syntax checks and route/API tests, but a real browser pass is still useful before relying on fine-grained visual layout behavior.
+The SQL grammar (`tree-sitter-sql v0.3.11`) uses short node names that differ from SQL standard terminology: `select` (not `select_statement`), `from` (not `from_clause`), `join` (not `join_clause`), `cte` (not `with_clause`), `relation` (not `table_reference`), `field` (not `column_reference`), `invocation` (not `function_call`). The generated SQL queries use the actual grammar names verified via `tree-sitter parse`.
+
+### Task 023 decision record
+
+- **Result:** partial
+- **Viable languages (query-driven extractor):** python, go, typescript, tsx, sql
+- **Requires special handling:** cypher (wrong binary — Haskell parser)
+- **Impact on Task 024:** Use `{language}.generated.scm` + `{language}.custom.scm` as the core extractor query contract for viable languages. For Cypher, implement direct AST traversal once a real Cypher grammar binary is sourced.
+
+## ruff / mypy
+
+Both `ruff check .` and `mypy .` exit 0 with no issues.

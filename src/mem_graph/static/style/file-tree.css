@@ -1,0 +1,144 @@
+/* file-tree.css - File Explorer specific styles */
+
+.files-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: 24px;
+  align-items: start;
+}
+
+.file-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.check-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.check-field input {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  accent-color: var(--accent);
+}
+
+.tree-root {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: calc(100vh - 280px);
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.tree-row {
+  display: grid;
+  grid-template-columns: 24px 44px 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tree-row:hover {
+  border-color: var(--accent);
+  background: var(--bg-subtle);
+}
+
+.tree-row.is-selected {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+}
+
+.tree-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 0.75rem;
+  transition: transform 0.2s ease;
+}
+
+.tree-row.is-open .tree-toggle {
+  transform: rotate(90deg);
+}
+
+.tree-icon {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.tree-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.tree-badge, .severity-pill {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: var(--danger);
+  color: white;
+}
+
+/* Violation items in list */
+.violation-item {
+  padding: 12px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+}
+
+.violation-topline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.violation-rule {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.violation-desc {
+  font-size: 0.875rem;
+  margin-bottom: 8px;
+}
+
+/* Severity indicators */
+.severity-critical { border-left: 4px solid #9b2226; }
+.severity-major { border-left: 4px solid #bb3e03; }
+.severity-minor { border-left: 4px solid #ca6702; }
+.severity-info { border-left: 4px solid #386641; }
+
+@media (max-width: 1024px) {
+  .files-grid {
+    grid-template-columns: 1fr;
+  }
+}

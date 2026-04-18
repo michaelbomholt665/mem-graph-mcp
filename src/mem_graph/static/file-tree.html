@@ -3,90 +3,132 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Memory Atlas Files</title>
-    <link rel="stylesheet" href="/file-tree.css" />
-    <script src="/file-tree.js" defer></script>
+    <title>Memory Atlas - Files</title>
+    <link rel="stylesheet" href="style/theme.css" />
+    <link rel="stylesheet" href="style/dashboard.css" />
+    <link rel="stylesheet" href="style/file-tree.css" />
+    <script type="module">
+      import { initCommon } from './js/common.js';
+      import { initFileTree } from './js/file-tree.js';
+      
+      globalThis.addEventListener('DOMContentLoaded', async () => {
+        await initCommon();
+        initFileTree();
+      });
+    </script>
   </head>
   <body>
-    <div class="shell">
+    <div class="app-shell">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">Explorer Surface</p>
-          <h1>Project Files</h1>
-          <p class="subhead">
-            Browse the repository tree, spot violation hotspots, and inspect file-level audit detail.
-          </p>
+        <div class="topbar-left">
+          <div class="logo-mark">
+            <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true">
+              <circle cx="4" cy="8" r="2.5" fill="white" opacity=".9"/>
+              <circle cx="12" cy="4" r="1.8" fill="white" opacity=".7"/>
+              <circle cx="12" cy="12" r="1.8" fill="white" opacity=".7"/>
+              <line x1="6.4" y1="7.1" x2="10.2" y2="4.7" stroke="white" stroke-width=".8" opacity=".5"/>
+              <line x1="6.4" y1="8.9" x2="10.2" y2="11.3" stroke="white" stroke-width=".8" opacity=".5"/>
+            </svg>
+          </div>
+          <div>
+            <div class="logo-text">Memory Atlas</div>
+            <div class="logo-sub">MCP Server</div>
+          </div>
         </div>
-        <nav class="tab-strip" aria-label="Explorer surfaces">
-          <a class="tab" href="/dashboard">Graph</a>
-          <button type="button" class="tab" disabled>Jina Soon</button>
-          <button type="button" class="tab is-active">Files</button>
-        </nav>
+        <div class="topbar-right">
+          <span id="server-version" class="version-badge">Loading…</span>
+          <button id="theme-toggle" class="secondary-button" type="button" aria-label="Toggle theme">☀</button>
+        </div>
       </header>
 
-      <section class="controls panel">
-        <label class="field grow">
-          <span>Root Path</span>
-          <input id="root-path" type="text" placeholder="Defaults to the linked project repo_path or current working directory" />
-        </label>
-        <label class="field compact">
-          <span>Project ID</span>
-          <input id="project-id" type="text" placeholder="Optional graph project ID" />
-        </label>
-        <label class="field compact checkbox-field">
-          <span>Problems Only</span>
-          <input id="problems-only" type="checkbox" />
-        </label>
-        <label class="field compact checkbox-field">
-          <span>Include Hidden</span>
-          <input id="include-hidden" type="checkbox" />
-        </label>
-        <label class="field compact grow">
-          <span>Filter</span>
-          <input id="filter-input" type="search" placeholder="Match file names or paths" />
-        </label>
-        <button id="refresh-button" type="button">Refresh</button>
-      </section>
-
-      <section class="workspace">
-        <aside class="tree-panel panel" aria-label="File tree">
-          <div class="panel-header">
-            <div>
-              <h2>Tree</h2>
-              <p id="tree-status">Loading file tree…</p>
+      <div class="shell-body">
+        <aside class="sidebar" aria-label="Dashboard navigation">
+          <nav>
+            <div class="nav-section">
+              <span class="nav-section-label">Monitor</span>
+              <a class="nav-item" href="/dashboard"><span class="nav-dot"></span>Overview</a>
+              <a class="nav-item" href="/explore"><span class="nav-dot"></span>Explorer</a>
             </div>
-            <p id="tree-summary" class="muted">Preparing the explorer…</p>
+            <div class="nav-section">
+              <span class="nav-section-label">System</span>
+              <a class="nav-item" href="/agents"><span class="nav-dot"></span>Agents</a>
+              <a class="nav-item" href="/tools"><span class="nav-dot"></span>Tools</a>
+              <a class="nav-item" href="/evals"><span class="nav-dot"></span>Evals</a>
+              <a class="nav-item" href="/file-tree"><span class="nav-dot"></span>Files</a>
+            </div>
+          </nav>
+          <div class="sidebar-footer">
+            <span class="sidebar-version">v0.2.0 · local</span>
           </div>
-          <div id="tree-root" class="tree-root"></div>
         </aside>
 
-        <aside class="details-panel panel" aria-label="File details">
-          <div class="panel-header">
-            <div>
-              <h2>Details</h2>
-              <p id="details-subhead">Select a file or directory to inspect it.</p>
-            </div>
-            <a id="dashboard-link" class="ghost-link is-hidden" href="/dashboard">Open In Graph</a>
-          </div>
-
-          <div id="details-empty" class="details-empty">
-            Choose an item in the tree to view violation counts, last-audited metadata, and per-file findings.
-          </div>
-
-          <article id="details-card" class="details-card is-hidden">
-            <p id="details-kind" class="details-kind"></p>
-            <h3 id="details-title">File details</h3>
-            <dl id="details-meta" class="meta-list"></dl>
-            <section>
-              <div class="section-heading">
-                <h4>Violations</h4>
-                <p id="details-count" class="muted"></p>
+        <main class="main">
+          <div class="page-content">
+            <div class="page-header">
+              <div>
+                <h2 class="page-title">Files</h2>
+                <p class="page-sub">repository tree and graph-backed file violations</p>
               </div>
-              <ul id="violation-list" class="violation-list"></ul>
+            </div>
+
+            <section class="panel file-controls">
+              <label class="field grow">
+                <span>Root Path</span>
+                <input id="file-root-path" type="text" placeholder="Project repo path or current working directory" />
+              </label>
+              <label class="field">
+                <span>Project ID</span>
+                <select id="file-project-id"></select>
+              </label>
+              <label class="check-field">
+                <input id="file-problems-only" type="checkbox" />
+                <span>Problems only</span>
+              </label>
+              <label class="check-field">
+                <input id="file-include-hidden" type="checkbox" />
+                <span>Hidden</span>
+              </label>
+              <label class="field grow">
+                <span>Filter</span>
+                <input id="file-filter-input" type="search" placeholder="Match paths" />
+              </label>
+              <button id="file-refresh-button" type="button">Refresh</button>
             </section>
-          </article>
-        </aside>
-      </section>
+
+            <div class="files-grid">
+              <section class="panel">
+                <div class="panel-header">
+                  <span class="panel-title">Files</span>
+                  <span class="evals-status muted" id="file-tree-status">Loading file tree</span>
+                </div>
+                <p id="file-tree-summary" class="muted" style="padding: 4px 18px; font-size: 11px; font-family: var(--font-mono);">Preparing explorer</p>
+                <div id="file-tree-root" class="tree-root"></div>
+              </section>
+
+              <section class="panel details">
+                <div class="panel-header">
+                  <div>
+                    <span class="panel-title">File Details</span>
+                    <p id="file-details-subhead" class="muted" style="margin-top: 2px; font-size: 11px; font-family: var(--font-mono);">Select a file or directory.</p>
+                  </div>
+                  <a id="file-dashboard-link" class="panel-action is-hidden" href="/explore">Open Node →</a>
+                </div>
+                <div id="file-details-empty" class="empty-state">Choose an item in the tree.</div>
+                <article id="file-details-card" class="details-card is-hidden">
+                  <p id="file-details-kind" class="pill"></p>
+                  <h4 id="file-details-title">File</h4>
+                  <dl id="file-details-meta" class="metadata-list"></dl>
+                  <div style="padding: 0 0 8px;">
+                    <span class="panel-title">Violations</span>
+                    <span id="file-details-count" class="muted" style="font-size: 11px; font-family: var(--font-mono); margin-left: 8px;"></span>
+                  </div>
+                  <ul id="file-violation-list" class="relationship-list"></ul>
+                </article>
+              </section>
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
   </body>
-  </html>
+</html>

@@ -1,0 +1,116 @@
+.explorer-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr 360px;
+  gap: 16px;
+  height: calc(100vh - 160px);
+  min-height: 600px;
+}
+
+.graph-panel {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden; /* Prevent growth feedback loop */
+  background: var(--bg-subtle);
+}
+
+.graph-canvas {
+  flex: 1;
+  width: 100%;
+  height: 100%; /* Force rigid height */
+  border-radius: var(--radius);
+  cursor: grab;
+  position: relative;
+}
+
+.graph-canvas:active {
+  cursor: grabbing;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--glass);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line);
+  z-index: 10;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface);
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.type-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.type-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.type-chip:hover {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.type-chip label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  cursor: pointer;
+}
+
+.type-chip input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.node-label {
+  pointer-events: none;
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--ink);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+@media (max-width: 1280px) {
+  .explorer-grid {
+    grid-template-columns: 280px 1fr;
+    height: auto;
+  }
+  .details {
+    grid-column: span 2;
+  }
+}

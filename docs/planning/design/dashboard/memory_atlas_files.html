@@ -1,0 +1,176 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700&display=swap');
+  .ma-root{font-family:'Syne',sans-serif;background:#0a0c0f;color:#e8eaed;min-height:600px;display:flex;flex-direction:column;border-radius:12px;overflow:hidden;}
+  .ma-topbar{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:56px;background:#0d1014;border-bottom:1px solid #1e2530;flex-shrink:0;}
+  .ma-logo{display:flex;align-items:center;gap:10px;}
+  .ma-logo-mark{width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#00d4a8 0%,#0099cc 100%);display:flex;align-items:center;justify-content:center;}
+  .ma-logo-text{font-size:15px;font-weight:700;letter-spacing:-.3px;color:#fff;}
+  .ma-logo-sub{font-size:10px;color:#4a5568;text-transform:uppercase;letter-spacing:1.5px;margin-top:-2px;font-family:'DM Mono',monospace;}
+  .ma-topbar-right{display:flex;align-items:center;gap:12px;}
+  .ma-badge{font-family:'DM Mono',monospace;font-size:11px;padding:3px 8px;border-radius:4px;background:#162820;color:#00d4a8;border:1px solid #00d4a822;}
+  .ma-btn{display:flex;align-items:center;gap:6px;font-size:12px;font-family:'DM Mono',monospace;color:#8899aa;background:#141820;border:1px solid #1e2530;border-radius:6px;padding:6px 12px;cursor:pointer;transition:all .15s;}
+  .ma-btn:hover{color:#e8eaed;border-color:#2d3a4a;}
+  .ma-layout{display:flex;flex:1;overflow:hidden;}
+  .ma-sidebar{width:200px;background:#0d1014;border-right:1px solid #1e2530;display:flex;flex-direction:column;padding:20px 0;flex-shrink:0;}
+  .ma-nav-section{padding:0 12px;margin-bottom:24px;}
+  .ma-nav-label{font-size:9px;text-transform:uppercase;letter-spacing:1.8px;color:#3a4555;font-family:'DM Mono',monospace;padding:0 8px;margin-bottom:6px;}
+  .ma-nav-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;font-size:13px;font-weight:500;color:#5a6a7a;cursor:pointer;transition:all .12s;margin-bottom:1px;}
+  .ma-nav-item:hover{color:#c0ccd8;background:#141820;}
+  .ma-nav-item.active{color:#00d4a8;background:#0d2420;}
+  .ma-nav-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+  .ma-nav-item.active .ma-nav-dot{background:#00d4a8;}
+  .ma-nav-item:not(.active) .ma-nav-dot{background:#2a3545;}
+  .ma-sidebar-footer{margin-top:auto;padding:12px 20px;border-top:1px solid #1a2030;}
+  .ma-version{font-family:'DM Mono',monospace;font-size:10px;color:#2d3d4d;}
+  .ma-main{flex:1;overflow:hidden;display:flex;flex-direction:column;}
+  .ma-files-controls{padding:14px 24px;border-bottom:1px solid #1a2030;background:#0d1014;display:flex;align-items:center;gap:12px;flex-shrink:0;}
+  .ma-ctrl-input{background:#141820;border:1px solid #1e2530;border-radius:6px;color:#c0ccd8;font-family:'DM Mono',monospace;font-size:11px;padding:6px 10px;outline:none;transition:border-color .15s;}
+  .ma-ctrl-input:focus{border-color:#00d4a850;}
+  .ma-ctrl-select{background:#141820;border:1px solid #1e2530;border-radius:6px;color:#8899aa;font-family:'DM Mono',monospace;font-size:11px;padding:6px 8px;outline:none;}
+  .ma-toggle-group{display:flex;gap:4px;}
+  .ma-toggle{font-size:10px;font-family:'DM Mono',monospace;padding:5px 10px;border-radius:5px;background:#141820;border:1px solid #1a2030;color:#3a4a5a;cursor:pointer;transition:all .12s;}
+  .ma-toggle.active{background:#0d2420;color:#00d4a8;border-color:#00d4a830;}
+  .ma-files-layout{display:grid;grid-template-columns:1fr 320px;flex:1;overflow:hidden;min-height:0;}
+  .ma-tree-area{display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #1e2530;}
+  .ma-tree-header{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;border-bottom:1px solid #141c24;flex-shrink:0;}
+  .ma-tree-meta{font-size:10px;font-family:'DM Mono',monospace;color:#2d3d4d;}
+  .ma-tree-status{font-size:10px;font-family:'DM Mono',monospace;color:#00d4a8;}
+  .ma-tree-body{overflow-y:auto;flex:1;}
+  .ma-tree-row{display:flex;align-items:center;gap:0;padding:0;cursor:pointer;transition:background .1s;border-bottom:1px solid #0a0d10;}
+  .ma-tree-row:hover{background:#0d1520;}
+  .ma-tree-row.selected{background:#0d1c18;border-left:2px solid #00d4a8;}
+  .ma-tree-indent{display:flex;align-items:center;padding:8px 0 8px 20px;flex:1;gap:8px;}
+  .ma-tree-chevron{font-size:9px;color:#2d3d4d;width:12px;text-align:center;flex-shrink:0;font-family:'DM Mono',monospace;}
+  .ma-tree-icon{font-size:11px;flex-shrink:0;}
+  .ma-tree-name{font-size:12px;font-family:'DM Mono',monospace;color:#8899aa;}
+  .ma-tree-name.dir{color:#6a8aa8;}
+  .ma-tree-badge{font-size:9px;font-family:'DM Mono',monospace;padding:1px 5px;border-radius:2px;margin-left:auto;margin-right:16px;}
+  .ma-tree-badge.violation{background:#1a0808;color:#ff4f4f;border:1px solid #ff4f4f22;}
+  .ma-details-area{display:flex;flex-direction:column;overflow:hidden;}
+  .ma-details-header{padding:14px 18px;border-bottom:1px solid #141c24;flex-shrink:0;}
+  .ma-details-label{font-size:9px;text-transform:uppercase;letter-spacing:1.8px;color:#3a4555;font-family:'DM Mono',monospace;margin-bottom:10px;}
+  .ma-details-filename{font-size:14px;font-weight:600;color:#fff;font-family:'DM Mono',monospace;}
+  .ma-details-path{font-size:10px;color:#2d3d4d;font-family:'DM Mono',monospace;margin-top:3px;}
+  .ma-details-body{overflow-y:auto;flex:1;padding:0;}
+  .ma-detail-section{border-bottom:1px solid #0f161e;}
+  .ma-detail-section-title{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#2d3d4d;font-family:'DM Mono',monospace;padding:10px 18px 6px;}
+  .ma-detail-row{display:flex;justify-content:space-between;padding:6px 18px;font-size:11px;}
+  .ma-detail-key{color:#3a4a5a;font-family:'DM Mono',monospace;}
+  .ma-detail-val{color:#8899aa;font-family:'DM Mono',monospace;}
+  .ma-violation-row{padding:10px 18px;border-bottom:1px solid #0f161e;cursor:pointer;transition:background .1s;}
+  .ma-violation-row:hover{background:#150a08;}
+  .ma-violation-title{font-size:11px;font-family:'DM Mono',monospace;color:#ff6b6b;margin-bottom:3px;}
+  .ma-violation-meta{font-size:10px;color:#3a2a2a;font-family:'DM Mono',monospace;}
+  .ma-no-violations{padding:20px 18px;font-size:11px;color:#2d3d4d;font-family:'DM Mono',monospace;}
+  .ma-scrollbar{scrollbar-width:thin;scrollbar-color:#1e2530 transparent;}
+</style>
+<div class="ma-root">
+  <div class="ma-topbar">
+    <div class="ma-logo">
+      <div class="ma-logo-mark"><svg viewBox="0 0 16 16" fill="none" width="16" height="16"><circle cx="4" cy="8" r="2.5" fill="white" opacity=".9"/><circle cx="12" cy="4" r="1.8" fill="white" opacity=".7"/><circle cx="12" cy="12" r="1.8" fill="white" opacity=".7"/><line x1="6.4" y1="7.1" x2="10.2" y2="4.7" stroke="white" stroke-width=".8" opacity=".5"/><line x1="6.4" y1="8.9" x2="10.2" y2="11.3" stroke="white" stroke-width=".8" opacity=".5"/></svg></div>
+      <div><div class="ma-logo-text">Memory Atlas</div><div class="ma-logo-sub">MCP Server</div></div>
+    </div>
+    <div class="ma-topbar-right">
+      <div class="ma-badge">syntx-memory v0.2.0</div>
+      <button class="ma-btn"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M10 6a4 4 0 1 1-1.1-2.75" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M10 2.5V5.5H7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Refresh</button>
+    </div>
+  </div>
+  <div class="ma-layout">
+    <div class="ma-sidebar">
+      <div class="ma-nav-section">
+        <div class="ma-nav-label">Monitor</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Overview</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Explorer</div>
+      </div>
+      <div class="ma-nav-section">
+        <div class="ma-nav-label">System</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Agents</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Tools</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Evals</div>
+        <div class="ma-nav-item active"><div class="ma-nav-dot"></div>Files</div>
+      </div>
+      <div class="ma-sidebar-footer"><div class="ma-version">v0.2.0 · local</div></div>
+    </div>
+    <div class="ma-main">
+      <div class="ma-files-controls">
+        <input class="ma-ctrl-input" style="width:200px" type="text" placeholder="Root path…"/>
+        <select class="ma-ctrl-select"><option>memory</option></select>
+        <input class="ma-ctrl-input" style="flex:1" type="text" placeholder="Filter files…" oninput="filterTree(this.value)"/>
+        <div class="ma-toggle-group">
+          <div class="ma-toggle active" onclick="setToggle(this,'all')">all</div>
+          <div class="ma-toggle" onclick="setToggle(this,'violations')">violations</div>
+        </div>
+        <button class="ma-btn" style="color:#00d4a8;border-color:#00d4a830;background:#0d2420;">Refresh</button>
+      </div>
+      <div class="ma-files-layout">
+        <div class="ma-tree-area">
+          <div class="ma-tree-header">
+            <div class="ma-tree-meta">56 directories · 285 files</div>
+            <div class="ma-tree-status">File tree ready</div>
+          </div>
+          <div class="ma-tree-body ma-scrollbar" id="treeBody"></div>
+        </div>
+        <div class="ma-details-area">
+          <div class="ma-details-header">
+            <div class="ma-details-label">File details</div>
+            <div class="ma-details-filename" id="detailName">memory/</div>
+            <div class="ma-details-path" id="detailPath">root directory</div>
+          </div>
+          <div class="ma-details-body ma-scrollbar">
+            <div class="ma-detail-section">
+              <div class="ma-detail-section-title">Info</div>
+              <div class="ma-detail-row"><div class="ma-detail-key">type</div><div class="ma-detail-val" id="detailType">directory</div></div>
+              <div class="ma-detail-row"><div class="ma-detail-key">project</div><div class="ma-detail-val">memory</div></div>
+              <div class="ma-detail-row"><div class="ma-detail-key">entries</div><div class="ma-detail-val" id="detailEntries">9 dirs</div></div>
+            </div>
+            <div class="ma-detail-section">
+              <div class="ma-detail-section-title">Violations</div>
+              <div class="ma-no-violations" id="violationsArea">No violations recorded for this path.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const treeData = [
+  {name:'memory',type:'dir',depth:0,open:true,children:['data','diagrams','docs','logs','schema','scripts','skills','src','tests']},
+  {name:'data',type:'dir',depth:1},{name:'diagrams',type:'dir',depth:1},{name:'docs',type:'dir',depth:1},
+  {name:'logs',type:'dir',depth:1},{name:'schema',type:'dir',depth:1},{name:'scripts',type:'dir',depth:1},
+  {name:'skills',type:'dir',depth:1},{name:'src',type:'dir',depth:1,open:true},
+  {name:'__init__.py',type:'file',depth:2,ext:'py'},{name:'server.py',type:'file',depth:2,ext:'py'},
+  {name:'graph.py',type:'file',depth:2,ext:'py',violation:true},{name:'models.py',type:'file',depth:2,ext:'py'},
+  {name:'agents',type:'dir',depth:2},{name:'tools',type:'dir',depth:2},{name:'tests',type:'dir',depth:1},
+];
+const icons = {py:'🐍',js:'📜',ts:'📘',md:'📝',json:'{}',dir:'📁'};
+function ext(name){return name.split('.').pop();}
+function renderTree(filter='') {
+  const body = document.getElementById('treeBody');
+  body.innerHTML = treeData.filter(n=>!filter||n.name.includes(filter)).map((node,i)=>`
+    <div class="ma-tree-row${i===0?' selected':''}" onclick="selectNode('${node.name}','${node.type}',${node.violation||false})">
+      <div class="ma-tree-indent" style="padding-left:${20+node.depth*16}px">
+        <div class="ma-tree-chevron">${node.type==='dir'?(node.open?'▾':'▸'):''}</div>
+        <div class="ma-tree-icon">${node.type==='dir'?'📁':icons[ext(node.name)]||'📄'}</div>
+        <div class="ma-tree-name${node.type==='dir'?' dir':''}">${node.name}</div>
+        ${node.violation?`<div class="ma-tree-badge violation">violation</div>`:''}
+      </div>
+    </div>`).join('');
+}
+function selectNode(name,type,hasViolation) {
+  document.getElementById('detailName').textContent = name+(type==='dir'?'/':'');
+  document.getElementById('detailPath').textContent = 'memory/'+name;
+  document.getElementById('detailType').textContent = type;
+  document.getElementById('detailEntries').textContent = type==='dir'?'—':ext(name)+' file';
+  document.getElementById('violationsArea').innerHTML = hasViolation
+    ? `<div class="ma-violation-row"><div class="ma-violation-title">RECURRENCE: missing null guard</div><div class="ma-violation-meta">severity: medium · line 42</div></div>
+       <div class="ma-violation-row"><div class="ma-violation-title">NEW: unhandled exception path</div><div class="ma-violation-meta">severity: high · line 87</div></div>`
+    : '<div class="ma-no-violations">No violations recorded for this path.</div>';
+  document.querySelectorAll('.ma-tree-row').forEach(r=>r.classList.remove('selected'));
+  event.currentTarget.classList.add('selected');
+}
+function filterTree(val){renderTree(val);}
+function setToggle(el,val){document.querySelectorAll('.ma-toggle').forEach(t=>t.classList.remove('active'));el.classList.add('active');}
+renderTree();
+</script>

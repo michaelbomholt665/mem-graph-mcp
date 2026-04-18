@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Memory Atlas - Explorer</title>
+    <link rel="stylesheet" href="style/theme.css" />
+    <link rel="stylesheet" href="style/dashboard.css" />
+    <link rel="stylesheet" href="style/graph.css" />
+    <script src="js/force-graph.js"></script>
+    <script type="module">
+      import { initCommon } from './js/common.js';
+      import { initExplore } from './js/explore.js';
+      
+      globalThis.addEventListener('DOMContentLoaded', async () => {
+        await initCommon();
+        initExplore();
+      });
+    </script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="logo-mark">
+            <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true">
+              <circle cx="4" cy="8" r="2.5" fill="white" opacity=".9"/>
+              <circle cx="12" cy="4" r="1.8" fill="white" opacity=".7"/>
+              <circle cx="12" cy="12" r="1.8" fill="white" opacity=".7"/>
+              <line x1="6.4" y1="7.1" x2="10.2" y2="4.7" stroke="white" stroke-width=".8" opacity=".5"/>
+              <line x1="6.4" y1="8.9" x2="10.2" y2="11.3" stroke="white" stroke-width=".8" opacity=".5"/>
+            </svg>
+          </div>
+          <div>
+            <div class="logo-text">Memory Atlas</div>
+            <div class="logo-sub">MCP Server</div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <span id="server-version" class="version-badge">Loading…</span>
+          <button id="refresh-all-button" type="button">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M10 6a4 4 0 1 1-1.1-2.75" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M10 2.5V5.5H7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Refresh
+          </button>
+          <button id="theme-toggle" class="secondary-button" type="button" aria-label="Toggle theme">☀</button>
+        </div>
+      </header>
+
+      <div class="shell-body">
+        <aside class="sidebar" aria-label="Dashboard navigation">
+          <nav>
+            <div class="nav-section">
+              <span class="nav-section-label">Monitor</span>
+              <a class="nav-item" href="/dashboard"><span class="nav-dot"></span>Overview</a>
+              <a class="nav-item" href="/explore"><span class="nav-dot"></span>Explorer</a>
+            </div>
+            <div class="nav-section">
+              <span class="nav-section-label">System</span>
+              <a class="nav-item" href="/agents"><span class="nav-dot"></span>Agents</a>
+              <a class="nav-item" href="/tools"><span class="nav-dot"></span>Tools</a>
+              <a class="nav-item" href="/evals"><span class="nav-dot"></span>Evals</a>
+              <a class="nav-item" href="/file-tree"><span class="nav-dot"></span>Files</a>
+            </div>
+          </nav>
+          <div class="sidebar-footer">
+            <span class="sidebar-version">v0.2.0 · local</span>
+          </div>
+        </aside>
+
+        <main class="main">
+          <div class="page-header-bar">
+            <div>
+              <h2 class="page-title">Explorer</h2>
+              <p class="page-sub">search and inspect the memory graph</p>
+            </div>
+          </div>
+
+          <div class="explorer-grid" style="padding: 0 28px 28px;">
+            <aside class="panel controls" aria-label="Graph controls">
+              <div class="panel-header">
+                <span class="panel-title">Controls</span>
+                <span class="evals-status muted" id="snapshot-status">Loading</span>
+              </div>
+              <div class="panel-body" style="display: flex; flex-direction: column; gap: 12px;">
+                <label class="field">
+                  <span>Project ID</span>
+                  <select id="project-id"></select>
+                </label>
+                <label class="field">
+                  <span>Search</span>
+                  <div class="inline-row">
+                    <input id="search-input" type="search" placeholder="Find nodes" style="flex: 1;" />
+                    <button id="search-button" type="button">Find</button>
+                  </div>
+                </label>
+                <div class="inline-row equal">
+                  <label class="field">
+                    <span>Depth</span>
+                    <select id="depth-select">
+                      <option value="1">1 hop</option>
+                      <option value="2" selected>2 hops</option>
+                      <option value="3">3 hops</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Max</span>
+                    <select id="max-nodes-select">
+                      <option value="120">120</option>
+                      <option value="180">180</option>
+                      <option value="240" selected>240</option>
+                      <option value="320">320</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="inline-row">
+                  <button id="refresh-button" type="button" style="flex: 1;">Refresh</button>
+                  <button id="reset-filters-button" class="secondary-button" type="button">Reset</button>
+                </div>
+                <p id="last-updated" class="muted" style="font-size: 11px; font-family: var(--font-mono);">Waiting for first snapshot</p>
+                <section>
+                  <p class="eyebrow" style="margin-bottom: 8px;">Node Types</p>
+                  <div id="type-filters" class="type-filters"></div>
+                </section>
+                <section>
+                  <p class="eyebrow" style="margin-bottom: 8px;">Search Results</p>
+                  <ul id="search-results" class="results-list">
+                    <li class="muted" style="font-size: 11px; font-family: var(--font-mono); padding: 8px 0;">Search to focus a graph node.</li>
+                  </ul>
+                </section>
+              </div>
+            </aside>
+
+            <section class="panel graph-panel" aria-labelledby="graph-heading">
+              <div class="panel-header">
+                <div>
+                  <span class="panel-title" id="graph-heading">Graph</span>
+                  <span class="muted" id="graph-summary" style="font-size: 11px; font-family: var(--font-mono); margin-left: 8px;">Preparing canvas</span>
+                </div>
+                <div id="legend" class="legend"></div>
+              </div>
+              <div id="graph-canvas" class="graph-canvas" aria-label="Knowledge graph canvas"></div>
+            </section>
+
+            <aside class="panel details" aria-label="Node details">
+              <div class="panel-header">
+                <span class="panel-title">Details</span>
+                <span class="muted" style="font-size: 11px; font-family: var(--font-mono);">Select a node</span>
+              </div>
+              <div id="details-empty" class="empty-state">Select a node from the graph or search results.</div>
+              <article id="details-card" class="details-card is-hidden">
+                <p id="details-type" class="pill"></p>
+                <h4 id="details-title">Node</h4>
+                <dl id="details-metadata" class="metadata-list"></dl>
+                <h4>Relationships</h4>
+                <ul id="details-relationships" class="relationship-list"></ul>
+              </article>
+            </aside>
+          </div>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

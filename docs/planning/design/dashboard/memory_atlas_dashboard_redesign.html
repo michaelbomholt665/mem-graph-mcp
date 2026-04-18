@@ -1,0 +1,749 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700&display=swap');
+
+  .ma-root {
+    font-family: 'Syne', sans-serif;
+    background: #0a0c0f;
+    color: #e8eaed;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .ma-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    height: 56px;
+    background: #0d1014;
+    border-bottom: 1px solid #1e2530;
+    flex-shrink: 0;
+  }
+
+  .ma-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .ma-logo-mark {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #00d4a8 0%, #0099cc 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ma-logo-mark svg { width: 16px; height: 16px; }
+
+  .ma-logo-text {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    color: #fff;
+  }
+
+  .ma-logo-sub {
+    font-size: 10px;
+    font-weight: 400;
+    color: #4a5568;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-top: -2px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .ma-topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .ma-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: #162820;
+    color: #00d4a8;
+    border: 1px solid #00d4a822;
+    letter-spacing: 0.5px;
+  }
+
+  .ma-btn-refresh {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    color: #8899aa;
+    background: #141820;
+    border: 1px solid #1e2530;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .ma-btn-refresh:hover { color: #e8eaed; border-color: #2d3a4a; background: #1a2030; }
+
+  .ma-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .ma-sidebar {
+    width: 200px;
+    background: #0d1014;
+    border-right: 1px solid #1e2530;
+    display: flex;
+    flex-direction: column;
+    padding: 20px 0;
+    flex-shrink: 0;
+  }
+
+  .ma-nav-section {
+    padding: 0 12px;
+    margin-bottom: 24px;
+  }
+
+  .ma-nav-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1.8px;
+    color: #3a4555;
+    font-family: 'DM Mono', monospace;
+    padding: 0 8px;
+    margin-bottom: 6px;
+  }
+
+  .ma-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #5a6a7a;
+    cursor: pointer;
+    transition: all 0.12s;
+    margin-bottom: 1px;
+  }
+
+  .ma-nav-item:hover { color: #c0ccd8; background: #141820; }
+
+  .ma-nav-item.active {
+    color: #00d4a8;
+    background: #0d2420;
+  }
+
+  .ma-nav-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .ma-nav-item.active .ma-nav-dot { background: #00d4a8; }
+  .ma-nav-item:not(.active) .ma-nav-dot { background: #2a3545; }
+
+  .ma-sidebar-footer {
+    margin-top: auto;
+    padding: 12px 20px;
+    border-top: 1px solid #1a2030;
+  }
+
+  .ma-version {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: #2d3d4d;
+  }
+
+  .ma-main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .ma-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+
+  .ma-page-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: #fff;
+    margin: 0 0 4px;
+  }
+
+  .ma-page-sub {
+    font-size: 13px;
+    color: #4a5a6a;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .ma-status-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .ma-pulse {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #00d4a8;
+    box-shadow: 0 0 0 0 #00d4a840;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 #00d4a840; }
+    70% { box-shadow: 0 0 0 6px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+
+  .ma-status-text {
+    font-size: 11px;
+    color: #00d4a8;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .ma-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+
+  .ma-metric-card {
+    background: #0d1014;
+    border: 1px solid #1e2530;
+    border-radius: 10px;
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+
+  .ma-metric-card:hover { border-color: #2d3a4a; }
+
+  .ma-metric-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    border-radius: 10px 10px 0 0;
+    opacity: 0.6;
+  }
+
+  .ma-metric-card.c-teal::after { background: #00d4a8; }
+  .ma-metric-card.c-blue::after { background: #3b9eff; }
+  .ma-metric-card.c-purple::after { background: #9b72ff; }
+  .ma-metric-card.c-amber::after { background: #f5a623; }
+
+  .ma-metric-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #3a4a5a;
+    font-family: 'DM Mono', monospace;
+    margin-bottom: 10px;
+  }
+
+  .ma-metric-value {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    color: #fff;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .ma-metric-desc {
+    font-size: 11px;
+    color: #3a4a5a;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .ma-metric-icon {
+    position: absolute;
+    right: 18px;
+    top: 18px;
+    opacity: 0.08;
+    font-size: 32px;
+    line-height: 1;
+  }
+
+  .ma-content-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+
+  .ma-panel {
+    background: #0d1014;
+    border: 1px solid #1e2530;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .ma-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid #141c24;
+  }
+
+  .ma-panel-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: #6a7a8a;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .ma-panel-action {
+    font-size: 11px;
+    color: #00d4a8;
+    font-family: 'DM Mono', monospace;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.12s;
+  }
+  .ma-panel-action:hover { opacity: 1; }
+
+  .ma-panel-body { padding: 16px 20px; }
+
+  .ma-task-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 0;
+    border-bottom: 1px solid #141c24;
+  }
+  .ma-task-row:last-child { border-bottom: none; }
+
+  .ma-task-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #c0ccd8;
+  }
+
+  .ma-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .ma-dot.done { background: #00d4a8; }
+  .ma-dot.running { background: #3b9eff; animation: pulse 2s infinite; }
+  .ma-dot.queued { background: #3a4a5a; }
+  .ma-dot.error { background: #ff4f4f; }
+
+  .ma-task-count {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: #5a6a7a;
+    background: #141820;
+    padding: 2px 8px;
+    border-radius: 4px;
+    min-width: 28px;
+    text-align: center;
+  }
+
+  .ma-violations-empty {
+    text-align: center;
+    padding: 20px 0;
+  }
+
+  .ma-empty-icon {
+    font-size: 28px;
+    margin-bottom: 6px;
+    opacity: 0.2;
+  }
+
+  .ma-empty-text {
+    font-size: 12px;
+    color: #2d3d4d;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .ma-eval-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 0;
+    gap: 10px;
+  }
+
+  .ma-eval-empty-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: #141820;
+    border: 1px solid #1e2530;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ma-eval-cta {
+    font-size: 13px;
+    font-weight: 600;
+    color: #00d4a8;
+    cursor: pointer;
+  }
+
+  .ma-eval-hint {
+    font-size: 11px;
+    color: #2d3d4d;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .ma-graph-viz {
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ma-graph-svg { width: 100%; max-width: 340px; }
+
+  .ma-node {
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .ma-node:hover { opacity: 0.8; }
+
+  .ma-section-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #2d3d4d;
+    font-family: 'DM Mono', monospace;
+    padding: 0 20px;
+    margin-bottom: 10px;
+  }
+
+  .ma-agent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .ma-agent-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    border-bottom: 1px solid #141c24;
+    transition: background 0.1s;
+    cursor: pointer;
+  }
+  .ma-agent-row:hover { background: #111620; }
+  .ma-agent-row:last-child { border-bottom: none; }
+
+  .ma-agent-name {
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    color: #8899aa;
+  }
+
+  .ma-agent-tags {
+    display: flex;
+    gap: 4px;
+  }
+
+  .ma-tag {
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: #141820;
+    color: #3a4a5a;
+    border: 1px solid #1a2030;
+  }
+
+  .ma-fullwidth-panel {
+    background: #0d1014;
+    border: 1px solid #1e2530;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .ma-scrollbar { scrollbar-width: thin; scrollbar-color: #1e2530 transparent; }
+</style>
+
+<div class="ma-root">
+  <div class="ma-topbar">
+    <div class="ma-logo">
+      <div class="ma-logo-mark">
+        <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="4" cy="8" r="2.5" fill="white" opacity="0.9"/>
+          <circle cx="12" cy="4" r="1.8" fill="white" opacity="0.7"/>
+          <circle cx="12" cy="12" r="1.8" fill="white" opacity="0.7"/>
+          <line x1="6.4" y1="7.1" x2="10.2" y2="4.7" stroke="white" stroke-width="0.8" opacity="0.5"/>
+          <line x1="6.4" y1="8.9" x2="10.2" y2="11.3" stroke="white" stroke-width="0.8" opacity="0.5"/>
+        </svg>
+      </div>
+      <div>
+        <div class="ma-logo-text">Memory Atlas</div>
+        <div class="ma-logo-sub">MCP Server</div>
+      </div>
+    </div>
+    <div class="ma-topbar-right">
+      <div class="ma-badge">syntx-memory v0.2.0</div>
+      <button class="ma-btn-refresh">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M10 6a4 4 0 1 1-1.1-2.75" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M10 2.5V5.5H7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  <div class="ma-layout">
+    <div class="ma-sidebar">
+      <div class="ma-nav-section">
+        <div class="ma-nav-label">Monitor</div>
+        <div class="ma-nav-item active">
+          <div class="ma-nav-dot"></div>
+          Overview
+        </div>
+        <div class="ma-nav-item">
+          <div class="ma-nav-dot"></div>
+          Explorer
+        </div>
+      </div>
+      <div class="ma-nav-section">
+        <div class="ma-nav-label">System</div>
+        <div class="ma-nav-item">
+          <div class="ma-nav-dot"></div>
+          Agents
+        </div>
+        <div class="ma-nav-item">
+          <div class="ma-nav-dot"></div>
+          Tools
+        </div>
+        <div class="ma-nav-item">
+          <div class="ma-nav-dot"></div>
+          Evals
+        </div>
+        <div class="ma-nav-item">
+          <div class="ma-nav-dot"></div>
+          Files
+        </div>
+      </div>
+      <div class="ma-sidebar-footer">
+        <div class="ma-version">v0.2.0 · local</div>
+      </div>
+    </div>
+
+    <div class="ma-main ma-scrollbar">
+      <div class="ma-page-header">
+        <div>
+          <div class="ma-page-title">Operations Dashboard</div>
+          <div class="ma-page-sub">server telemetry · graph state · eval health</div>
+          <div class="ma-status-row">
+            <div class="ma-pulse"></div>
+            <div class="ma-status-text">connected · uptime 6s</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ma-metrics-grid">
+        <div class="ma-metric-card c-teal">
+          <div class="ma-metric-label">Health</div>
+          <div class="ma-metric-value">OK</div>
+          <div class="ma-metric-desc">all systems nominal</div>
+        </div>
+        <div class="ma-metric-card c-blue">
+          <div class="ma-metric-label">Nodes</div>
+          <div class="ma-metric-value">14</div>
+          <div class="ma-metric-desc">known graph records</div>
+        </div>
+        <div class="ma-metric-card c-purple">
+          <div class="ma-metric-label">Edges</div>
+          <div class="ma-metric-value">15</div>
+          <div class="ma-metric-desc">tracked relationships</div>
+        </div>
+        <div class="ma-metric-card c-amber">
+          <div class="ma-metric-label">Uptime</div>
+          <div class="ma-metric-value">6s</div>
+          <div class="ma-metric-desc">current process</div>
+        </div>
+      </div>
+
+      <div class="ma-content-grid">
+        <div class="ma-panel">
+          <div class="ma-panel-header">
+            <div class="ma-panel-title">Task Status</div>
+            <div class="ma-panel-action">view all →</div>
+          </div>
+          <div class="ma-panel-body">
+            <div class="ma-task-row">
+              <div class="ma-task-label">
+                <div class="ma-dot done"></div>
+                done
+              </div>
+              <div class="ma-task-count">1</div>
+            </div>
+            <div class="ma-task-row">
+              <div class="ma-task-label">
+                <div class="ma-dot running"></div>
+                running
+              </div>
+              <div class="ma-task-count">0</div>
+            </div>
+            <div class="ma-task-row">
+              <div class="ma-task-label">
+                <div class="ma-dot queued"></div>
+                queued
+              </div>
+              <div class="ma-task-count">0</div>
+            </div>
+            <div class="ma-task-row">
+              <div class="ma-task-label">
+                <div class="ma-dot error"></div>
+                error
+              </div>
+              <div class="ma-task-count">0</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ma-panel">
+          <div class="ma-panel-header">
+            <div class="ma-panel-title">Violations</div>
+            <div class="ma-panel-action">severity breakdown →</div>
+          </div>
+          <div class="ma-panel-body">
+            <div class="ma-violations-empty">
+              <div class="ma-empty-icon">◎</div>
+              <div class="ma-empty-text">no violations recorded</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ma-content-grid">
+        <div class="ma-panel">
+          <div class="ma-panel-header">
+            <div class="ma-panel-title">Graph Snapshot</div>
+            <div class="ma-panel-action">open explorer →</div>
+          </div>
+          <div class="ma-graph-viz">
+            <svg class="ma-graph-svg" viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <radialGradient id="glow-teal" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#00d4a8" stop-opacity="0.15"/>
+                  <stop offset="100%" stop-color="#00d4a8" stop-opacity="0"/>
+                </radialGradient>
+              </defs>
+              <circle cx="160" cy="90" r="50" fill="url(#glow-teal)"/>
+              <line x1="160" y1="90" x2="60" y2="50" stroke="#1e3040" stroke-width="1.5"/>
+              <line x1="160" y1="90" x2="260" y2="50" stroke="#1e3040" stroke-width="1.5"/>
+              <line x1="160" y1="90" x2="60" y2="140" stroke="#1e3040" stroke-width="1.5"/>
+              <line x1="160" y1="90" x2="260" y2="140" stroke="#1e3040" stroke-width="1.5"/>
+              <line x1="160" y1="90" x2="160" y2="20" stroke="#1e3040" stroke-width="1.5"/>
+              <circle cx="160" cy="90" r="18" fill="#0d2420" stroke="#00d4a8" stroke-width="1.5"/>
+              <text x="160" y="94" text-anchor="middle" font-size="8" fill="#00d4a8" font-family="'DM Mono', monospace">memory</text>
+              <g class="ma-node">
+                <circle cx="60" cy="50" r="10" fill="#141820" stroke="#1e2a38" stroke-width="1"/>
+                <text x="60" y="53.5" text-anchor="middle" font-size="6" fill="#4a6a7a" font-family="'DM Mono', monospace">task</text>
+              </g>
+              <g class="ma-node">
+                <circle cx="260" cy="50" r="10" fill="#141820" stroke="#1e2a38" stroke-width="1"/>
+                <text x="260" y="53.5" text-anchor="middle" font-size="6" fill="#4a6a7a" font-family="'DM Mono', monospace">note</text>
+              </g>
+              <g class="ma-node">
+                <circle cx="60" cy="140" r="10" fill="#141820" stroke="#1e2a38" stroke-width="1"/>
+                <text x="60" y="143.5" text-anchor="middle" font-size="6" fill="#4a6a7a" font-family="'DM Mono', monospace">file</text>
+              </g>
+              <g class="ma-node">
+                <circle cx="260" cy="140" r="10" fill="#141820" stroke="#1e2a38" stroke-width="1"/>
+                <text x="260" y="143.5" text-anchor="middle" font-size="6" fill="#4a6a7a" font-family="'DM Mono', monospace">dec.</text>
+              </g>
+              <g class="ma-node">
+                <circle cx="160" cy="20" r="8" fill="#141820" stroke="#1e2a38" stroke-width="1"/>
+                <text x="160" y="23.5" text-anchor="middle" font-size="6" fill="#4a6a7a" font-family="'DM Mono', monospace">back.</text>
+              </g>
+              <text x="160" y="174" text-anchor="middle" font-size="9" fill="#2d3d4d" font-family="'DM Mono', monospace">14 nodes · 15 edges</text>
+            </svg>
+          </div>
+        </div>
+
+        <div class="ma-panel">
+          <div class="ma-panel-header">
+            <div class="ma-panel-title">Recent Evals</div>
+            <div class="ma-panel-action">open evals →</div>
+          </div>
+          <div class="ma-eval-empty">
+            <div class="ma-eval-empty-icon">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <rect x="3" y="4" width="12" height="1.5" rx="0.75" fill="#2d3d4d"/>
+                <rect x="3" y="8" width="9" height="1.5" rx="0.75" fill="#2d3d4d"/>
+                <rect x="3" y="12" width="5" height="1.5" rx="0.75" fill="#2d3d4d"/>
+              </svg>
+            </div>
+            <div class="ma-eval-cta">No eval runs recorded</div>
+            <div class="ma-eval-hint">run your first eval to see results here</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ma-fullwidth-panel">
+        <div class="ma-panel-header">
+          <div class="ma-panel-title">Active Agents</div>
+          <div class="ma-panel-action">manage all →</div>
+        </div>
+        <div class="ma-agent-list">
+          <div class="ma-agent-row">
+            <div class="ma-agent-name">agents.audit.audit_agent</div>
+            <div class="ma-agent-tags">
+              <div class="ma-tag">audit_agent</div>
+              <div class="ma-tag">preloaded</div>
+              <div class="ma-tag">audit</div>
+            </div>
+          </div>
+          <div class="ma-agent-row">
+            <div class="ma-agent-name">agents.audit.factory</div>
+            <div class="ma-agent-tags">
+              <div class="ma-tag">factory</div>
+            </div>
+          </div>
+          <div class="ma-agent-row">
+            <div class="ma-agent-name">agents.audit.rule_injector_agent</div>
+            <div class="ma-agent-tags">
+              <div class="ma-tag">rule_injector</div>
+              <div class="ma-tag">ruleInjector</div>
+            </div>
+          </div>
+          <div class="ma-agent-row" style="border-bottom: none;">
+            <div class="ma-agent-name" style="color: #2d3a4a;">+ 22 more modules</div>
+            <div style="font-size: 11px; font-family: 'DM Mono', monospace; color: #00d4a8; cursor: pointer;">view all →</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pydantic AI Workflow Visualizer</title>
+    <!-- Load Mermaid.js -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        :root {
+            /* Obsidian Canvas Style Dark Mode */
+            --bg-color: #0f111a;        /* Deep canvas background */
+            --nav-bg: #151722;          /* Slightly lighter sidebar */
+            --card-bg: #0f111a;         /* Blend card into background */
+            --border-color: #2e3246;    /* Subtle borders */
+            --text-color: #a6accd;      /* Soft white/gray text */
+            --accent-color: #82aaff;    /* Blue accent */
+            
+            --node-bg: #1a1d27;         /* Dark node fill */
+            --node-border: #4e5579;     /* Visible node borders */
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar Navigation */
+        nav {
+            width: 260px;
+            background-color: var(--nav-bg);
+            padding: 20px 0;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border-color);
+            z-index: 10;
+        }
+
+        nav h2 {
+            text-align: center;
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+            color: #ffffff;
+            font-weight: 500;
+        }
+
+        .nav-btn {
+            background: none;
+            border: none;
+            color: var(--text-color);
+            padding: 15px 25px;
+            text-align: left;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: 0.2s;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-btn:hover {
+            background-color: #1e2233;
+            color: #ffffff;
+        }
+
+        .nav-btn.active {
+            background-color: #1e2233;
+            border-left: 3px solid var(--accent-color);
+            color: #ffffff;
+        }
+
+        /* Main Content Area */
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-image: radial-gradient(#2e3246 1px, transparent 0);
+            background-size: 30px 30px; /* Subtle dot grid pattern */
+        }
+
+        header {
+            padding: 25px 30px;
+            background-color: rgba(15, 17, 26, 0.85); /* Semi-transparent header */
+            backdrop-filter: blur(5px);
+            border-bottom: 1px solid var(--border-color);
+            z-index: 5;
+        }
+
+        h1 {
+            margin: 0 0 8px 0;
+            color: #ffffff;
+            font-size: 1.5rem;
+            font-weight: 500;
+        }
+
+        p.desc {
+            margin: 0;
+            color: #8c92b3;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        /* Graph Container */
+        .graph-wrapper {
+            flex: 1;
+            overflow: auto; /* Allow unlimited scrolling for massive diagrams */
+            padding: 50px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        #graph-container {
+            /* Force the diagram to be wide so the 8 agents don't get squished */
+            min-width: 1400px; 
+            display: flex;
+            justify-content: center;
+        }
+
+        /* Override Mermaid's SVG scaling limitations */
+        #graph-container svg {
+            width: 100% !important;
+            max-width: none !important;
+            height: auto !important;
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <h2>Workflows</h2>
+        <button class="nav-btn active" onclick="loadWorkflow('largeOrchestrator', this)">Large Orchestrator</button>
+        <button class="nav-btn" onclick="loadWorkflow('react', this)">ReAct Agent</button>
+    </nav>
+
+    <main>
+        <header>
+            <h1 id="workflow-title">Large Orchestration Workflow</h1>
+            <p class="desc" id="workflow-desc">
+                A pure top-down workflow showing massive fan-out to sub-agents, followed by fan-in to an Audit agent, and proceeding down a pipeline.
+            </p>
+        </header>
+
+        <div class="graph-wrapper">
+            <!-- Container for the rendered Mermaid SVG -->
+            <div id="graph-container"></div>
+        </div>
+    </main>
+
+    <script>
+        // Initialize Mermaid with custom theming matching the dark canvas
+        mermaid.initialize({ 
+            startOnLoad: false,
+            theme: 'base',
+            themeVariables: {
+                background: 'transparent',
+                primaryColor: '#1a1d27',        // Node background
+                primaryTextColor: '#e5e9f0',    // Node text
+                primaryBorderColor: '#4e5579',  // Node border
+                lineColor: '#5c6380',           // Arrow color
+                fontSize: '16px',
+                fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
+            },
+            flowchart: { 
+                curve: 'basis',      // Smooth sweeping lines
+                rankSpacing: 100,    // High vertical spacing (Top-Down depth)
+                nodeSpacing: 60      // Horizontal spacing between nodes
+            } 
+        });
+
+        // The workflows map
+        const workflows = {
+            largeOrchestrator: {
+                title: "Massive Fan-Out Orchestration",
+                desc: "Notice the absence of subgraphs. By defining the nodes and edges directly in a Top-Down (TD) flowchart, Mermaid naturally creates this wide tree structure.",
+                mermaidCode: `
+flowchart TD
+    %% Custom styling for specific node types
+    classDef mainNode fill:#1a1d27,stroke:#82aaff,stroke-width:2px,rx:8,ry:8
+    classDef agentNode fill:#1a1d27,stroke:#c3e88d,stroke-width:1px,rx:8,ry:8
+    classDef auditNode fill:#1a1d27,stroke:#ffcb6b,stroke-width:2px,rx:8,ry:8
+    classDef utilityNode fill:#1a1d27,stroke:#c792ea,stroke-width:1px,rx:8,ry:8
+
+    %% --- Node Definitions ---
+    Orchestrator["orchestration agent"]:::mainNode
+
+    %% The 8 Parallel Agents
+    A1["Agent 1"]:::agentNode
+    A2["Agent 2"]:::agentNode
+    A3["Agent 3"]:::agentNode
+    A4["Agent 4"]:::agentNode
+    A5["Agent 5"]:::agentNode
+    A6["Agent 6"]:::agentNode
+    A7["Agent 7"]:::agentNode
+    A8["Agent 8"]:::agentNode
+
+    %% Downstream Pipeline
+    Audit["Audit Agent"]:::auditNode
+    Debug["Debug Agent"]:::utilityNode
+    Docs["Documentation Agent"]:::utilityNode
+    Memory["Memory Agent"]:::mainNode
+
+    %% --- Edges (Connections) ---
+    
+    %% Fan Out Phase
+    Orchestrator --> A1
+    Orchestrator --> A2
+    Orchestrator --> A3
+    Orchestrator --> A4
+    Orchestrator --> A5
+    Orchestrator --> A6
+    Orchestrator --> A7
+    Orchestrator --> A8
+
+    %% Fan In Phase
+    A1 --> Audit
+    A2 --> Audit
+    A3 --> Audit
+    A4 --> Audit
+    A5 --> Audit
+    A6 --> Audit
+    A7 --> Audit
+    A8 --> Audit
+
+    %% Post-Audit Pipeline
+    Audit --> Debug
+    Audit --> Docs
+    
+    %% Lateral connection down the pipe
+    Debug --> Docs
+    
+    Docs --> Memory
+                `
+            },
+            react: {
+                title: "ReAct (Reason + Act) Agent Workflow",
+                desc: "A loop-based workflow common in pydantic_graph where an agent reasons, calls tools, observes the output, and iterates.",
+                mermaidCode: `
+flowchart TD
+    classDef default fill:#1a1d27,stroke:#4e5579,stroke-width:2px,rx:8,ry:8
+    classDef highlight fill:#1a1d27,stroke:#82aaff,stroke-width:2px,rx:8,ry:8
+
+    Input(("User Prompt")):::default --> Reason
+
+    Reason("Reasoning Node (LLM)"):::highlight
+    Tool("Tool Execution Node"):::default
+    Final("Final Response Output"):::default
+
+    %% Loop Logic
+    Reason -->|Thought: Needs Tool| Tool
+    Tool -->|Observation| Reason
+    
+    Reason -->|Thought: Final Answer| Final
+                `
+            }
+        };
+
+        async function loadWorkflow(type, btnElement) {
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            if(btnElement) btnElement.classList.add('active');
+
+            const data = workflows[type];
+            document.getElementById('workflow-title').innerText = data.title;
+            document.getElementById('workflow-desc').innerText = data.desc;
+
+            const container = document.getElementById('graph-container');
+            
+            try {
+                container.innerHTML = ''; 
+                const id = 'mermaid-svg-' + Date.now();
+                const { svg } = await mermaid.render(id, data.mermaidCode);
+                container.innerHTML = svg;
+            } catch (error) {
+                console.error("Mermaid rendering failed:", error);
+                container.innerHTML = `<p style="color:#f07178;">Error rendering graph: ${error.message}</p>`;
+            }
+        }
+
+        window.onload = () => {
+            loadWorkflow('largeOrchestrator', document.querySelector('.nav-btn.active'));
+        };
+    </script>
+</body>
+</html>

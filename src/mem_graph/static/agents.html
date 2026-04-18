@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Memory Atlas - Agents</title>
+    <link rel="stylesheet" href="style/theme.css" />
+    <link rel="stylesheet" href="style/dashboard.css" />
+    <link rel="stylesheet" href="style/workflow.css" />
+    <script type="module">
+      import { initCommon } from './js/common.js';
+      import { initAgents } from './js/agents.js';
+      
+      globalThis.addEventListener('DOMContentLoaded', async () => {
+        await initCommon();
+        initAgents();
+      });
+    </script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="logo-mark">
+            <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true">
+              <circle cx="4" cy="8" r="2.5" fill="white" opacity=".9"/>
+              <circle cx="12" cy="4" r="1.8" fill="white" opacity=".7"/>
+              <circle cx="12" cy="12" r="1.8" fill="white" opacity=".7"/>
+              <line x1="6.4" y1="7.1" x2="10.2" y2="4.7" stroke="white" stroke-width=".8" opacity=".5"/>
+              <line x1="6.4" y1="8.9" x2="10.2" y2="11.3" stroke="white" stroke-width=".8" opacity=".5"/>
+            </svg>
+          </div>
+          <div>
+            <div class="logo-text">Memory Atlas</div>
+            <div class="logo-sub">MCP Server</div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <span id="server-version" class="version-badge">Loading…</span>
+          <button id="theme-toggle" class="secondary-button" type="button" aria-label="Toggle theme">☀</button>
+        </div>
+      </header>
+
+      <div class="shell-body">
+        <aside class="sidebar" aria-label="Dashboard navigation">
+          <nav>
+            <div class="nav-section">
+              <span class="nav-section-label">Monitor</span>
+              <a class="nav-item" href="/dashboard"><span class="nav-dot"></span>Overview</a>
+              <a class="nav-item" href="/explore"><span class="nav-dot"></span>Explorer</a>
+            </div>
+            <div class="nav-section">
+              <span class="nav-section-label">System</span>
+              <a class="nav-item" href="/agents"><span class="nav-dot"></span>Agents</a>
+              <a class="nav-item" href="/tools"><span class="nav-dot"></span>Tools</a>
+              <a class="nav-item" href="/evals"><span class="nav-dot"></span>Evals</a>
+              <a class="nav-item" href="/file-tree"><span class="nav-dot"></span>Files</a>
+            </div>
+          </nav>
+          <div class="sidebar-footer">
+            <span class="sidebar-version">v0.2.0 · local</span>
+          </div>
+        </aside>
+
+        <main class="main">
+          <div class="page-header-bar">
+            <div>
+              <h2 class="page-title">Agents</h2>
+              <p class="page-sub">checked-in agent modules · deterministic workflow diagrams</p>
+            </div>
+          </div>
+
+          <div class="agents-three-col" style="height: calc(100vh - 120px);">
+            <div class="agents-col" id="agents-col-list">
+              <div class="agents-col-header">
+                <span class="agents-col-title">Modules</span>
+                <span class="agents-col-count" id="agents-count">0</span>
+              </div>
+              <div class="agents-col-body" id="agents-list"></div>
+            </div>
+
+            <div class="agents-col" id="agents-col-detail">
+              <div class="agents-col-header">
+                <span class="agents-col-title">Detail</span>
+              </div>
+              <div class="agents-col-body" id="agent-detail-panel">
+                <div class="empty-state">Select an agent to view details.</div>
+              </div>
+            </div>
+
+            <div class="agents-col" id="agents-col-workflow">
+              <div class="agents-col-header">
+                <span class="agents-col-title">Workflow Graph</span>
+                <select id="workflow-select" class="secondary-button" style="padding: 2px 7px; font-size: 10px;"></select>
+              </div>
+              <div class="agents-col-body" id="workflow-graph-panel">
+                <div class="empty-state">Select an agent to view its workflow.</div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

@@ -15,6 +15,17 @@ from .otel_setup import _resolve_state as _resolve_otel_state
 
 logger = logging.getLogger(__name__)
 
+_ConsoleLevel = Literal[
+    "trace",
+    "debug",
+    "info",
+    "notice",
+    "warn",
+    "warning",
+    "error",
+    "fatal",
+]
+
 _STATE_LOCK = threading.Lock()
 _STATE: "LogfireState | None" = None
 _LOGFIRE = logfire.with_tags("mem_graph")
@@ -61,6 +72,13 @@ def _resolve_environment() -> str | None:
         or os.getenv("ENV")
         or os.getenv("LOGFIRE_ENVIRONMENT")
     )
+
+
+def _console_min_level() -> _ConsoleLevel:
+    raw = os.getenv("MEM_GRAPH_LOGFIRE_CONSOLE_MIN_LEVEL", "warning").strip().lower()
+    if raw in {"trace", "debug", "info", "notice", "warn", "warning", "error", "fatal"}:
+        return cast(_ConsoleLevel, raw)
+    return "warning"
 
 
 def _resolve_state(service_name: str, service_version: str) -> LogfireState:
@@ -133,7 +151,7 @@ def setup_logfire(
         console = (
             logfire.ConsoleOptions(
                 show_project_link=False,
-                min_log_level="info",
+                min_log_level=_console_min_level(),
             )
             if state.console
             else cast(Literal[False], False)

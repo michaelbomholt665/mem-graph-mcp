@@ -109,6 +109,8 @@ class _InstrumentedConnection:
         start = perf_counter()
         with _QUERY_TRACER.start_as_current_span("graph.query") as span:
             span.set_attribute("db.system", "ladybug")
+            span.set_attribute("logfire.msg", "graph.query")
+            span.set_attribute("mem_graph.internal", True)
             span.set_attribute("graph.query.class", query_class)
             span.set_attribute("graph.query.fingerprint", fingerprint)
             span.set_attribute("graph.query.parameter_count", len(params or {}))
@@ -320,8 +322,26 @@ def _bootstrap(conn: lb.Connection) -> None:
     # 4. FTS indexes — guarded by name check (same pattern as vector indexes)
     _ensure_fts_indexes(conn)
 
-    # 5. SchemaMeta — write on first init, validate on subsequent startups
+    # 5. Migrations — ensure old databases have new columns
+    _migrate_schema(conn)
+
+    # 6. SchemaMeta — write on first init, validate on subsequent startups
     _init_schema_meta(conn)
+
+
+def _migrate_schema(conn: lb.Connection) -> None:
+    """Safely add missing columns to existing tables."""
+    migrations = [
+        ("Violation", "last_seen_at", "TIMESTAMP"),
+        ("Violation", "resolved_at", "TIMESTAMP"),
+        ("EvalRun", "logfire_run_id", "STRING"),
+    ]
+    for table, column, dtype in migrations:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD {column} {dtype};")
+        except Exception:
+            # Column likely already exists
+            pass
 
 
 def _init_schema_meta(conn: lb.Connection) -> None:

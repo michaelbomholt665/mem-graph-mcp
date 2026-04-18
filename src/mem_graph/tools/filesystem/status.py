@@ -133,9 +133,10 @@ def _query_violation_rows() -> list[list[Any]]:
         """
         MATCH (v:Violation)
         OPTIONAL MATCH (p:Project)-[:HAS_VIOLATION]->(v)
-        RETURN v.id, v.rule, v.severity, v.status, v.file_path,
-               v.line_start, v.line_end, v.description, v.detected_at, v.last_seen_at,
-               p.id
+        RETURN v.id AS id, v.rule AS rule, v.severity AS severity, v.status AS status, v.file_path AS file_path,
+               v.line_start AS line_start, v.line_end AS line_end, v.description AS description, 
+               v.detected_at AS detected_at, v.last_seen_at AS last_seen_at,
+               p.id AS project_id
         ORDER BY v.detected_at DESC
         """
     )

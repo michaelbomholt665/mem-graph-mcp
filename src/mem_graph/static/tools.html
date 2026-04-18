@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Memory Atlas - Tools</title>
+    <link rel="stylesheet" href="style/theme.css" />
+    <link rel="stylesheet" href="style/dashboard.css" />
+    <script type="module">
+      import { initCommon } from './js/common.js';
+      import { initTools } from './js/tools.js';
+      
+      globalThis.addEventListener('DOMContentLoaded', async () => {
+        await initCommon();
+        initTools();
+      });
+    </script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="logo-mark">
+            <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true">
+              <circle cx="4" cy="8" r="2.5" fill="white" opacity=".9"/>
+              <circle cx="12" cy="4" r="1.8" fill="white" opacity=".7"/>
+              <circle cx="12" cy="12" r="1.8" fill="white" opacity=".7"/>
+              <line x1="6.4" y1="7.1" x2="10.2" y2="4.7" stroke="white" stroke-width=".8" opacity=".5"/>
+              <line x1="6.4" y1="8.9" x2="10.2" y2="11.3" stroke="white" stroke-width=".8" opacity=".5"/>
+            </svg>
+          </div>
+          <div>
+            <div class="logo-text">Memory Atlas</div>
+            <div class="logo-sub">MCP Server</div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <span id="server-version" class="version-badge">Loading…</span>
+          <button id="theme-toggle" class="secondary-button" type="button" aria-label="Toggle theme">☀</button>
+        </div>
+      </header>
+
+      <div class="shell-body">
+        <aside class="sidebar" aria-label="Dashboard navigation">
+          <nav>
+            <div class="nav-section">
+              <span class="nav-section-label">Monitor</span>
+              <a class="nav-item" href="/dashboard"><span class="nav-dot"></span>Overview</a>
+              <a class="nav-item" href="/explore"><span class="nav-dot"></span>Explorer</a>
+            </div>
+            <div class="nav-section">
+              <span class="nav-section-label">System</span>
+              <a class="nav-item" href="/agents"><span class="nav-dot"></span>Agents</a>
+              <a class="nav-item" href="/tools"><span class="nav-dot"></span>Tools</a>
+              <a class="nav-item" href="/evals"><span class="nav-dot"></span>Evals</a>
+              <a class="nav-item" href="/file-tree"><span class="nav-dot"></span>Files</a>
+            </div>
+          </nav>
+          <div class="sidebar-footer">
+            <span class="sidebar-version">v0.2.0 · local</span>
+          </div>
+        </aside>
+
+        <main class="main" style="display: flex; flex-direction: column; overflow: hidden;">
+          <div class="page-header-bar">
+            <div>
+              <h2 class="page-title">Tools</h2>
+              <p class="page-sub">MCP tool catalog grouped by namespace</p>
+            </div>
+            <div class="filter-bar">
+              <span class="count-badge" id="tools-count">0 tools</span>
+              <input id="tools-filter" class="table-filter" type="search" placeholder="Filter tools…" aria-label="Filter tools" />
+            </div>
+          </div>
+
+          <div class="tools-layout" style="flex: 1; overflow: hidden; margin: 0 28px 28px; border-radius: var(--radius);">
+            <div class="tools-ns-bar" id="tools-ns-bar" aria-label="Namespace filters">
+              <button class="ns-chip is-active" data-ns="all" type="button">all</button>
+            </div>
+            <div class="tools-table-wrap" id="tools-table-wrap">
+              <table id="tools-table" aria-label="Tools catalog">
+                <thead>
+                  <tr>
+                    <th style="width: 90px">Namespace</th>
+                    <th style="width: 180px">Name</th>
+                    <th>Description</th>
+                    <th style="width: 70px">Schema</th>
+                  </tr>
+                </thead>
+                <tbody id="tools-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

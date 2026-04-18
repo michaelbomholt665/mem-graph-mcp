@@ -12,7 +12,9 @@ from ...db import db_get_connection
 
 mcp = FastMCP("graph", instructions="Knowledge graph exploration tools.")
 
-_NODE_STYLES_PATH = Path(__file__).resolve().parents[2] / "resources" / "node_styles.json"
+_NODE_STYLES_PATH = (
+    Path(__file__).resolve().parents[2] / "resources" / "node_styles.json"
+)
 
 
 class NodeSnapshot(BaseModel):
@@ -21,6 +23,8 @@ class NodeSnapshot(BaseModel):
     id: str
     label: str
     type: str
+    x: float | None = None
+    y: float | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -486,6 +490,15 @@ def _load_candidate_nodes(
     nodes: dict[str, NodeSnapshot] = {}
     for node_type in selected_types:
         for node in _NODE_LOADERS[node_type](project_id, per_type_limit):
+            # Ensure every node has x and y coordinates initialized for force-graph compatibility
+            if (
+                not hasattr(node, "x")
+                or not hasattr(node, "y")
+                or node.x is None
+                or node.y is None
+            ):
+                node.x = None  # Will be initialized in frontend if None
+                node.y = None  # Will be initialized in frontend if None
             nodes[node.id] = node
     return nodes
 
@@ -529,7 +542,9 @@ def _seed_ids(project_id: str | None, nodes: dict[str, NodeSnapshot]) -> set[str
     return project_ids or set(nodes)
 
 
-def _reachable_ids(seed_ids: set[str], edges: list[EdgeSnapshot], depth: int) -> set[str]:
+def _reachable_ids(
+    seed_ids: set[str], edges: list[EdgeSnapshot], depth: int
+) -> set[str]:
     if not seed_ids:
         return set()
 
@@ -558,13 +573,17 @@ def _trim_snapshot(
     edges: list[EdgeSnapshot],
     max_nodes: int,
 ) -> tuple[list[NodeSnapshot], list[EdgeSnapshot]]:
-    ordered_nodes = sorted(nodes.values(), key=lambda item: (item.type, item.label.lower(), item.id))
+    ordered_nodes = sorted(
+        nodes.values(), key=lambda item: (item.type, item.label.lower(), item.id)
+    )
     if len(ordered_nodes) > max_nodes:
         ordered_nodes = ordered_nodes[:max_nodes]
     allowed_ids = {node.id for node in ordered_nodes}
     ordered_edges = [
         edge
-        for edge in sorted(edges, key=lambda item: (item.type, item.source, item.target))
+        for edge in sorted(
+            edges, key=lambda item: (item.type, item.source, item.target)
+        )
         if edge.source in allowed_ids and edge.target in allowed_ids
     ]
     return ordered_nodes, ordered_edges
@@ -608,7 +627,9 @@ def _collect_node_relationships(
                 )
             )
 
-    relationships.sort(key=lambda item: (item.relationship, item.direction, item.node.label.lower()))
+    relationships.sort(
+        key=lambda item: (item.relationship, item.direction, item.node.label.lower())
+    )
     return relationships
 
 
@@ -673,7 +694,9 @@ async def get_graph_snapshot(
     ] = 2,
     max_nodes: Annotated[
         int,
-        Field(description="Maximum nodes to return in a single snapshot.", ge=20, le=400),
+        Field(
+            description="Maximum nodes to return in a single snapshot.", ge=20, le=400
+        ),
     ] = 240,
 ) -> GraphSnapshot:
     """Return a bounded graph snapshot for the dashboard canvas."""
@@ -681,14 +704,22 @@ async def get_graph_snapshot(
     candidate_ids = set(candidate_nodes)
     candidate_edges = _load_edges(candidate_ids)
 
-    reachable = _reachable_ids(_seed_ids(project_id, candidate_nodes), candidate_edges, depth)
-    filtered_nodes = {node_id: node for node_id, node in candidate_nodes.items() if node_id in reachable}
+    reachable = _reachable_ids(
+        _seed_ids(project_id, candidate_nodes), candidate_edges, depth
+    )
+    filtered_nodes = {
+        node_id: node
+        for node_id, node in candidate_nodes.items()
+        if node_id in reachable
+    }
     filtered_edges = [
         edge
         for edge in candidate_edges
         if edge.source in filtered_nodes and edge.target in filtered_nodes
     ]
-    nodes, edges = _trim_snapshot(nodes=filtered_nodes, edges=filtered_edges, max_nodes=max_nodes)
+    nodes, edges = _trim_snapshot(
+        nodes=filtered_nodes, edges=filtered_edges, max_nodes=max_nodes
+    )
 
     return GraphSnapshot(
         nodes=nodes,
@@ -700,18 +731,25 @@ async def get_graph_snapshot(
 
 @mcp.tool(tags={"namespace:graph"})
 async def get_node_details(
-    node_id: Annotated[str, Field(description="Identifier of the graph node to inspect.")],
+    node_id: Annotated[
+        str, Field(description="Identifier of the graph node to inspect.")
+    ],
 ) -> NodeDetails | dict[str, str]:
     """Return node metadata and neighboring relationships for the details panel."""
     node = _load_node_by_id(node_id)
     if node is None:
         return {"error": f"Node {node_id!r} not found."}
-    return NodeDetails(node=node, relationships=_collect_node_relationships(node_id=node_id, node_type=node.type))
+    return NodeDetails(
+        node=node,
+        relationships=_collect_node_relationships(node_id=node_id, node_type=node.type),
+    )
 
 
 @mcp.tool(tags={"namespace:graph"})
 async def search_graph(
-    query: Annotated[str, Field(description="Plain-text query to match against graph nodes.")],
+    query: Annotated[
+        str, Field(description="Plain-text query to match against graph nodes.")
+    ],
     project_id: Annotated[
         str | None,
         Field(description="Optional project ID to scope the search to."),
@@ -720,7 +758,9 @@ async def search_graph(
         list[str] | None,
         Field(description="Optional list of node types to search."),
     ] = None,
-    limit: Annotated[int, Field(description="Maximum search results to return.", ge=1, le=50)] = 20,
+    limit: Annotated[
+        int, Field(description="Maximum search results to return.", ge=1, le=50)
+    ] = 20,
 ) -> list[NodeSnapshot]:
     """Perform a bounded text search across visible graph node metadata."""
     cleaned_query = query.strip().lower()
@@ -733,7 +773,9 @@ async def search_graph(
 
     for node in candidate_nodes.values():
         haystack = _node_text(node)
-        if cleaned_query not in haystack and not all(token in haystack for token in tokens):
+        if cleaned_query not in haystack and not all(
+            token in haystack for token in tokens
+        ):
             continue
 
         score = 0

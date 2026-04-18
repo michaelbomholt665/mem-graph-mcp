@@ -1,0 +1,175 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700&display=swap');
+  .ma-root{font-family:'Syne',sans-serif;background:#0a0c0f;color:#e8eaed;min-height:600px;display:flex;flex-direction:column;border-radius:12px;overflow:hidden;}
+  .ma-topbar{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:56px;background:#0d1014;border-bottom:1px solid #1e2530;flex-shrink:0;}
+  .ma-logo{display:flex;align-items:center;gap:10px;}
+  .ma-logo-mark{width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#00d4a8 0%,#0099cc 100%);display:flex;align-items:center;justify-content:center;}
+  .ma-logo-text{font-size:15px;font-weight:700;letter-spacing:-.3px;color:#fff;}
+  .ma-logo-sub{font-size:10px;color:#4a5568;text-transform:uppercase;letter-spacing:1.5px;margin-top:-2px;font-family:'DM Mono',monospace;}
+  .ma-topbar-right{display:flex;align-items:center;gap:12px;}
+  .ma-badge{font-family:'DM Mono',monospace;font-size:11px;padding:3px 8px;border-radius:4px;background:#162820;color:#00d4a8;border:1px solid #00d4a822;}
+  .ma-btn{display:flex;align-items:center;gap:6px;font-size:12px;font-family:'DM Mono',monospace;color:#8899aa;background:#141820;border:1px solid #1e2530;border-radius:6px;padding:6px 12px;cursor:pointer;transition:all .15s;}
+  .ma-btn:hover{color:#e8eaed;border-color:#2d3a4a;}
+  .ma-layout{display:flex;flex:1;overflow:hidden;}
+  .ma-sidebar{width:200px;background:#0d1014;border-right:1px solid #1e2530;display:flex;flex-direction:column;padding:20px 0;flex-shrink:0;}
+  .ma-nav-section{padding:0 12px;margin-bottom:24px;}
+  .ma-nav-label{font-size:9px;text-transform:uppercase;letter-spacing:1.8px;color:#3a4555;font-family:'DM Mono',monospace;padding:0 8px;margin-bottom:6px;}
+  .ma-nav-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;font-size:13px;font-weight:500;color:#5a6a7a;cursor:pointer;transition:all .12s;margin-bottom:1px;}
+  .ma-nav-item:hover{color:#c0ccd8;background:#141820;}
+  .ma-nav-item.active{color:#00d4a8;background:#0d2420;}
+  .ma-nav-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+  .ma-nav-item.active .ma-nav-dot{background:#00d4a8;}
+  .ma-nav-item:not(.active) .ma-nav-dot{background:#2a3545;}
+  .ma-sidebar-footer{margin-top:auto;padding:12px 20px;border-top:1px solid #1a2030;}
+  .ma-version{font-family:'DM Mono',monospace;font-size:10px;color:#2d3d4d;}
+  .ma-main{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
+  .ma-page-header{padding:24px 28px 16px;display:flex;align-items:flex-start;justify-content:space-between;border-bottom:1px solid #1a2030;}
+  .ma-page-title{font-size:22px;font-weight:700;letter-spacing:-.5px;color:#fff;margin:0 0 4px;}
+  .ma-page-sub{font-size:12px;color:#3a4a5a;font-family:'DM Mono',monospace;}
+  .ma-filter-bar{display:flex;align-items:center;gap:10px;}
+  .ma-search{background:#141820;border:1px solid #1e2530;border-radius:6px;color:#c0ccd8;font-family:'DM Mono',monospace;font-size:11px;padding:7px 12px;outline:none;width:220px;transition:border-color .15s;}
+  .ma-search:focus{border-color:#00d4a850;}
+  .ma-ns-filter{display:flex;gap:4px;padding:12px 28px;border-bottom:1px solid #1a2030;flex-wrap:wrap;}
+  .ma-ns-chip{font-size:10px;font-family:'DM Mono',monospace;padding:3px 10px;border-radius:4px;background:#141820;color:#3a4a5a;border:1px solid #1a2030;cursor:pointer;transition:all .12s;}
+  .ma-ns-chip:hover{color:#c0ccd8;border-color:#2d3a4a;}
+  .ma-ns-chip.active{background:#0d2420;color:#00d4a8;border-color:#00d4a830;}
+  .ma-tools-table{width:100%;border-collapse:collapse;}
+  .ma-tools-table thead th{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#2d3d4d;font-family:'DM Mono',monospace;font-weight:400;padding:8px 16px;text-align:left;border-bottom:1px solid #141c24;position:sticky;top:0;background:#0a0c0f;}
+  .ma-tools-table tbody tr{border-bottom:1px solid #0d1318;cursor:pointer;transition:background .1s;}
+  .ma-tools-table tbody tr:hover{background:#0d1520;}
+  .ma-tools-table tbody tr.expanded{background:#0d1520;}
+  .ma-tools-table td{padding:10px 16px;vertical-align:top;}
+  .ma-ns-pill{font-size:10px;font-family:'DM Mono',monospace;padding:2px 7px;border-radius:3px;white-space:nowrap;}
+  .ma-ns-audit{background:#1a1020;color:#9b72ff;border:1px solid #9b72ff22;}
+  .ma-ns-bg{background:#0a1520;color:#3b9eff;border:1px solid #3b9eff22;}
+  .ma-ns-core{background:#0d2420;color:#00d4a8;border:1px solid #00d4a822;}
+  .ma-ns-fs{background:#1a1408;color:#f5a623;border:1px solid #f5a62322;}
+  .ma-tool-name{font-size:12px;font-family:'DM Mono',monospace;color:#c0ccd8;font-weight:500;}
+  .ma-tool-desc{font-size:11px;color:#3a4a5a;line-height:1.5;max-width:500px;}
+  .ma-schema-btn{font-size:10px;font-family:'DM Mono',monospace;color:#2d3d4d;background:#141820;border:1px solid #1a2030;border-radius:4px;padding:2px 8px;cursor:pointer;white-space:nowrap;transition:all .12s;}
+  .ma-schema-btn:hover{color:#00d4a8;border-color:#00d4a830;}
+  .ma-expanded-row td{padding:0 16px 12px 48px;font-size:10px;font-family:'DM Mono',monospace;color:#3a4a5a;line-height:1.6;}
+  .ma-scrollbar{scrollbar-width:thin;scrollbar-color:#1e2530 transparent;}
+  .ma-table-wrap{overflow-y:auto;flex:1;}
+  .ma-count-badge{font-family:'DM Mono',monospace;font-size:10px;color:#00d4a8;background:#0d2420;padding:2px 7px;border-radius:3px;border:1px solid #00d4a822;}
+</style>
+<div class="ma-root">
+  <div class="ma-topbar">
+    <div class="ma-logo">
+      <div class="ma-logo-mark"><svg viewBox="0 0 16 16" fill="none" width="16" height="16"><circle cx="4" cy="8" r="2.5" fill="white" opacity=".9"/><circle cx="12" cy="4" r="1.8" fill="white" opacity=".7"/><circle cx="12" cy="12" r="1.8" fill="white" opacity=".7"/><line x1="6.4" y1="7.1" x2="10.2" y2="4.7" stroke="white" stroke-width=".8" opacity=".5"/><line x1="6.4" y1="8.9" x2="10.2" y2="11.3" stroke="white" stroke-width=".8" opacity=".5"/></svg></div>
+      <div><div class="ma-logo-text">Memory Atlas</div><div class="ma-logo-sub">MCP Server</div></div>
+    </div>
+    <div class="ma-topbar-right">
+      <div class="ma-badge">syntx-memory v0.2.0</div>
+      <button class="ma-btn"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M10 6a4 4 0 1 1-1.1-2.75" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M10 2.5V5.5H7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Refresh</button>
+    </div>
+  </div>
+  <div class="ma-layout">
+    <div class="ma-sidebar">
+      <div class="ma-nav-section">
+        <div class="ma-nav-label">Monitor</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Overview</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Explorer</div>
+      </div>
+      <div class="ma-nav-section">
+        <div class="ma-nav-label">System</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Agents</div>
+        <div class="ma-nav-item active"><div class="ma-nav-dot"></div>Tools</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Evals</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Files</div>
+      </div>
+      <div class="ma-sidebar-footer"><div class="ma-version">v0.2.0 · local</div></div>
+    </div>
+    <div class="ma-main ma-scrollbar">
+      <div class="ma-page-header">
+        <div>
+          <div class="ma-page-title">Tools</div>
+          <div class="ma-page-sub">MCP tool catalog grouped by namespace</div>
+        </div>
+        <div class="ma-filter-bar">
+          <div class="ma-count-badge">57 tools</div>
+          <input class="ma-search" type="text" placeholder="Filter tools…" oninput="filterTools(this.value)"/>
+        </div>
+      </div>
+      <div class="ma-ns-filter" id="nsFilter">
+        <div class="ma-ns-chip active" onclick="setNs('all',this)">all</div>
+        <div class="ma-ns-chip" onclick="setNs('audit',this)">audit</div>
+        <div class="ma-ns-chip" onclick="setNs('background',this)">background</div>
+        <div class="ma-ns-chip" onclick="setNs('core',this)">core</div>
+        <div class="ma-ns-chip" onclick="setNs('filesystem',this)">filesystem</div>
+        <div class="ma-ns-chip" onclick="setNs('graph',this)">graph</div>
+        <div class="ma-ns-chip" onclick="setNs('memory',this)">memory</div>
+      </div>
+      <div class="ma-table-wrap">
+        <table class="ma-tools-table" id="toolsTable">
+          <thead><tr>
+            <th style="width:90px">Namespace</th>
+            <th style="width:160px">Name</th>
+            <th>Description</th>
+            <th style="width:70px">Schema</th>
+          </tr></thead>
+          <tbody id="toolsTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const tools = [
+  ['audit','audit_package','Audit and analyse a source code package directory for bugs, violations, security issues, and missing implementations.'],
+  ['audit','autopilot_remediate','Recursive Autopilot Remediation: Find, Fix, Style, Verify, and Sync.'],
+  ['audit','decision_review','Review and audit architectural decisions for drift against the codebase.'],
+  ['audit','map_codebase','Map and discover the feature geography, architecture, and knowledge relationships.'],
+  ['audit','orchestrate_codebase','Orchestrate batched analysis of a codebase with the audit, map, or decision sub-agents.'],
+  ['audit','run_subagent_workflow','Run the opt-in full router-driven sub-agent workflow.'],
+  ['audit','triage_violations','Triage and classify raw code findings against existing open violations in the graph.'],
+  ['background','cancel_task','Cancel a queued or running in-memory background task.'],
+  ['background','get_task_status','Return the current status, progress, and result data for an in-memory background task.'],
+  ['core','_dashboard_api_projects','Internal dashboard API — list all projects.'],
+  ['core','decision_record','Permanently record and store an architectural or implementation decision for a project.'],
+  ['core','decision_search','Find and retrieve decisions relevant to a topic or choice using semantic search.'],
+  ['core','get_server_info','Return stable server metadata for clients and operators.'],
+  ['core','project_search','Find and retrieve projects semantically similar to a search query.'],
+  ['core','task_search','Find and retrieve tasks relevant to a goal or topic using semantic search.'],
+  ['filesystem','file_read','Read a file from the filesystem and return its contents.'],
+  ['filesystem','file_write','Write content to a file on the filesystem.'],
+  ['filesystem','file_tree','List the file tree from a given root path.'],
+  ['graph','node_create','Create a new node in the knowledge graph.'],
+  ['graph','node_search','Search for nodes in the knowledge graph using semantic or exact queries.'],
+  ['graph','edge_create','Create a directed edge between two nodes in the graph.'],
+  ['memory','memory_store','Store a memory record associated with a project.'],
+  ['memory','memory_search','Search stored memories using semantic similarity.'],
+];
+const nsColors = {audit:'ma-ns-audit',background:'ma-ns-bg',core:'ma-ns-core',filesystem:'ma-ns-fs',graph:'ma-ns-bg',memory:'ma-ns-core'};
+let currentNs = 'all', currentFilter = '';
+function renderTools() {
+  const tbody = document.getElementById('toolsTbody');
+  const filtered = tools.filter(t => (currentNs === 'all' || t[0] === currentNs) && (t[1].includes(currentFilter) || t[2].toLowerCase().includes(currentFilter)));
+  tbody.innerHTML = filtered.map(([ns,name,desc])=>`
+    <tr onclick="toggleExpand(this,'${name}','${desc}')">
+      <td><span class="ma-ns-pill ${nsColors[ns]||'ma-ns-core'}">${ns}</span></td>
+      <td><div class="ma-tool-name">${name}</div></td>
+      <td><div class="ma-tool-desc">${desc.substring(0,90)}${desc.length>90?'…':''}</div></td>
+      <td><button class="ma-schema-btn">▶ Input</button></td>
+    </tr>
+  `).join('');
+}
+function toggleExpand(row, name, desc) {
+  const next = row.nextElementSibling;
+  if(next && next.classList.contains('ma-expanded-row')) { next.remove(); row.classList.remove('expanded'); return; }
+  row.classList.add('expanded');
+  const tr = document.createElement('tr');
+  tr.className = 'ma-expanded-row';
+  tr.innerHTML = `<td colspan="4">${desc}</td>`;
+  row.after(tr);
+}
+function setNs(ns, el) {
+  currentNs = ns;
+  document.querySelectorAll('.ma-ns-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  renderTools();
+}
+function filterTools(val) { currentFilter = val.toLowerCase(); renderTools(); }
+renderTools();
+</script>

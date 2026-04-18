@@ -1,0 +1,362 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700&display=swap');
+  .ma-root{font-family:'Syne',sans-serif;background:#0a0c0f;color:#e8eaed;min-height:640px;display:flex;flex-direction:column;border-radius:12px;overflow:hidden;}
+  .ma-topbar{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:56px;background:#0d1014;border-bottom:1px solid #1e2530;flex-shrink:0;}
+  .ma-logo{display:flex;align-items:center;gap:10px;}
+  .ma-logo-mark{width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#00d4a8 0%,#0099cc 100%);display:flex;align-items:center;justify-content:center;}
+  .ma-logo-text{font-size:15px;font-weight:700;letter-spacing:-.3px;color:#fff;}
+  .ma-logo-sub{font-size:10px;color:#4a5568;text-transform:uppercase;letter-spacing:1.5px;margin-top:-2px;font-family:'DM Mono',monospace;}
+  .ma-topbar-right{display:flex;align-items:center;gap:12px;}
+  .ma-badge{font-family:'DM Mono',monospace;font-size:11px;padding:3px 8px;border-radius:4px;background:#162820;color:#00d4a8;border:1px solid #00d4a822;}
+  .ma-btn{display:flex;align-items:center;gap:6px;font-size:12px;font-family:'DM Mono',monospace;color:#8899aa;background:#141820;border:1px solid #1e2530;border-radius:6px;padding:6px 12px;cursor:pointer;transition:all .15s;}
+  .ma-btn:hover{color:#e8eaed;border-color:#2d3a4a;}
+  .ma-layout{display:flex;flex:1;overflow:hidden;}
+  .ma-sidebar{width:200px;background:#0d1014;border-right:1px solid #1e2530;display:flex;flex-direction:column;padding:20px 0;flex-shrink:0;}
+  .ma-nav-section{padding:0 12px;margin-bottom:24px;}
+  .ma-nav-label{font-size:9px;text-transform:uppercase;letter-spacing:1.8px;color:#3a4555;font-family:'DM Mono',monospace;padding:0 8px;margin-bottom:6px;}
+  .ma-nav-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;font-size:13px;font-weight:500;color:#5a6a7a;cursor:pointer;transition:all .12s;margin-bottom:1px;}
+  .ma-nav-item:hover{color:#c0ccd8;background:#141820;}
+  .ma-nav-item.active{color:#00d4a8;background:#0d2420;}
+  .ma-nav-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+  .ma-nav-item.active .ma-nav-dot{background:#00d4a8;}
+  .ma-nav-item:not(.active) .ma-nav-dot{background:#2a3545;}
+  .ma-sidebar-footer{margin-top:auto;padding:12px 20px;border-top:1px solid #1a2030;}
+  .ma-version{font-family:'DM Mono',monospace;font-size:10px;color:#2d3d4d;}
+  .ma-main{flex:1;overflow:hidden;display:flex;flex-direction:column;}
+  .ma-page-header{padding:20px 24px 16px;border-bottom:1px solid #1a2030;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+  .ma-page-title{font-size:22px;font-weight:700;letter-spacing:-.5px;color:#fff;margin:0 0 3px;}
+  .ma-page-sub{font-size:12px;color:#3a4a5a;font-family:'DM Mono',monospace;}
+  .ma-three-col{display:grid;grid-template-columns:220px 1fr 1fr;flex:1;overflow:hidden;min-height:0;}
+  .ma-col{display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #1e2530;}
+  .ma-col:last-child{border-right:none;}
+  .ma-col-header{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid #141c24;background:#0d1014;flex-shrink:0;}
+  .ma-col-title{font-size:9px;text-transform:uppercase;letter-spacing:1.8px;color:#3a4555;font-family:'DM Mono',monospace;}
+  .ma-col-count{font-family:'DM Mono',monospace;font-size:10px;color:#00d4a8;background:#0d2420;padding:2px 7px;border-radius:3px;border:1px solid #00d4a822;}
+  .ma-col-body{overflow-y:auto;flex:1;}
+
+  /* Column 1 — agent list */
+  .ma-agent-item{padding:12px 16px;border-bottom:1px solid #0d1218;cursor:pointer;transition:background .1s;}
+  .ma-agent-item:hover{background:#0f1520;}
+  .ma-agent-item.selected{background:#0d1c18;border-left:2px solid #00d4a8;}
+  .ma-agent-module{font-size:11px;font-family:'DM Mono',monospace;color:#5a7a6a;margin-bottom:2px;}
+  .ma-agent-module span{color:#00d4a8;}
+  .ma-agent-name-big{font-size:13px;font-weight:600;color:#c0ccd8;margin-bottom:4px;}
+  .ma-agent-desc{font-size:10px;color:#3a4a5a;line-height:1.4;margin-bottom:6px;}
+  .ma-agent-tags{display:flex;flex-wrap:wrap;gap:3px;}
+  .ma-tag{font-size:9px;font-family:'DM Mono',monospace;padding:2px 6px;border-radius:3px;background:#141820;color:#3a4a5a;border:1px solid #1a2030;}
+
+  /* Column 2 — prompts & tools */
+  .ma-detail-section{border-bottom:1px solid #0f161e;}
+  .ma-detail-section-title{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#2d3d4d;font-family:'DM Mono',monospace;padding:10px 16px 6px;}
+  .ma-prompt-block{margin:0 16px 12px;background:#080b0e;border:1px solid #141c24;border-radius:7px;padding:11px 13px;}
+  .ma-prompt-label{font-size:9px;text-transform:uppercase;letter-spacing:1.3px;color:#2d3d4d;font-family:'DM Mono',monospace;margin-bottom:6px;}
+  .ma-prompt-text{font-size:11px;font-family:'DM Mono',monospace;color:#6a7a8a;line-height:1.6;}
+  .ma-tool-row{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid #0a0e14;cursor:pointer;transition:background .1s;}
+  .ma-tool-row:hover{background:#0d1520;}
+  .ma-tool-name{font-size:11px;font-family:'DM Mono',monospace;color:#8899aa;}
+  .ma-tool-ns{font-size:10px;font-family:'DM Mono',monospace;padding:1px 6px;border-radius:3px;}
+  .ma-tool-ns.audit{background:#1a1020;color:#9b72ff;border:1px solid #9b72ff22;}
+  .ma-tool-ns.core{background:#0d2420;color:#00d4a8;border:1px solid #00d4a822;}
+  .ma-tool-ns.bg{background:#0a1520;color:#3b9eff;border:1px solid #3b9eff22;}
+  .ma-tool-ns.fs{background:#1a1408;color:#f5a623;border:1px solid #f5a62322;}
+  .ma-model-row{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;}
+  .ma-model-key{font-size:11px;font-family:'DM Mono',monospace;color:#3a4a5a;}
+  .ma-model-val{font-size:11px;font-family:'DM Mono',monospace;color:#8899aa;}
+
+  /* Column 3 — pydantic graph */
+  .ma-graph-area{background:#080b0e;flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:20px;}
+  .ma-graph-canvas{display:flex;flex-direction:column;align-items:center;gap:0;min-width:260px;}
+  .ma-graph-node{position:relative;display:flex;flex-direction:column;align-items:center;}
+  .ma-gnode-box{font-size:11px;font-family:'DM Mono',monospace;border-radius:6px;padding:7px 14px;white-space:nowrap;text-align:center;cursor:default;}
+  .ma-gnode-box.start{background:#0d2420;border:1px solid #00d4a840;color:#00d4a8;}
+  .ma-gnode-box.node{background:#141820;border:1px solid #1e2a38;color:#8899aa;}
+  .ma-gnode-box.guard{background:#1a1020;border:1px solid #9b72ff40;color:#9b72ff;}
+  .ma-gnode-box.end{background:#0a1520;border:1px solid #3b9eff40;color:#3b9eff;}
+  .ma-gnode-box.error{background:#150808;border:1px solid #ff4f4f40;color:#ff6b6b;}
+  .ma-edge{display:flex;flex-direction:column;align-items:center;gap:0;}
+  .ma-edge-line{width:1px;background:#1e2a38;flex-shrink:0;}
+  .ma-edge-arrow{color:#2d3d4d;font-size:9px;line-height:1;}
+  .ma-edge-label{font-size:9px;font-family:'DM Mono',monospace;color:#2a3a4a;background:#080b0e;padding:0 4px;margin-top:-2px;margin-bottom:-2px;}
+  .ma-edge-wrap{display:flex;flex-direction:column;align-items:center;}
+  .ma-branch{display:flex;gap:20px;align-items:flex-start;justify-content:center;}
+  .ma-branch-col{display:flex;flex-direction:column;align-items:center;}
+  .ma-branch-line-h{height:1px;background:#1e2a38;flex:1;}
+  .ma-branch-row{display:flex;align-items:center;width:100%;}
+  .ma-graph-legend{display:flex;gap:10px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid #141c24;flex-shrink:0;}
+  .ma-legend-item{display:flex;align-items:center;gap:5px;font-size:9px;font-family:'DM Mono',monospace;color:#2d3d4d;}
+  .ma-legend-dot{width:7px;height:7px;border-radius:2px;flex-shrink:0;}
+  .ma-mermaid-toggle{padding:8px 16px;border-top:1px solid #141c24;flex-shrink:0;}
+  .ma-mermaid-btn{font-size:10px;font-family:'DM Mono',monospace;color:#2d3d4d;cursor:pointer;background:none;border:none;padding:0;transition:color .12s;}
+  .ma-mermaid-btn:hover{color:#6a7a8a;}
+  .ma-mermaid-code{background:#050709;border-top:1px solid #0f161e;padding:12px 16px;font-family:'DM Mono',monospace;font-size:9px;color:#3a4a5a;line-height:1.7;}
+  .ma-scrollbar{scrollbar-width:thin;scrollbar-color:#1e2530 transparent;}
+  .ma-wf-select{background:#141820;border:1px solid #1e2530;border-radius:5px;color:#6a7a8a;font-family:'DM Mono',monospace;font-size:10px;padding:3px 7px;outline:none;cursor:pointer;}
+</style>
+
+<div class="ma-root">
+  <div class="ma-topbar">
+    <div class="ma-logo">
+      <div class="ma-logo-mark"><svg viewBox="0 0 16 16" fill="none" width="16" height="16"><circle cx="4" cy="8" r="2.5" fill="white" opacity=".9"/><circle cx="12" cy="4" r="1.8" fill="white" opacity=".7"/><circle cx="12" cy="12" r="1.8" fill="white" opacity=".7"/><line x1="6.4" y1="7.1" x2="10.2" y2="4.7" stroke="white" stroke-width=".8" opacity=".5"/><line x1="6.4" y1="8.9" x2="10.2" y2="11.3" stroke="white" stroke-width=".8" opacity=".5"/></svg></div>
+      <div><div class="ma-logo-text">Memory Atlas</div><div class="ma-logo-sub">MCP Server</div></div>
+    </div>
+    <div class="ma-topbar-right">
+      <div class="ma-badge">syntx-memory v0.2.0</div>
+      <button class="ma-btn"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M10 6a4 4 0 1 1-1.1-2.75" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M10 2.5V5.5H7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Refresh</button>
+    </div>
+  </div>
+
+  <div class="ma-layout">
+    <div class="ma-sidebar">
+      <div class="ma-nav-section">
+        <div class="ma-nav-label">Monitor</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Overview</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Explorer</div>
+      </div>
+      <div class="ma-nav-section">
+        <div class="ma-nav-label">System</div>
+        <div class="ma-nav-item active"><div class="ma-nav-dot"></div>Agents</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Tools</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Evals</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Files</div>
+      </div>
+      <div class="ma-sidebar-footer"><div class="ma-version">v0.2.0 · local</div></div>
+    </div>
+
+    <div class="ma-main">
+      <div class="ma-page-header">
+        <div>
+          <div class="ma-page-title">Agents</div>
+          <div class="ma-page-sub">checked-in modules · prompts · pydantic_graph workflows</div>
+        </div>
+        <div class="ma-col-count">25 modules</div>
+      </div>
+
+      <div class="ma-three-col">
+
+        <!-- Col 1: Agent list -->
+        <div class="ma-col">
+          <div class="ma-col-header">
+            <div class="ma-col-title">Modules</div>
+          </div>
+          <div class="ma-col-body ma-scrollbar" id="agentList"></div>
+        </div>
+
+        <!-- Col 2: Prompts & Tools -->
+        <div class="ma-col">
+          <div class="ma-col-header">
+            <div class="ma-col-title" id="col2Title">audit_agent</div>
+          </div>
+          <div class="ma-col-body ma-scrollbar" id="agentDetail"></div>
+        </div>
+
+        <!-- Col 3: Workflow graph -->
+        <div class="ma-col" style="display:flex;flex-direction:column;">
+          <div class="ma-col-header">
+            <div class="ma-col-title">Workflow</div>
+            <select class="ma-wf-select" id="wfSelect" onchange="renderGraph(this.value)">
+              <option value="autopilot">autopilot_remediation</option>
+              <option value="subagent">managed_subagent</option>
+            </select>
+          </div>
+          <div class="ma-graph-area ma-scrollbar" id="graphArea"></div>
+          <div class="ma-graph-legend">
+            <div class="ma-legend-item"><div class="ma-legend-dot" style="background:#00d4a8"></div>entry/exit</div>
+            <div class="ma-legend-item"><div class="ma-legend-dot" style="background:#3a4a5a"></div>node</div>
+            <div class="ma-legend-item"><div class="ma-legend-dot" style="background:#9b72ff"></div>guard</div>
+            <div class="ma-legend-item"><div class="ma-legend-dot" style="background:#3b9eff"></div>sink</div>
+            <div class="ma-legend-item"><div class="ma-legend-dot" style="background:#ff6b6b"></div>error</div>
+          </div>
+          <div class="ma-mermaid-toggle">
+            <button class="ma-mermaid-btn" id="mermaidToggle" onclick="toggleMermaid()">▶ mermaid source</button>
+          </div>
+          <div class="ma-mermaid-code" id="mermaidCode" style="display:none;"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const agents = [
+  {ns:'agents.audit',name:'audit_agent',desc:'Generic code audit agent.',tags:['audit_agent','preloaded_agent','audit'],
+   model:'claude-opus-4',
+   systemPrompt:'You are a senior code auditor. Analyse the provided source for bugs, security issues, violations, and missing implementations. Return structured findings with severity ratings.',
+   tools:[['audit','audit_package'],['audit','triage_violations'],['core','decision_search'],['core','task_search'],['fs','file_read']]},
+  {ns:'agents.audit',name:'factory',desc:'Audit agent factory helpers.',tags:['factory'],
+   model:'claude-sonnet-4',
+   systemPrompt:'Factory utility for spinning up scoped audit agents with pre-loaded rules and project context injected at instantiation time.',
+   tools:[['core','project_search'],['core','get_server_info']]},
+  {ns:'agents.audit',name:'rule_injector_agent',desc:'Dynamic AuditRule set curator.',tags:['rule_injector','ruleInjector'],
+   model:'claude-sonnet-4',
+   systemPrompt:'You manage and curate audit rule sets. Given a project context, select, combine, and inject the correct AuditRule subsets to guide the audit_agent effectively.',
+   tools:[['audit','audit_package'],['core','decision_record'],['core','project_search']]},
+  {ns:'agents.audit.rules',name:'base',desc:'Base audit rules shared across languages.',tags:['rules','base'],
+   model:'—',systemPrompt:'Rule definition module — no agent prompt.',tools:[]},
+  {ns:'agents.audit.rules',name:'correctness',desc:'Bugs and correctness audit rules.',tags:['correctness'],
+   model:'—',systemPrompt:'Rule definition module — no agent prompt.',tools:[]},
+  {ns:'agents.audit.rules',name:'go',desc:'Go-specific audit rules.',tags:['go'],
+   model:'—',systemPrompt:'Rule definition module — no agent prompt.',tools:[]},
+  {ns:'agents.audit.rules',name:'maintainability',desc:'Code-smell and maintainability audit rules.',tags:['maintainability'],
+   model:'—',systemPrompt:'Rule definition module — no agent prompt.',tools:[]},
+  {ns:'agents.audit.rules',name:'python',desc:'Python-specific audit rules.',tags:['python'],
+   model:'—',systemPrompt:'Rule definition module — no agent prompt.',tools:[]},
+];
+
+const nsColors = {audit:'audit',core:'core',bg:'bg',fs:'fs'};
+
+const workflows = {
+  autopilot: {
+    mermaid:`graph TD
+  ContextGatherNode -->|context| SentryNode
+  SentryNode -->|test plan| LogicDraftNode
+  LogicDraftNode -->|patches| StyleDraftNode
+  StyleDraftNode -->|styled patches| GuardNode
+  GuardNode -->|retry on reject| RefineNode
+  RefineNode -->|refine| LogicDraftNode
+  GuardNode -->|approved| MemorySyncNode`,
+    nodes: [
+      {id:'ContextGatherNode', type:'start', label:'ContextGather'},
+      {edge:{label:'context',h:28}},
+      {id:'SentryNode', type:'node', label:'SentryNode'},
+      {edge:{label:'test plan',h:28}},
+      {id:'LogicDraftNode', type:'node', label:'LogicDraft'},
+      {edge:{label:'patches',h:28}},
+      {id:'StyleDraftNode', type:'node', label:'StyleDraft'},
+      {edge:{label:'styled patches',h:28}},
+      {id:'GuardNode', type:'guard', label:'GuardNode'},
+      {branch: true, left:{label:'retry on reject', nodes:[
+        {id:'RefineNode', type:'node', label:'RefineNode'},
+        {edge:{label:'↩ LogicDraft',h:20}},
+        {id:'loop_back', type:'end', label:'↩ loop'},
+      ]}, right:{label:'approved', nodes:[
+        {id:'MemorySyncNode', type:'end', label:'MemorySync'},
+      ]}}
+    ]
+  },
+  subagent: {
+    mermaid:`graph TD
+  RouterNode -->|select agent| SubAgentNode
+  SubAgentNode -->|result| AuditNode
+  AuditNode -->|pass| MemorySyncNode
+  AuditNode -->|fail| ErrorNode`,
+    nodes: [
+      {id:'RouterNode', type:'start', label:'RouterNode'},
+      {edge:{label:'select agent',h:28}},
+      {id:'SubAgentNode', type:'node', label:'SubAgentNode'},
+      {edge:{label:'result',h:28}},
+      {id:'AuditNode', type:'guard', label:'AuditNode'},
+      {branch: true, left:{label:'pass', nodes:[
+        {id:'MemorySyncNode', type:'end', label:'MemorySync'},
+      ]}, right:{label:'fail', nodes:[
+        {id:'ErrorNode', type:'error', label:'ErrorNode'},
+      ]}}
+    ]
+  }
+};
+
+let mermaidVisible = false;
+
+function renderAgentList() {
+  const list = document.getElementById('agentList');
+  list.innerHTML = agents.map((a,i) => `
+    <div class="ma-agent-item${i===0?' selected':''}" onclick="selectAgent(${i},this)">
+      <div class="ma-agent-module">${a.ns.replace('agents.','')}.<span>${a.name}</span></div>
+      <div class="ma-agent-desc">${a.desc}</div>
+      <div class="ma-agent-tags">${a.tags.map(t=>`<div class="ma-tag">${t}</div>`).join('')}</div>
+    </div>`).join('');
+}
+
+function selectAgent(i, el) {
+  document.querySelectorAll('.ma-agent-item').forEach(x=>x.classList.remove('selected'));
+  el.classList.add('selected');
+  const a = agents[i];
+  document.getElementById('col2Title').textContent = a.name;
+  const detail = document.getElementById('agentDetail');
+  detail.innerHTML = `
+    <div class="ma-detail-section">
+      <div class="ma-detail-section-title">Model</div>
+      <div class="ma-model-row"><div class="ma-model-key">model</div><div class="ma-model-val">${a.model}</div></div>
+      <div class="ma-model-row"><div class="ma-model-key">namespace</div><div class="ma-model-val">${a.ns}</div></div>
+    </div>
+    <div class="ma-detail-section">
+      <div class="ma-detail-section-title">System Prompt</div>
+      <div class="ma-prompt-block">
+        <div class="ma-prompt-text">${a.systemPrompt}</div>
+      </div>
+    </div>
+    <div class="ma-detail-section">
+      <div class="ma-detail-section-title">Tools (${a.tools.length})</div>
+      ${a.tools.length === 0
+        ? `<div style="padding:10px 16px;font-size:10px;color:#2d3d4d;font-family:'DM Mono',monospace;">No tools registered.</div>`
+        : a.tools.map(([ns,name])=>`
+        <div class="ma-tool-row">
+          <div class="ma-tool-name">${name}</div>
+          <div class="ma-tool-ns ${ns==='audit'?'audit':ns==='core'?'core':ns==='bg'?'bg':'fs'}">${ns}</div>
+        </div>`).join('')}
+    </div>`;
+}
+
+function renderGraph(wfKey) {
+  const wf = workflows[wfKey];
+  const area = document.getElementById('graphArea');
+
+  function nodeHTML(n) {
+    return `<div class="ma-gnode-box ${n.type}">${n.label}</div>`;
+  }
+
+  function edgeHTML(e) {
+    return `<div class="ma-edge-wrap" style="display:flex;flex-direction:column;align-items:center;">
+      <div class="ma-edge-line" style="height:${(e.h||28)/2}px"></div>
+      <div class="ma-edge-label">${e.label||''}</div>
+      <div class="ma-edge-line" style="height:${(e.h||28)/2}px"></div>
+      <div class="ma-edge-arrow">▾</div>
+    </div>`;
+  }
+
+  function renderNodes(nodes) {
+    let html = '<div style="display:flex;flex-direction:column;align-items:center;gap:0;">';
+    for(const n of nodes) {
+      if(n.edge) { html += edgeHTML(n.edge); }
+      else if(n.branch) {
+        html += `<div style="display:flex;gap:28px;align-items:flex-start;margin-top:0;">`;
+        for(const side of [n.left, n.right]) {
+          html += `<div style="display:flex;flex-direction:column;align-items:center;">
+            <div style="display:flex;flex-direction:column;align-items:center;">
+              <div class="ma-edge-line" style="height:14px;"></div>
+              <div class="ma-edge-label">${side.label}</div>
+              <div class="ma-edge-line" style="height:8px;"></div>
+              <div class="ma-edge-arrow">▾</div>
+            </div>
+            ${renderNodes(side.nodes)}
+          </div>`;
+        }
+        html += '</div>';
+      } else if(n.id) {
+        html += nodeHTML(n);
+      }
+    }
+    html += '</div>';
+    return html;
+  }
+
+  area.innerHTML = `<div class="ma-graph-canvas">${renderNodes(wf.nodes)}</div>`;
+
+  const mc = document.getElementById('mermaidCode');
+  mc.textContent = wf.mermaid;
+  if(mermaidVisible) mc.style.display='block';
+}
+
+function toggleMermaid() {
+  mermaidVisible = !mermaidVisible;
+  const mc = document.getElementById('mermaidCode');
+  const btn = document.getElementById('mermaidToggle');
+  mc.style.display = mermaidVisible ? 'block' : 'none';
+  btn.textContent = (mermaidVisible ? '▾' : '▶') + ' mermaid source';
+}
+
+renderAgentList();
+selectAgent(0, document.querySelector('.ma-agent-item'));
+renderGraph('autopilot');
+</script>

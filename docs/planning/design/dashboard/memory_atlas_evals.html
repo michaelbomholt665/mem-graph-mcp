@@ -1,0 +1,156 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700&display=swap');
+  .ma-root{font-family:'Syne',sans-serif;background:#0a0c0f;color:#e8eaed;min-height:600px;display:flex;flex-direction:column;border-radius:12px;overflow:hidden;}
+  .ma-topbar{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:56px;background:#0d1014;border-bottom:1px solid #1e2530;flex-shrink:0;}
+  .ma-logo{display:flex;align-items:center;gap:10px;}
+  .ma-logo-mark{width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#00d4a8 0%,#0099cc 100%);display:flex;align-items:center;justify-content:center;}
+  .ma-logo-text{font-size:15px;font-weight:700;letter-spacing:-.3px;color:#fff;}
+  .ma-logo-sub{font-size:10px;color:#4a5568;text-transform:uppercase;letter-spacing:1.5px;margin-top:-2px;font-family:'DM Mono',monospace;}
+  .ma-topbar-right{display:flex;align-items:center;gap:12px;}
+  .ma-badge{font-family:'DM Mono',monospace;font-size:11px;padding:3px 8px;border-radius:4px;background:#162820;color:#00d4a8;border:1px solid #00d4a822;}
+  .ma-btn{display:flex;align-items:center;gap:6px;font-size:12px;font-family:'DM Mono',monospace;color:#8899aa;background:#141820;border:1px solid #1e2530;border-radius:6px;padding:6px 12px;cursor:pointer;transition:all .15s;}
+  .ma-btn:hover{color:#e8eaed;border-color:#2d3a4a;}
+  .ma-layout{display:flex;flex:1;overflow:hidden;}
+  .ma-sidebar{width:200px;background:#0d1014;border-right:1px solid #1e2530;display:flex;flex-direction:column;padding:20px 0;flex-shrink:0;}
+  .ma-nav-section{padding:0 12px;margin-bottom:24px;}
+  .ma-nav-label{font-size:9px;text-transform:uppercase;letter-spacing:1.8px;color:#3a4555;font-family:'DM Mono',monospace;padding:0 8px;margin-bottom:6px;}
+  .ma-nav-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;font-size:13px;font-weight:500;color:#5a6a7a;cursor:pointer;transition:all .12s;margin-bottom:1px;}
+  .ma-nav-item:hover{color:#c0ccd8;background:#141820;}
+  .ma-nav-item.active{color:#00d4a8;background:#0d2420;}
+  .ma-nav-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+  .ma-nav-item.active .ma-nav-dot{background:#00d4a8;}
+  .ma-nav-item:not(.active) .ma-nav-dot{background:#2a3545;}
+  .ma-sidebar-footer{margin-top:auto;padding:12px 20px;border-top:1px solid #1a2030;}
+  .ma-version{font-family:'DM Mono',monospace;font-size:10px;color:#2d3d4d;}
+  .ma-main{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
+  .ma-page-header{padding:24px 28px 20px;display:flex;align-items:flex-start;justify-content:space-between;}
+  .ma-page-title{font-size:22px;font-weight:700;letter-spacing:-.5px;color:#fff;margin:0 0 4px;}
+  .ma-page-sub{font-size:12px;color:#3a4a5a;font-family:'DM Mono',monospace;}
+  .ma-evals-layout{display:grid;grid-template-columns:280px 1fr;flex:1;gap:0;overflow:hidden;}
+  .ma-evals-sidebar{border-right:1px solid #1e2530;display:flex;flex-direction:column;overflow:hidden;}
+  .ma-evals-sidebar-header{padding:14px 20px;border-bottom:1px solid #141c24;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+  .ma-evals-sidebar-title{font-size:9px;text-transform:uppercase;letter-spacing:1.8px;color:#3a4555;font-family:'DM Mono',monospace;}
+  .ma-project-select{background:#141820;border:1px solid #1e2530;border-radius:6px;color:#8899aa;font-family:'DM Mono',monospace;font-size:11px;padding:5px 8px;outline:none;width:100%;margin:12px 20px;width:calc(100% - 40px);}
+  .ma-evals-list{flex:1;overflow-y:auto;}
+  .ma-eval-empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;gap:12px;}
+  .ma-eval-empty-icon{width:48px;height:48px;border-radius:10px;background:#141820;border:1px solid #1e2530;display:flex;align-items:center;justify-content:center;}
+  .ma-eval-empty-title{font-size:13px;font-weight:600;color:#3a4a5a;}
+  .ma-eval-empty-sub{font-size:11px;color:#2d3d4d;font-family:'DM Mono',monospace;text-align:center;max-width:180px;line-height:1.5;}
+  .ma-evals-content{display:flex;flex-direction:column;overflow-y:auto;padding:28px;}
+  .ma-metrics-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px;}
+  .ma-metric-card{background:#0d1014;border:1px solid #1e2530;border-radius:10px;padding:16px 18px;position:relative;overflow:hidden;}
+  .ma-metric-card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;border-radius:10px 10px 0 0;opacity:.6;}
+  .ma-metric-card.c-teal::after{background:#00d4a8;}
+  .ma-metric-card.c-blue::after{background:#3b9eff;}
+  .ma-metric-card.c-amber::after{background:#f5a623;}
+  .ma-metric-label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#3a4a5a;font-family:'DM Mono',monospace;margin-bottom:8px;}
+  .ma-metric-value{font-size:26px;font-weight:700;letter-spacing:-1px;color:#fff;line-height:1;margin-bottom:4px;}
+  .ma-metric-desc{font-size:11px;color:#3a4a5a;font-family:'DM Mono',monospace;}
+  .ma-timeline-panel{background:#0d1014;border:1px solid #1e2530;border-radius:10px;overflow:hidden;margin-bottom:16px;}
+  .ma-panel-header{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid #141c24;}
+  .ma-panel-title{font-size:9px;text-transform:uppercase;letter-spacing:1.8px;color:#3a4555;font-family:'DM Mono',monospace;}
+  .ma-timeline-empty{padding:32px;text-align:center;}
+  .ma-timeline-empty-text{font-size:11px;color:#2d3d4d;font-family:'DM Mono',monospace;line-height:1.7;}
+  .ma-run-cta{display:inline-block;margin-top:12px;font-size:11px;font-family:'DM Mono',monospace;color:#00d4a8;background:#0d2420;border:1px solid #00d4a830;border-radius:5px;padding:5px 14px;cursor:pointer;}
+  .ma-scrollbar{scrollbar-width:thin;scrollbar-color:#1e2530 transparent;}
+  .ma-placeholder-bars{display:flex;align-items:flex-end;gap:6px;padding:20px 18px;height:80px;}
+  .ma-bar{flex:1;border-radius:3px 3px 0 0;opacity:.15;}
+</style>
+<div class="ma-root">
+  <div class="ma-topbar">
+    <div class="ma-logo">
+      <div class="ma-logo-mark"><svg viewBox="0 0 16 16" fill="none" width="16" height="16"><circle cx="4" cy="8" r="2.5" fill="white" opacity=".9"/><circle cx="12" cy="4" r="1.8" fill="white" opacity=".7"/><circle cx="12" cy="12" r="1.8" fill="white" opacity=".7"/><line x1="6.4" y1="7.1" x2="10.2" y2="4.7" stroke="white" stroke-width=".8" opacity=".5"/><line x1="6.4" y1="8.9" x2="10.2" y2="11.3" stroke="white" stroke-width=".8" opacity=".5"/></svg></div>
+      <div><div class="ma-logo-text">Memory Atlas</div><div class="ma-logo-sub">MCP Server</div></div>
+    </div>
+    <div class="ma-topbar-right">
+      <div class="ma-badge">syntx-memory v0.2.0</div>
+      <button class="ma-btn"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M10 6a4 4 0 1 1-1.1-2.75" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M10 2.5V5.5H7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Refresh</button>
+    </div>
+  </div>
+  <div class="ma-layout">
+    <div class="ma-sidebar">
+      <div class="ma-nav-section">
+        <div class="ma-nav-label">Monitor</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Overview</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Explorer</div>
+      </div>
+      <div class="ma-nav-section">
+        <div class="ma-nav-label">System</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Agents</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Tools</div>
+        <div class="ma-nav-item active"><div class="ma-nav-dot"></div>Evals</div>
+        <div class="ma-nav-item"><div class="ma-nav-dot"></div>Files</div>
+      </div>
+      <div class="ma-sidebar-footer"><div class="ma-version">v0.2.0 · local</div></div>
+    </div>
+    <div class="ma-main ma-scrollbar">
+      <div class="ma-page-header">
+        <div>
+          <div class="ma-page-title">Evals</div>
+          <div class="ma-page-sub">recent local evaluation runs</div>
+        </div>
+      </div>
+      <div class="ma-evals-layout">
+        <div class="ma-evals-sidebar">
+          <div class="ma-evals-sidebar-header">
+            <div class="ma-evals-sidebar-title">Evaluation Runs</div>
+            <div style="font-family:'DM Mono',monospace;font-size:10px;color:#2d3d4d;">0 runs</div>
+          </div>
+          <select class="ma-project-select"><option>memory</option></select>
+          <div class="ma-evals-list">
+            <div class="ma-eval-empty-state">
+              <div class="ma-eval-empty-icon">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="4" y="5" width="12" height="2" rx="1" fill="#2d3d4d"/><rect x="4" y="9" width="9" height="2" rx="1" fill="#2d3d4d"/><rect x="4" y="13" width="5" height="2" rx="1" fill="#2d3d4d"/></svg>
+              </div>
+              <div class="ma-eval-empty-title">No eval runs yet</div>
+              <div class="ma-eval-empty-sub">Runs will appear here once you execute an evaluation against this project.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ma-evals-content ma-scrollbar">
+          <div class="ma-metrics-row">
+            <div class="ma-metric-card c-teal">
+              <div class="ma-metric-label">Total runs</div>
+              <div class="ma-metric-value">—</div>
+              <div class="ma-metric-desc">all time</div>
+            </div>
+            <div class="ma-metric-card c-blue">
+              <div class="ma-metric-label">Pass rate</div>
+              <div class="ma-metric-value">—</div>
+              <div class="ma-metric-desc">last 30 days</div>
+            </div>
+            <div class="ma-metric-card c-amber">
+              <div class="ma-metric-label">Avg duration</div>
+              <div class="ma-metric-value">—</div>
+              <div class="ma-metric-desc">per run</div>
+            </div>
+          </div>
+
+          <div class="ma-timeline-panel">
+            <div class="ma-panel-header">
+              <div class="ma-panel-title">Run timeline</div>
+            </div>
+            <div class="ma-placeholder-bars">
+              ${Array.from({length:24},(_,i)=>`<div class="ma-bar" style="height:${Math.floor(Math.random()*40+10)}px;background:#00d4a8;"></div>`).join('')}
+            </div>
+            <div class="ma-timeline-empty">
+              <div class="ma-timeline-empty-text">No eval runs recorded for this project.<br/>Execute your first eval to populate this view.</div>
+              <div class="ma-run-cta">→ run first eval</div>
+            </div>
+          </div>
+
+          <div class="ma-timeline-panel">
+            <div class="ma-panel-header">
+              <div class="ma-panel-title">Recent runs</div>
+            </div>
+            <div class="ma-timeline-empty">
+              <div class="ma-timeline-empty-text">Results table will appear here after your first run.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

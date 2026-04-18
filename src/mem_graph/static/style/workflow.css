@@ -1,0 +1,72 @@
+.workflow-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+}
+
+.workflow-svg {
+  width: 100%;
+  height: auto;
+  min-height: 240px;
+  background: var(--bg-subtle);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+/* Node styles */
+.wf-node {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 2px;
+  rx: 8;
+  ry: 8;
+}
+
+.wf-label {
+  fill: var(--ink);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wf-edge {
+  stroke: var(--muted);
+  stroke-width: 1.5px;
+  fill: none;
+  marker-end: url(#wf-arrow);
+}
+
+.wf-arrow {
+  fill: var(--muted);
+}
+
+/* Node kinds */
+.wf-node.trigger { stroke: var(--warning); fill: var(--accent-subtle); }
+.wf-node.action { stroke: var(--accent); }
+.wf-node.decision { stroke: var(--accent-2); rx: 40; ry: 40; }
+.wf-node.error { stroke: var(--danger); fill: rgba(239, 68, 68, 0.05); }
+
+/* Workflow List */
+.workflow-list {
+  display: grid;
+  gap: 16px;
+}
+
+.workflow-card {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.workflow-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
