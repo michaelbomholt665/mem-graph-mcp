@@ -802,19 +802,26 @@ def _dashboard(request: Request) -> FileResponse:  # noqa: ARG001
     return FileResponse(_STATIC_DIR / "dashboard.html")
 
 
+JS_MIME = "text/javascript"
+
+CSS_MIME = "text/css"
+
+
 def _dashboard_js(request: Request) -> FileResponse:  # noqa: ARG001
-    return FileResponse(_STATIC_DIR / "dashboard.js", media_type="text/javascript")
+    return FileResponse(_STATIC_DIR / "dashboard.js", media_type=JS_MIME)
 
 
 def _dashboard_css(request: Request) -> FileResponse:  # noqa: ARG001
-    return FileResponse(_STATIC_DIR / "dashboard.css", media_type="text/css")
+    return FileResponse(_STATIC_DIR / "dashboard.css", media_type=CSS_MIME)
+
 
 
 def _force_graph_js(request: Request) -> Response:  # noqa: ARG001
     return Response(
         (_STATIC_DIR / "force-graph.js").read_text(encoding="utf-8"),
-        media_type="text/javascript",
+        media_type=JS_MIME,
     )
+
 
 
 def _query_rows(query: str, params: dict[str, Any] | None = None) -> list[list[Any]]:
@@ -905,7 +912,7 @@ def _dashboard_graph_telemetry() -> dict[str, Any]:
     }
 
 
-async def _dashboard_system(request: Request) -> JSONResponse:  # noqa: ARG001
+def _dashboard_system(request: Request) -> JSONResponse:  # noqa: ARG001
     db_status = "connected"
     telemetry: dict[str, Any] = {}
     try:
@@ -927,14 +934,17 @@ async def _dashboard_system(request: Request) -> JSONResponse:  # noqa: ARG001
     )
 
 
-async def _dashboard_agents(request: Request) -> JSONResponse:  # noqa: ARG001
+
+def _dashboard_agents(request: Request) -> JSONResponse:  # noqa: ARG001
     agents = discover_agent_modules()
     return JSONResponse({"agents": agents, "count": len(agents)})
 
 
-async def _dashboard_workflows(request: Request) -> JSONResponse:  # noqa: ARG001
+
+def _dashboard_workflows(request: Request) -> JSONResponse:  # noqa: ARG001
     workflows = workflow_definitions()
     return JSONResponse({"workflows": workflows, "count": len(workflows)})
+
 
 
 def _jsonable_tool_schema(value: Any) -> Any:
@@ -991,7 +1001,7 @@ async def _dashboard_tools(request: Request) -> JSONResponse:  # noqa: ARG001
     )
 
 
-async def _dashboard_evals(request: Request) -> JSONResponse:
+def _dashboard_evals(request: Request) -> JSONResponse:
     project_id = request.query_params.get("project_id")
     limit = min(max(int(request.query_params.get("limit", 20)), 1), 100)
     if project_id:
@@ -1037,10 +1047,12 @@ async def _dashboard_evals(request: Request) -> JSONResponse:
                     "project_id": row[14],
                 }
                 for row in rows
+
             ],
             "count": len(rows),
         }
     )
+
 
 
 async def _dashboard_graph(request: Request) -> JSONResponse:
@@ -1087,7 +1099,8 @@ def _file_tree(request: Request) -> FileResponse:  # noqa: ARG001
 
 
 def _file_tree_js(request: Request) -> FileResponse:  # noqa: ARG001
-    return FileResponse(_STATIC_DIR / "file-tree.js", media_type="text/javascript")
+    return FileResponse(_STATIC_DIR / "file-tree.js", media_type=JS_MIME)
+
 
 
 def _file_tree_css(request: Request) -> FileResponse:  # noqa: ARG001

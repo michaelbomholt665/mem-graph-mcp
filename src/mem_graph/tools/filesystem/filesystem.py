@@ -22,7 +22,11 @@ import re
 from pathlib import Path
 from typing import Annotated
 
+import anyio
+import anyio.to_thread
+
 from fastmcp import FastMCP
+
 from pydantic import Field
 
 from ...observability import traced_tool
@@ -165,7 +169,10 @@ def _compile_pattern(pattern: str, is_regex: bool) -> re.Pattern[str] | None:
 async def _grep_file(path: str, compiled: re.Pattern[str], limit: int) -> list[dict]:
     results: list[dict] = []
     try:
-        lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+        content = await anyio.to_thread.run_sync(
+            lambda: Path(path).read_text(encoding="utf-8", errors="replace")
+        )
+        lines = content.splitlines()
         for lineno, line in enumerate(lines, start=1):
             if compiled.search(line):
                 results.append({"path": path, "line": lineno, "content": line})
@@ -174,6 +181,7 @@ async def _grep_file(path: str, compiled: re.Pattern[str], limit: int) -> list[d
     except OSError:
         pass
     return results
+
 
 
 # ---------------------------------------------------------------------------

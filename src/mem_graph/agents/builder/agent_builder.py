@@ -39,6 +39,8 @@ _MANIFEST_NAMES = {
     "Taskfile.yml",
 }
 _DOC_NAMES = {"README.md", "AGENTS.md", "CLAUDE.md", "LAST_SESSION.md"}
+_DEFAULT_INITIAL_CHANGELOG = ["v1: Initial discovered helper-agent spec."]
+
 
 
 class AgentEvalMetadata(BaseModel):
@@ -346,8 +348,9 @@ def _build_default_spec(
             inputs=["project_root", "manifest files", "docs", "context map"],
             outputs=["architecture summary", "important files", "project conventions"],
             eval_metadata=AgentEvalMetadata(suite="map", dataset="map-golden-set"),
-            changelog=["v1: Initial discovered helper-agent spec."],
+            changelog=_DEFAULT_INITIAL_CHANGELOG,
         )
+
     if helper_type == "command-map":
         return HelperAgentSpec(
             name=f"{project_id}-command-map",
@@ -361,8 +364,9 @@ def _build_default_spec(
             inputs=["project manifests", "scripts", "CI config", "README command sections"],
             outputs=["command map", "quality gate commands", "operational entry points"],
             eval_metadata=AgentEvalMetadata(suite="validate", dataset="validate-golden-set"),
-            changelog=["v1: Initial discovered helper-agent spec."],
+            changelog=_DEFAULT_INITIAL_CHANGELOG,
         )
+
     return HelperAgentSpec(
         name=f"{project_id}-memory-bank-builder",
         helper_type=helper_type,
@@ -375,8 +379,9 @@ def _build_default_spec(
         inputs=["context map", "decisions", "tasks", "LAST_SESSION.md"],
         outputs=["memory bank update", "context summary", "stale-memory findings"],
         eval_metadata=AgentEvalMetadata(suite="document", dataset="document-golden-set"),
-        changelog=["v1: Initial discovered helper-agent spec."],
+        changelog=_DEFAULT_INITIAL_CHANGELOG,
     )
+
 
 
 def _discover_project_files(root: Path) -> list[str]:

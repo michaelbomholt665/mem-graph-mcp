@@ -56,13 +56,17 @@ class ModelTier(str, Enum):
     TURBO = "turbo"          # Fast — high-volume classification, pattern matching
 
 
+GPT_5_4_XHIGH = "openai:gpt-5.4-xhigh"
+GPT_5_4_MINI = "openai:gpt-5.4-mini"
+
 #: Maps each tier alias to its concrete model identifier.
 MODEL_TIER_MAP: dict[str, str] = {
-    ModelTier.AUTOPILOT: os.getenv("MEM_GRAPH_MODEL_AUTOPILOT", "openai:gpt-5.4-xhigh"),
+    ModelTier.AUTOPILOT: os.getenv("MEM_GRAPH_MODEL_AUTOPILOT", GPT_5_4_XHIGH),
     ModelTier.STANDARD: os.getenv("MEM_GRAPH_MODEL_STANDARD", "openai:gpt-5.4-medium"),
-    ModelTier.MICRO: os.getenv("MEM_GRAPH_MODEL_MICRO", "openai:gpt-5.4-mini"),
+    ModelTier.MICRO: os.getenv("MEM_GRAPH_MODEL_MICRO", GPT_5_4_MINI),
     ModelTier.TURBO: os.getenv("MEM_GRAPH_MODEL_TURBO", "x-ai/grok-code-fast-1:optimized:free"),
 }
+
 
 WorkflowStageName = Literal[
     "context_gather",
@@ -76,15 +80,16 @@ WorkflowStageName = Literal[
 ]
 
 WORKFLOW_STAGE_MODEL_MAP: dict[WorkflowStageName, str] = {
-    "context_gather": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_CONTEXT", "openai:gpt-5.4-mini"),
-    "planning": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_PLANNING", "openai:gpt-5.4-mini"),
-    "implementation": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_IMPLEMENTATION", "openai:gpt-5.4-xhigh"),
-    "audit": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_AUDIT", "openai:gpt-5.4-xhigh"),
-    "debug_validation": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_DEBUG", "openai:gpt-5.4-xhigh"),
-    "documentation": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_DOCUMENTATION", "openai:gpt-5.4-mini"),
-    "context_map_update": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_CONTEXT_MAP", "openai:gpt-5.4-mini"),
-    "memory_bank_sync": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_MEMORY_BANK", "openai:gpt-5.4-mini"),
+    "context_gather": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_CONTEXT", GPT_5_4_MINI),
+    "planning": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_PLANNING", GPT_5_4_MINI),
+    "implementation": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_IMPLEMENTATION", GPT_5_4_XHIGH),
+    "audit": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_AUDIT", GPT_5_4_XHIGH),
+    "debug_validation": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_DEBUG", GPT_5_4_XHIGH),
+    "documentation": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_DOCUMENTATION", GPT_5_4_MINI),
+    "context_map_update": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_CONTEXT_MAP", GPT_5_4_MINI),
+    "memory_bank_sync": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_MEMORY_BANK", GPT_5_4_MINI),
 }
+
 
 
 def config_get_model_for_workflow_stage(

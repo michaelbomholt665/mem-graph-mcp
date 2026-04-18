@@ -24,6 +24,8 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import anyio
+import anyio.to_thread
+
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
@@ -677,7 +679,7 @@ async def _read_single(path: str) -> BatchFileContent:
         )
 
     try:
-        raw = Path(path).read_bytes()
+        raw = await anyio.to_thread.run_sync(Path(path).read_bytes)
     except Exception as exc:
         return BatchFileContent(path=path, content=f"ERROR: {exc}", truncated=False)
 
@@ -692,6 +694,7 @@ async def _read_single(path: str) -> BatchFileContent:
     )
 
 
+
 ################
 #   HELPERS
 ################
@@ -702,7 +705,8 @@ async def list_source_files(package_path: str, file_extension: str) -> list[str]
     import glob
 
     pattern = os.path.join(package_path, f"**/*{file_extension}")
-    return sorted(glob.glob(pattern, recursive=True))
+    return sorted(await anyio.to_thread.run_sync(lambda: glob.glob(pattern, recursive=True)))
+
 
 
 def _split_batches(paths: list[str], batch_size: int) -> list[list[str]]:
