@@ -12,6 +12,7 @@ from typing import Any, Callable
 from opentelemetry import trace
 from opentelemetry.trace import Span, Status, StatusCode
 
+from .logfire_setup import logfire_exception, logfire_info
 from .metrics import record_tool_result
 
 AttributeValue = str | bool | int | float
@@ -19,6 +20,8 @@ AttributeValue = str | bool | int | float
 _ERROR_TYPE_ATTR = "error.type"
 _TOOL_DURATION_ATTR = "tool.duration_ms"
 _TOOL_SUCCESS_ATTR = "tool.success"
+_TOOL_ARGUMENT_COUNT_ATTR = "tool.argument_count"
+_TOOL_BACKGROUND_TASK_ATTR = "tool.background_task"
 
 _TRACER = trace.get_tracer("mem_graph.instrumentation")
 
@@ -46,8 +49,8 @@ def _tool_attributes(
     return {
         "tool.name": tool_name,
         "mem_graph.component": component,
-        "tool.argument_count": len(args) + len(kwargs),
-        "tool.background_task": bool(getattr(ctx, "is_background_task", False)),
+        _TOOL_ARGUMENT_COUNT_ATTR: len(args) + len(kwargs),
+        _TOOL_BACKGROUND_TASK_ATTR: bool(getattr(ctx, "is_background_task", False)),
     }
 
 
@@ -63,6 +66,11 @@ def traced_span(
         try:
             yield span
         except Exception as exc:
+            logfire_exception(
+                "Span failed",
+                span_name=span_name,
+                error_type=type(exc).__name__,
+            )
             span.set_attribute(_ERROR_TYPE_ATTR, type(exc).__name__)
             span.set_status(Status(StatusCode.ERROR))
             span.record_exception(exc)
@@ -83,6 +91,13 @@ def traced_tool(
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 start = perf_counter()
                 attributes = _tool_attributes(tool_name, component, args, kwargs)
+                logfire_info(
+                    "Tool started",
+                    tool_name=tool_name,
+                    component=component,
+                    argument_count=attributes[_TOOL_ARGUMENT_COUNT_ATTR],
+                    background_task=attributes[_TOOL_BACKGROUND_TASK_ATTR],
+                )
                 with _TRACER.start_as_current_span(f"{component}:{tool_name}") as span:
                     _set_attributes(span, attributes)
                     try:
@@ -94,6 +109,13 @@ def traced_tool(
                         span.set_attribute(_ERROR_TYPE_ATTR, type(exc).__name__)
                         span.set_status(Status(StatusCode.ERROR))
                         span.record_exception(exc)
+                        logfire_exception(
+                            "Tool failed",
+                            tool_name=tool_name,
+                            component=component,
+                            duration_ms=duration_ms,
+                            error_type=type(exc).__name__,
+                        )
                         record_tool_result(
                             tool_name,
                             duration_ms,
@@ -106,6 +128,13 @@ def traced_tool(
                     span.set_attribute(_TOOL_DURATION_ATTR, duration_ms)
                     span.set_attribute(_TOOL_SUCCESS_ATTR, True)
                     span.set_status(Status(StatusCode.OK))
+                    logfire_info(
+                        "Tool completed",
+                        tool_name=tool_name,
+                        component=component,
+                        duration_ms=duration_ms,
+                        result_type=type(result).__name__,
+                    )
                     record_tool_result(
                         tool_name,
                         duration_ms,
@@ -120,6 +149,13 @@ def traced_tool(
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             start = perf_counter()
             attributes = _tool_attributes(tool_name, component, args, kwargs)
+            logfire_info(
+                "Tool started",
+                tool_name=tool_name,
+                component=component,
+                argument_count=attributes[_TOOL_ARGUMENT_COUNT_ATTR],
+                background_task=attributes[_TOOL_BACKGROUND_TASK_ATTR],
+            )
             with _TRACER.start_as_current_span(f"{component}:{tool_name}") as span:
                 _set_attributes(span, attributes)
                 try:
@@ -131,6 +167,13 @@ def traced_tool(
                     span.set_attribute(_ERROR_TYPE_ATTR, type(exc).__name__)
                     span.set_status(Status(StatusCode.ERROR))
                     span.record_exception(exc)
+                    logfire_exception(
+                        "Tool failed",
+                        tool_name=tool_name,
+                        component=component,
+                        duration_ms=duration_ms,
+                        error_type=type(exc).__name__,
+                    )
                     record_tool_result(
                         tool_name,
                         duration_ms,
@@ -143,6 +186,13 @@ def traced_tool(
                 span.set_attribute(_TOOL_DURATION_ATTR, duration_ms)
                 span.set_attribute(_TOOL_SUCCESS_ATTR, True)
                 span.set_status(Status(StatusCode.OK))
+                logfire_info(
+                    "Tool completed",
+                    tool_name=tool_name,
+                    component=component,
+                    duration_ms=duration_ms,
+                    result_type=type(result).__name__,
+                )
                 record_tool_result(
                     tool_name,
                     duration_ms,

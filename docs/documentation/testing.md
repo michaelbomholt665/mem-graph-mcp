@@ -99,6 +99,27 @@ Run tests in parallel:
 pytest -n auto
 ```
 
+## Eval Maintenance
+The eval framework under `src/mem_graph/evals/` is part of the regular regression surface.
+
+### Running Evals
+- Fast local baseline: `make evals`
+- CI-style deterministic gate: `make evals-ci`
+- Live agent run with model credentials: `make evals-live`
+- Release-time live run with the default stochastic repeat count: `make evals-release`
+
+Each target writes a machine-readable JSON report under `build/evals/`. You can also write a custom artifact path with `uv run mem-graph-evals --output <path>` and persist a compact summary to the graph with `--persist-project-id <project-id>`.
+
+### Updating Suites
+- Update eval cases whenever prompts, output contracts, or tool behavior change in a way that should be guarded long term.
+- Prefer fixture-backed cases for merge gates. They stay fast, deterministic, and cheap.
+- Reserve live-model cases for manual debugging or release checks where LLM variability is acceptable.
+- When adding a new maintained agent family, add both a suite module under `src/mem_graph/evals/` and a focused fixture test under `tests/`.
+- If an expected output keeps drifting, tighten the renderer or switch to keyword or regex scoring before relaxing the test intent.
+
+### Tier Comparisons
+Tier comparison assertions should remain deterministic. Use stable fixture bindings in tests to verify the comparison logic itself, and keep any real model-tier comparisons out of the fast merge gate unless they prove stable over time.
+
 ## Tool Testing
 ### Memory Tools Testing
 **Test Coverage:**

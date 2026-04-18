@@ -40,13 +40,13 @@ Existing files to edit:
 
 ## Tasklist
 
-- [ ] Add a Logfire bootstrap module with environment-driven configuration and a safe no-token path for local development.
-- [ ] Decide which operations log structured payload metadata versus redacted summaries so live traces stay useful without exposing too much content.
-- [ ] Instrument graph access, memory operations, and the most important tool entry points with consistent Logfire scopes.
-- [ ] Add Logfire-aware logging around orchestration and agent execution so long runs can be replayed in sequence.
-- [ ] Introduce a memory service wrapper or adapter where that gives cleaner instrumentation than embedding logging directly inside raw tool functions.
-- [ ] Document alert and search patterns for on-call use, including what to look for in failed runs.
-- [ ] Verify the Logfire layer complements rather than duplicates OpenTelemetry spans.
+- [x] Add a Logfire bootstrap module with environment-driven configuration and a safe no-token path for local development.
+- [x] Decide which operations log structured payload metadata versus redacted summaries so live traces stay useful without exposing too much content.
+- [x] Instrument graph access, memory operations, and the most important tool entry points with consistent Logfire scopes.
+- [x] Add Logfire-aware logging around orchestration and agent execution so long runs can be replayed in sequence.
+- [x] Introduce a memory service wrapper or adapter where that gives cleaner instrumentation than embedding logging directly inside raw tool functions.
+- [x] Document alert and search patterns for on-call use, including what to look for in failed runs.
+- [x] Verify the Logfire layer complements rather than duplicates OpenTelemetry spans.
 
 ## Out Of Scope
 
@@ -56,10 +56,10 @@ Existing files to edit:
 
 ## Done When
 
-- [ ] Core agent and tool activity is visible in Logfire timelines.
-- [ ] Operators have a documented search and alert workflow.
-- [ ] Sensitive payload handling is deliberate instead of accidental.
-- [ ] Logfire and OpenTelemetry can run together without conflicting bootstrap paths.
+- [x] Core agent and tool activity is visible in Logfire timelines.
+- [x] Operators have a documented search and alert workflow.
+- [x] Sensitive payload handling is deliberate instead of accidental.
+- [x] Logfire and OpenTelemetry can run together without conflicting bootstrap paths.
 
 ## References
 

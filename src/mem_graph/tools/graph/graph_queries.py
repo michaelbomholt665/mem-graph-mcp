@@ -66,7 +66,7 @@ _EDGE_DEFINITIONS: tuple[tuple[str, str, str], ...] = (
     ("HAS_NOTE", "Project", "Note"),
     ("HAS_VIOLATION", "Project", "Violation"),
     ("HAS_FILE", "Project", "CodeFile"),
-    ("HAS_JIRA_ISSUE", "Project", "JiraIssue"),
+    ("HAS_JINA_ISSUE", "Project", "JinaIssue"),
     ("PROJECT_MEMORY", "Project", "Memory"),
     ("BACKEND_TASK", "Backend", "Task"),
     ("BACKEND_DECISION", "Backend", "Decision"),
@@ -83,8 +83,8 @@ _EDGE_DEFINITIONS: tuple[tuple[str, str, str], ...] = (
     ("SYMBOL_TASK", "CodeSymbol", "Task"),
     ("SYMBOL_VIOLATION", "CodeSymbol", "Violation"),
     ("SYMBOL_DECISION", "CodeSymbol", "Decision"),
-    ("IMPLEMENTS", "JiraIssue", "CodeFile"),
-    ("MENTIONS", "JiraIssue", "CodeFile"),
+    ("IMPLEMENTS", "JinaIssue", "CodeFile"),
+    ("MENTIONS", "JinaIssue", "CodeFile"),
 )
 
 
@@ -420,16 +420,16 @@ def _load_code_files(project_id: str | None, limit: int) -> list[NodeSnapshot]:
     ]
 
 
-def _load_jira_issues(project_id: str | None, limit: int) -> list[NodeSnapshot]:
+def _load_jina_issues(project_id: str | None, limit: int) -> list[NodeSnapshot]:
     rows = _project_scope_query(
         scoped_query=f"""
-            MATCH (p:Project {{id: $project_id}})-[:HAS_JIRA_ISSUE]->(j:JiraIssue)
+            MATCH (p:Project {{id: $project_id}})-[:HAS_JINA_ISSUE]->(j:JinaIssue)
             RETURN j.id, j.issue_key, j.title, j.status, j.url, j.assignee, j.synced_at, p.id
             ORDER BY j.synced_at DESC
             LIMIT {limit}
         """,
         global_query=f"""
-            MATCH (p:Project)-[:HAS_JIRA_ISSUE]->(j:JiraIssue)
+            MATCH (p:Project)-[:HAS_JINA_ISSUE]->(j:JinaIssue)
             RETURN j.id, j.issue_key, j.title, j.status, j.url, j.assignee, j.synced_at, p.id
             ORDER BY j.synced_at DESC
             LIMIT {limit}
@@ -440,7 +440,7 @@ def _load_jira_issues(project_id: str | None, limit: int) -> list[NodeSnapshot]:
         NodeSnapshot(
             id=row[0],
             label=row[1] or row[2] or row[0],
-            type="JiraIssue",
+            type="JinaIssue",
             metadata={
                 "title": row[2],
                 "status": row[3],
@@ -464,7 +464,7 @@ _NODE_LOADERS: dict[str, NodeLoader] = {
     "Note": _load_notes,
     "CodeSymbol": _load_symbols,
     "CodeFile": _load_code_files,
-    "JiraIssue": _load_jira_issues,
+    "JinaIssue": _load_jina_issues,
 }
 
 

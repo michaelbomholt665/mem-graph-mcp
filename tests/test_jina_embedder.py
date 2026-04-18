@@ -36,7 +36,7 @@ async def _fake_embeddings_code_query(text: str) -> list[float]:
 
 @pytest.mark.asyncio
 async def test_fetch_issues_shapes_atlassian_documents(monkeypatch):
-    from mem_graph.services.jira_embedder import JiraCodeEmbedder
+    from mem_graph.services.jina_embedder import JinaCodeEmbedder
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/rest/api/3/search"
@@ -68,9 +68,9 @@ async def test_fetch_issues_shapes_atlassian_documents(monkeypatch):
             },
         )
 
-    embedder = JiraCodeEmbedder(
-        jira_url="https://jira.example.com",
-        jira_token="token",
+    embedder = JinaCodeEmbedder(
+        jina_url="https://jina.example.com",
+        jina_token="token",
         transport=httpx.MockTransport(handler),
     )
 
@@ -79,20 +79,20 @@ async def test_fetch_issues_shapes_atlassian_documents(monkeypatch):
     assert issues[0].key == "MEM-42"
     assert issues[0].description == "Tighten login token refresh logic."
     assert issues[0].assignee == "Ada"
-    assert issues[0].url == "https://jira.example.com/browse/MEM-42"
+    assert issues[0].url == "https://jina.example.com/browse/MEM-42"
     assert issues[0].created_at is not None
 
 
 @pytest.mark.asyncio
 async def test_find_code_for_issue_ranks_matches_and_unloads(monkeypatch, db, tmp_path):
-    from mem_graph.services import jira_embedder as jira_mod
-    from mem_graph.services.jira_embedder import JiraCodeEmbedder, JiraIssue
+    from mem_graph.services import jina_embedder as jina_mod
+    from mem_graph.services.jina_embedder import JinaCodeEmbedder, JinaIssue
     from mem_graph.tools.work.projects import project_create
 
-    monkeypatch.setattr(jira_mod, "embeddings_code", _fake_embeddings_code)
-    monkeypatch.setattr(jira_mod, "embeddings_code_query", _fake_embeddings_code_query)
+    monkeypatch.setattr(jina_mod, "embeddings_code", _fake_embeddings_code)
+    monkeypatch.setattr(jina_mod, "embeddings_code_query", _fake_embeddings_code_query)
 
-    project = await project_create(name="Atlas", description="Jira linking test", repo_path=str(tmp_path))
+    project = await project_create(name="Atlas", description="Jina linking test", repo_path=str(tmp_path))
     project_id = project["project_id"]
 
     src_dir = tmp_path / "src"
@@ -100,13 +100,13 @@ async def test_find_code_for_issue_ranks_matches_and_unloads(monkeypatch, db, tm
     (src_dir / "auth.py").write_text("def refresh_auth_token():\n    return 'login token auth'\n")
     (src_dir / "cache.py").write_text("def warm_cache():\n    return 'cache redis'\n")
 
-    embedder = JiraCodeEmbedder(jira_url="https://jira.example.com", jira_token="token", ttl_seconds=60)
-    issue = JiraIssue(
+    embedder = JinaCodeEmbedder(jina_url="https://jina.example.com", jina_token="token", ttl_seconds=60)
+    issue = JinaIssue(
         key="MEM-7",
         title="Improve auth login token handling",
         description="Auth token refresh should be safer.",
         status="Open",
-        url="https://jira.example.com/browse/MEM-7",
+        url="https://jina.example.com/browse/MEM-7",
     )
 
     matches = await embedder.find_code_for_issue(
@@ -122,12 +122,12 @@ async def test_find_code_for_issue_ranks_matches_and_unloads(monkeypatch, db, tm
     assert embedder.index_loaded is True
     assert embedder.indexed_file_count == 2
 
-    jira_rows = db.execute("MATCH (j:JiraIssue {id: $id}) RETURN j.issue_key", {"id": issue.issue_id()})
-    assert jira_rows.get_all()[0][0] == "MEM-7"
+    jina_rows = db.execute("MATCH (j:JinaIssue {id: $id}) RETURN j.issue_key", {"id": issue.issue_id()})
+    assert jina_rows.get_all()[0][0] == "MEM-7"
 
     link_rows = db.execute(
         """
-        MATCH (j:JiraIssue {id: $issue_id})-[:IMPLEMENTS]->(f:CodeFile)
+        MATCH (j:JinaIssue {id: $issue_id})-[:IMPLEMENTS]->(f:CodeFile)
         RETURN f.path
         """,
         {"issue_id": issue.issue_id()},

@@ -102,6 +102,7 @@ class ScribeDependencies:
 
 scribe_agent: Agent[ScribeDependencies, ScribeReport] = Agent(
     _SCRIBE_MODEL,
+    name="scribe",
     deps_type=ScribeDependencies,
     output_type=ScribeReport,
     defer_model_check=DEFER_AGENT_MODEL_CHECK,

@@ -60,7 +60,7 @@ MCP adds protocol-specific methods and notifications:
 ### tools_search
 Search available tools by functionality or name.
 
-**Method**: `tools/call`  
+**Method**: `tools/call`
 **Tool Name**: `tools_search`
 
 **Parameters**:
@@ -101,7 +101,7 @@ Search available tools by functionality or name.
 ### tools_activate
 Activate lazy-loaded tool namespaces for the current session.
 
-**Method**: `tools/call`  
+**Method**: `tools/call`
 **Tool Name**: `tools_activate`
 
 **Parameters**:
@@ -131,7 +131,7 @@ Activate lazy-loaded tool namespaces for the current session.
 ### memory_store
 Store a memory item with semantic embedding.
 
-**Method**: `tools/call`  
+**Method**: `tools/call`
 **Tool Name**: `memory_store`
 
 **Parameters**:
@@ -155,7 +155,7 @@ Store a memory item with semantic embedding.
 ### memory_recall
 Retrieve memories semantically similar to a query.
 
-**Method**: `tools/call`  
+**Method**: `tools/call`
 **Tool Name**: `memory_recall`
 
 **Parameters**:
@@ -188,7 +188,7 @@ Retrieve memories semantically similar to a query.
 ### conversation_start
 Initialize a new conversation session.
 
-**Method**: `tools/call`  
+**Method**: `tools/call`
 **Tool Name**: `conversation_start`
 
 **Parameters**:
@@ -211,7 +211,7 @@ Initialize a new conversation session.
 ### conversation_append
 Add a message to an ongoing conversation.
 
-**Method**: `tools/call`  
+**Method**: `tools/call`
 **Tool Name**: `conversation_append`
 
 **Parameters**:
@@ -235,7 +235,7 @@ Add a message to an ongoing conversation.
 ### conversation_end
 Complete a conversation and generate summary.
 
-**Method**: `tools/call`  
+**Method**: `tools/call`
 **Tool Name**: `conversation_end`
 
 **Parameters**:
@@ -259,7 +259,37 @@ Complete a conversation and generate summary.
 ### task_create
 Create a new task with optional embedding.
 
-**Method**: `tools/call`  
+## Eval Report Persistence
+
+Eval runs can now emit a full JSON artifact to disk and optionally persist a compact summary into the graph.
+
+### CLI Flags
+`mem-graph-evals` supports:
+
+- `--output <path>`: write the full `EvalReport` payload as JSON.
+- `--persist-project-id <project-id>`: create an `EvalRun` node linked to the target project.
+- `--persist-trigger <label>`: annotate why the run happened, for example `manual`, `ci`, or `release`.
+- `--persist-label <label>`: attach an operator label such as `fixture-ci`.
+
+### EvalRun Graph Schema
+Persisted summaries are stored as `EvalRun` nodes related to a `Project` through `HAS_EVAL_RUN`.
+
+`EvalRun` fields:
+
+- `id`: UUIDv7 primary key for the persisted run.
+- `mode`: `fixture` or `live`.
+- `label`: optional operator label.
+- `trigger`: the caller-provided trigger reason.
+- `total_suites`, `passed_suites`, `suite_pass_rate`: top-level pass metrics.
+- `total_duration_ms`: total wall-clock duration.
+- `suite_names`, `passed_suite_names`: maintained suites that were executed and passed.
+- `summary`: the human-readable report text.
+- `report_path`: optional filesystem path to the full JSON artifact.
+- `started_at`, `completed_at`, `persisted_at`: timing metadata.
+
+The graph stores only the compact summary payload. The full case-by-case report remains in the JSON artifact produced by `--output`.
+
+**Method**: `tools/call`
 **Tool Name**: `task_create`
 
 **Parameters**:
@@ -284,7 +314,7 @@ Create a new task with optional embedding.
 ### task_update
 Update task status, priority, or phase.
 
-**Method**: `tools/call`  
+**Method**: `tools/call`
 **Tool Name**: `task_update`
 
 **Parameters**:
@@ -310,7 +340,7 @@ Update task status, priority, or phase.
 ### project_create
 Create a new project.
 
-**Method**: `tools/call`  
+**Method**: `tools/call`
 **Tool Name**: `project_create`
 
 **Parameters**:
@@ -335,7 +365,7 @@ Create a new project.
 ### decision_record
 Record an architectural decision.
 
-**Method**: `tools/call`  
+**Method**: `tools/call`
 **Tool Name**: `decision_record`
 
 **Parameters**:
@@ -362,7 +392,7 @@ Record an architectural decision.
 ### audit_package
 Run automated codebase audit using the Audit Agent.
 
-**Method**: `tools/call`  
+**Method**: `tools/call`
 **Tool Name**: `audit_package`
 
 **Parameters**:

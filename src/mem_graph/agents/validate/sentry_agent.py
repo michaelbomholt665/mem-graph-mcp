@@ -77,6 +77,7 @@ class SentryDependencies:
 
 sentry_agent: Agent[SentryDependencies, SentryReport] = Agent(
     _SENTRY_MODEL,
+    name="sentry",
     deps_type=SentryDependencies,
     output_type=SentryReport,
     defer_model_check=DEFER_AGENT_MODEL_CHECK,

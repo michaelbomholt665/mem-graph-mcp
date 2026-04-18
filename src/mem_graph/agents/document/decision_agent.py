@@ -132,6 +132,7 @@ class DecisionDependencies:
 
 decision_agent: Agent[DecisionDependencies, ReviewReport] = Agent(
     AGENT_MODEL,
+    name="decision",
     deps_type=DecisionDependencies,
     output_type=ReviewReport,
     model_settings=config_model_settings(

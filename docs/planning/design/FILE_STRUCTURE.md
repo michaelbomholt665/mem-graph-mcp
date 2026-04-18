@@ -38,7 +38,7 @@ This document shows the complete file tree after implementing all design feature
 │   │       ├── 007-phase4a-icons.md
 │   │       ├── 008-phase4b-tasks.md
 │   │       ├── 009-phase5a-dashboard.md
-│   │       ├── 010-phase5b-jira.md
+│   │       ├── 010-phase5b-jina.md
 │   │       ├── 011-phase5c-files.md
 │   │       ├── 012-otel.md
 │   │       ├── 013-versioning.md
@@ -131,7 +131,7 @@ This document shows the complete file tree after implementing all design feature
 │   │   ├── violation_writer.py
 │   │   ├── task_queue.py                  [NEW] - TaskQueue for background tasks
 │   │   ├── diagrams.py                    [NEW] - Mermaid/chart rendering
-│   │   ├── jira_embedder.py               [NEW] - JiraCodeEmbedder with semantic linking
+│   │   ├── jina_embedder.py               [NEW] - JinaCodeEmbedder with semantic linking
 │   │   └── memory.py                      [NEW] - LogfireMemory with instrumentation
 │   │
 │   ├── evals/                             [NEW FOLDER]
@@ -176,7 +176,7 @@ This document shows the complete file tree after implementing all design feature
 │   │   │
 │   │   ├── integrations/                  [NEW FOLDER]
 │   │   │   ├── __init__.py
-│   │   │   ├── jira.py                    [NEW] - fetch_jira_issues, find_code_for_ticket, etc.
+│   │   │   ├── jina.py                    [NEW] - fetch_jina_issues, find_code_for_ticket, etc.
 │   │   │   └── github.py                  [NEW OPTIONAL - future]
 │   │   │
 │   │   ├── graph/                         [NEW FOLDER]
@@ -228,7 +228,7 @@ This document shows the complete file tree after implementing all design feature
 │   │   ├── test_plans.py                  [NEW]
 │   │   └── test_tasks.py                  [NEW]
 │   ├── test_services/
-│   │   ├── test_jira_embedder.py          [NEW]
+│   │   ├── test_jina_embedder.py          [NEW]
 │   │   ├── test_task_queue.py             [NEW]
 │   │   └── test_diagrams.py               [NEW]
 │   ├── test_tools/
@@ -236,7 +236,7 @@ This document shows the complete file tree after implementing all design feature
 │   │   ├── test_graph.py                  [NEW]
 │   │   ├── test_filesystem_tree.py        [NEW]
 │   │   └── test_integrations/
-│   │       └── test_jira.py               [NEW]
+│   │       └── test_jina.py               [NEW]
 │   ├── test_evals/
 │   │   ├── test_audit_evals.py            [NEW]
 │   │   ├── test_fix_evals.py              [NEW]
@@ -250,7 +250,7 @@ This document shows the complete file tree after implementing all design feature
 │   ├── run_evals.py                       [NEW] - CLI to run all evals
 │   ├── setup_dashboards.py                [NEW] - Setup Grafana/Logfire dashboards
 │   ├── migrate_agents_to_slim.py          [NEW] - Helper script for model migration
-│   └── load_jira_sample_data.py           [NEW] - Test data loader
+│   └── load_jina_sample_data.py           [NEW] - Test data loader
 │
 └── .vscode/settings.json                  [OPTIONAL EDIT]
 ```
@@ -263,7 +263,7 @@ This document shows the complete file tree after implementing all design feature
 - `observability/` - Logfire + OTel setup
 - `skills/` - Pydantic-AI-Skills wrappers
 - `evals/` - Stochastic testing framework
-- `tools/integrations/` - Jira, GitHub APIs
+- `tools/integrations/` - Jina, GitHub APIs
 - `tools/graph/` - Graph query APIs
 - `tools/background/` - Task queue management
 - `tools/confirmations/` - User elicitation
@@ -271,15 +271,15 @@ This document shows the complete file tree after implementing all design feature
 
 ### **New Files (50+)**
 **Models:** `plan.py`, `task.py`, `evals.py`, `confirmation.py`
-**Services:** `task_queue.py`, `diagrams.py`, `jira_embedder.py`, `memory.py`
+**Services:** `task_queue.py`, `diagrams.py`, `jina_embedder.py`, `memory.py`
 **Agents:** `planning_agent.py`
 **Skills:** `memory.py`, `work.py`, `agents.py`, `filesystem.py` + `__init__.py`
-**Tools:** `tree.py`, `status.py`, `graph_queries.py`, `resources.py`, `task_status.py`, `progress.py`, `handlers.py` + jira.py
+**Tools:** `tree.py`, `status.py`, `graph_queries.py`, `resources.py`, `task_status.py`, `progress.py`, `handlers.py` + jina.py
 **Evals:** `audit_evals.py`, `fix_evals.py`, `validate_evals.py`, `map_evals.py`, `document_evals.py`, `scorers.py`, `evaluator.py`
 **Observability:** `logfire_setup.py`, `otel_setup.py`, `instrumentation.py`, `metrics.py`
 **Frontend:** `dashboard.html`, `dashboard.js`, `dashboard.css`, `file-tree.html`, `file-tree.js`, `file-tree.css`
-**Tests:** `test_evals.py`, `test_planning_agent.py`, `test_plans.py`, `test_tasks.py`, `test_jira_embedder.py`, `test_task_queue.py`, `test_diagrams.py`, `test_graph.py`, `test_filesystem_tree.py`, `test_jira.py`, `test_audit_evals.py`, `test_fix_evals.py`, `test_scorers.py` + fixtures
-**Scripts:** `run_evals.py`, `setup_dashboards.py`, `migrate_agents_to_slim.py`, `load_jira_sample_data.py`
+**Tests:** `test_evals.py`, `test_planning_agent.py`, `test_plans.py`, `test_tasks.py`, `test_jina_embedder.py`, `test_task_queue.py`, `test_diagrams.py`, `test_graph.py`, `test_filesystem_tree.py`, `test_jina.py`, `test_audit_evals.py`, `test_fix_evals.py`, `test_scorers.py` + fixtures
+**Scripts:** `run_evals.py`, `setup_dashboards.py`, `migrate_agents_to_slim.py`, `load_jina_sample_data.py`
 **Resources:** `icons.py`, `node_styles.json`
 
 ### **Edited Files (30+)**

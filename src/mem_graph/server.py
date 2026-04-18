@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # src/mem_graph/server.py
+# ruff: noqa: E402
 """
 server.py — FastMCP app definition + lifespan wiring.
 
@@ -37,7 +38,7 @@ Tools are split into two tiers:
         audit      — audit_package, map_codebase, triage_violations, decision_review,
                                  orchestrate_codebase
     filesystem — file_read, file_write, file_edit, file_delete, file_search, file_grep
-        integrations — jira_fetch_issues, jira_find_code_for_ticket, jira_find_tickets_for_file
+        integrations — jina_fetch_issues, jina_find_code_for_ticket, jina_find_tickets_for_file
 
 FastMCP 3.0 Upgrades
 ---------------------
@@ -59,44 +60,62 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any, AsyncGenerator, Literal, cast
 
-import anyio
-from anyio import to_thread
-import httpx
 from dotenv import load_dotenv
+
+load_dotenv()
+
+from . import __version__
+from .observability.logfire_setup import setup_logfire, shutdown_logfire
+from .observability.otel_setup import setup_observability, shutdown_observability
+
+SERVER_NAME = "syntx-memory"
+SERVER_VERSION = __version__
+
+# Initialize observability before importing FastMCP, MCP, Pydantic AI agents, or
+# any tool modules that may create module-level agent instances.
+setup_logfire(service_name=SERVER_NAME, service_version=SERVER_VERSION)
+setup_observability(service_name=SERVER_NAME, service_version=SERVER_VERSION)
+
+# Pre-emptively set a dummy key to avoid pydantic-ai import-time crashes if no key is in .env.
+if not os.getenv("OPENAI_API_KEY"):
+    os.environ.setdefault("OPENAI_API_KEY", "missing-key-set-in-env-file")
+
+import anyio
+import httpx
+import uvicorn
+from anyio import to_thread
 from fastmcp import FastMCP
+from fastmcp.experimental.transforms.code_mode import (
+    CodeMode,  # type: ignore[import-untyped]
+)
 from fastmcp.server.auth import AccessToken, TokenVerifier
 from fastmcp.server.context import Context
 from fastmcp.server.middleware.middleware import CallNext, Middleware, MiddlewareContext
-from fastmcp.server.providers.skills import SkillsProvider  # type: ignore[import-untyped]
-from fastmcp.experimental.transforms.code_mode import CodeMode  # type: ignore[import-untyped]
+from fastmcp.server.providers.skills import (
+    SkillsProvider,  # type: ignore[import-untyped]
+)
 from mcp.types import Icon
 from pydantic import Field
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
-import uvicorn
 
-from . import __version__
 from .db import db_close_engine, db_get_connection, db_init_engine
 from .logging import logging_setup_engine
-from .observability import setup_observability, shutdown_observability
+
 from .providers.openapi import build_openapi_provider
+from .resources.prompts import PROMPT_REGISTRY, get_sub_agent_instructions
 from .services.summarizer import start_worker, stop_worker
 from .services.task_queue import task_queue
-from .resources.prompts import PROMPT_REGISTRY, get_sub_agent_instructions
 from .tools import background, graph, integrations
-from .tools.agents import audit, diagrams, map as map_tool, orchestrator, triage
-from .tools.filesystem import filesystem, status as filesystem_status, tree as filesystem_tree
+from .tools.agents import audit, diagrams, orchestrator, triage
+from .tools.agents import map as map_tool
+from .tools.filesystem import filesystem
+from .tools.filesystem import status as filesystem_status
+from .tools.filesystem import tree as filesystem_tree
 from .tools.memory import conversation, memory, notes
 from .tools.work import decisions, projects, tasks, violations
-
-load_dotenv()
-
-# Pre-emptively set a dummy key to avoid pydantic-ai import-time crashes if no key is in .env.
-if not os.getenv("OPENAI_API_KEY"):
-    os.environ.setdefault("OPENAI_API_KEY", "missing-key-set-in-env-file")
-
 
 logging_setup_engine(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
@@ -105,14 +124,23 @@ _HOST = os.getenv("MCP_HOST", "127.0.0.1")
 _PORT = int(os.getenv("MCP_PORT", "9100"))
 _BASE_DIR = Path(__file__).resolve().parent
 _STATIC_DIR = _BASE_DIR / "static"
-SERVER_NAME = "syntx-memory"
-SERVER_VERSION = __version__
 SERVER_API_VERSION = "1.0"
-SERVER_WEBSITE = os.getenv("MEM_GRAPH_WEBSITE", "https://github.com/michael/syntx-memory")
+SERVER_WEBSITE = os.getenv(
+    "MEM_GRAPH_WEBSITE", "https://github.com/michael/syntx-memory"
+)
 
 # Consolidated namespaces
 _LAZY_NAMESPACES: frozenset[str] = frozenset(
-    {"memory", "work", "notes", "audit", "filesystem", "background", "graph", "integrations"}
+    {
+        "memory",
+        "work",
+        "notes",
+        "audit",
+        "filesystem",
+        "background",
+        "graph",
+        "integrations",
+    }
 )
 
 # Legacy namespace → canonical replacement
@@ -127,9 +155,7 @@ _DEPRECATED_NAMESPACES: dict[str, str] = {
 
 # Comma-separated OpenAPI spec URLs (optional)
 _OPENAPI_SPECS: list[str] = [
-    s.strip()
-    for s in os.getenv("MEM_GRAPH_OPENAPI_SPECS", "").split(",")
-    if s.strip()
+    s.strip() for s in os.getenv("MEM_GRAPH_OPENAPI_SPECS", "").split(",") if s.strip()
 ]
 
 # ---------------------------------------------------------------------------
@@ -210,18 +236,18 @@ class LoggingMiddleware(Middleware):
 
 
 _BANNER = r"""
-__  __ ______ __  __      _____  _____            _____  _    _ 
+__  __ ______ __  __      _____  _____            _____  _    _
   |  \/  |  ____|  \/  |    / ____|  __ \     /\    |  __ \| |  | |
   | \  / | |__  | \  / |   | |  __| |__) |   /  \   | |__) | |__| |
   | |\/| |  __| | |\/| |   | | |_ |  _  /   / /\ \  |  ___/|  __  |
   | |  | | |____| |  | |   | |__| | | \ \  / ____ \ | |    | |  | |
   |_|  |_|______|_|  |_|    \_____|_|  \_\/_/    \_\|_|    |_|  |_|
-                                                                      
-  __  __  _____ _____                                                 
- |  \/  |/ ____|  __ \                                                
- | \  / | |    | |__) |                                               
- | |\/| | |    |  ___/                                                
- | |  | | |____| |                                                    
+
+  __  __  _____ _____
+ |  \/  |/ ____|  __ \
+ | \  / | |    | |__) |
+ | |\/| | |    |  ___/
+ | |  | | |____| |
  |_|  |_|\_____|_|
 """
 
@@ -235,7 +261,6 @@ async def lifespan(server: FastMCP) -> AsyncGenerator[None, None]:  # noqa: ARG0
             file=sys.stderr,
         )
 
-    setup_observability(service_name=SERVER_NAME, service_version=SERVER_VERSION)
     await to_thread.run_sync(db_init_engine)
     start_worker()
     await task_queue.startup()
@@ -252,6 +277,7 @@ async def lifespan(server: FastMCP) -> AsyncGenerator[None, None]:  # noqa: ARG0
     await stop_worker()
     await to_thread.run_sync(db_close_engine)
     shutdown_observability()
+    shutdown_logfire()
     logger.info("mem-graph server shut down cleanly.")
 
 
@@ -296,9 +322,9 @@ mcp = FastMCP(
     icons=[
         Icon(
             src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCIgdmlld0JveD0iMCAwIDQ4IDQ4Ij48cmVjdCBmaWxsPSIjRkZGIiBmaWxsLW9wYWNpdHk9Ii4wMSIgd2lkdGg9IjQ4IiBo ZWlnaHQ9IjQ4Ii8+PHBhdGggZmlsbD0iIzEyNzZkMiIgZD0iTTI0IDRDMTIuOTUgNCA0IDE2Ljk1IDQgMjhzOC45NSAyNCAyMCAyNCAyMC04Ljk1IDIwLTIwUzM1LjA1IDQgMjQgNHptLTQgMzZINjYuODN2LTEyCzMwSDE2VjZ6Ii8+PC9zdmc+",
-            mimeType="image/svg+xml"
+            mimeType="image/svg+xml",
         )
-    ]
+    ],
 )
 
 # Register MCP-level middleware for structured logging
@@ -448,12 +474,14 @@ async def tools_activate(
     filesystem — file_read, file_write, file_edit, file_delete, file_search, file_grep
     background — get_task_status, cancel_task
     graph      — get_graph_snapshot, get_node_details, search_graph
-    integrations — jira_fetch_issues, jira_find_code_for_ticket, jira_find_tickets_for_file
+    integrations — jina_fetch_issues, jina_find_code_for_ticket, jina_find_tickets_for_file
     """
     # Handle deprecated namespace aliases
     if namespace in _DEPRECATED_NAMESPACES:
         canonical = _DEPRECATED_NAMESPACES[namespace]
-        await ctx.enable_components(tags={f"namespace:{canonical}"}, components={"tool"})
+        await ctx.enable_components(
+            tags={f"namespace:{canonical}"}, components={"tool"}
+        )
         return {
             "activated": canonical,
             "status": "ok",
@@ -687,7 +715,10 @@ async def resource_violation(violation_id: str) -> str:
 # Prompts
 # ---------------------------------------------------------------------------
 
-@mcp.prompt(name="sync_context", description="Project Sync: Re-orient and align your knowledge.")
+
+@mcp.prompt(
+    name="sync_context", description="Project Sync: Re-orient and align your knowledge."
+)
 def prompt_sync_context() -> str:
     return PROMPT_REGISTRY["sync_context"]
 
@@ -707,10 +738,16 @@ def prompt_close_session() -> str:
     return PROMPT_REGISTRY["close_session"]
 
 
-@mcp.prompt(name="sub_agent_spinup", description="Initialize a specialized sub-agent persona.")
+@mcp.prompt(
+    name="sub_agent_spinup", description="Initialize a specialized sub-agent persona."
+)
 def prompt_sub_agent_spinup(
-    persona: Annotated[str, Field(description="Persona key: auditor | architect | triage | mapper")],
-    task: Annotated[str, Field(description="The specific task the sub-agent should perform")],
+    persona: Annotated[
+        str, Field(description="Persona key: auditor | architect | triage | mapper")
+    ],
+    task: Annotated[
+        str, Field(description="The specific task the sub-agent should perform")
+    ],
 ) -> str:
     return get_sub_agent_instructions(persona, task)
 
@@ -773,9 +810,7 @@ def _dashboard_css(request: Request) -> FileResponse:  # noqa: ARG001
 async def _dashboard_graph(request: Request) -> JSONResponse:
     node_types_raw = request.query_params.get("node_types")
     node_types = (
-        [item for item in node_types_raw.split(",") if item]
-        if node_types_raw
-        else None
+        [item for item in node_types_raw.split(",") if item] if node_types_raw else None
     )
     snapshot = await graph.graph_queries.get_graph_snapshot(
         project_id=request.query_params.get("project_id"),
@@ -796,9 +831,7 @@ async def _dashboard_node(request: Request) -> JSONResponse:
 async def _dashboard_search(request: Request) -> JSONResponse:
     node_types_raw = request.query_params.get("node_types")
     node_types = (
-        [item for item in node_types_raw.split(",") if item]
-        if node_types_raw
-        else None
+        [item for item in node_types_raw.split(",") if item] if node_types_raw else None
     )
     results = await graph.graph_queries.search_graph(
         query=request.query_params.get("query", ""),
@@ -853,7 +886,9 @@ async def _file_tree_violations(request: Request) -> JSONResponse:
         file_path=request.query_params.get("file_path", ""),
         root_path=request.query_params.get("root_path"),
         project_id=request.query_params.get("project_id"),
-        include_resolved=_query_flag(request.query_params.get("include_resolved"), True),
+        include_resolved=_query_flag(
+            request.query_params.get("include_resolved"), True
+        ),
     )
     status_code = 400 if isinstance(payload, dict) and "error" in payload else 200
     if hasattr(payload, "model_dump"):
@@ -861,13 +896,13 @@ async def _file_tree_violations(request: Request) -> JSONResponse:
     return JSONResponse(payload, status_code=status_code)
 
 
-_TRANSPORT = os.getenv("MCP_TRANSPORT", "http")
+_TRANSPORT = os.getenv("MCP_TRANSPORT", "http").lower()
 
 
 def run() -> None:
     if _TRANSPORT == "stdio":
         mcp.run(transport="stdio")
-    elif _TRANSPORT == "http":
+    elif _TRANSPORT in ("http", "mcp", "streamable-http"):
         _run_http()
     else:
         mcp.run(

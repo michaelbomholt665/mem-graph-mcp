@@ -299,6 +299,7 @@ async def run_diagram_agent(request: DiagramRequest) -> DiagramOutput:
 
 _classifier_agent: Agent[None, DiagramType] = Agent(
     AGENT_MODEL,
+    name="diagram-classifier",
     output_type=DiagramType,
     system_prompt=(
         "You are a diagram type classifier. Given a description of what needs to be diagrammed, "
@@ -317,12 +318,14 @@ _classifier_agent: Agent[None, DiagramType] = Agent(
 
 _generator_agent: Agent[None, str] = Agent(
     AGENT_MODEL,
+    name="diagram-generator",
     output_type=str,
     defer_model_check=DEFER_AGENT_MODEL_CHECK,
 )
 
 _describer_agent: Agent[None, str] = Agent(
     AGENT_MODEL,
+    name="diagram-describer",
     output_type=str,
     system_prompt=(
         "Write a single sentence describing what a Mermaid diagram shows. "

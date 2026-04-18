@@ -140,6 +140,7 @@ class TaskDependencies:
 
 task_agent: Agent[TaskDependencies, DecompositionReport] = Agent(
     AGENT_MODEL,
+    name="task-decomposer",
     deps_type=TaskDependencies,
     output_type=DecompositionReport,
     model_settings=config_model_settings(

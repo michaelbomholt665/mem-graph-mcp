@@ -34,9 +34,9 @@ Current status: Phases 1 and 2 are complete, Phase 3 is ~70% done. Remaining wor
 - **Interactive ForceGraph**: Build zoomable graph visualization
   - Memory nodes: Facts and patterns
   - Code nodes: Functions/classes from `map_codebase`
-  - Jira nodes: Tickets via new `Jira Embedder` service
+  - Jina nodes: Tickets via new `Jina Embedder` service
   - Relationships: `AFFECTS`, `IMPLEMENTS`, `MENTIONS`, `RESOLVES`
-- **Jira Code Embedder**: Implement semantic ticket linking
+- **Jina Code Embedder**: Implement semantic ticket linking
   - Use `hf.co/jinaai/jina-embeddings-v4-text-code-GGUF:Q5_K_M` model
   - Lazy-load with VRAM management (TTL 5min, manual unload)
 - **File Explorer Tab**: TreeView with violation markers
@@ -59,7 +59,7 @@ Current status: Phases 1 and 2 are complete, Phase 3 is ~70% done. Remaining wor
 ## Dependencies
 
 - Agents refactor must complete first
-- Jira Embedder requires Ollama setup
+- Jina Embedder requires Ollama setup
 - Dashboard may need additional frontend dependencies
 
 ## Success Criteria

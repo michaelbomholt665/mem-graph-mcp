@@ -211,6 +211,7 @@ class AuditDependencies:
 
 audit_agent: Agent[AuditDependencies, AuditReport] = Agent(
     AGENT_MODEL,
+    name="audit",
     deps_type=AuditDependencies,
     output_type=AuditReport,
     model_settings=config_model_settings(

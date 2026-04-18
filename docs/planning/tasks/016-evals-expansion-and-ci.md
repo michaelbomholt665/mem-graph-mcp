@@ -42,13 +42,13 @@ Existing files to edit:
 
 ## Tasklist
 
-- [ ] Add the remaining suite definitions for map and document behaviors, plus any additional coverage needed for fix and validate regressions.
-- [ ] Extend the evaluator so it can emit machine-readable reports and optionally persist summary results to the graph.
-- [ ] Add fixture coverage for graph-shaped data and multi-agent outputs that the foundation task intentionally skipped.
-- [ ] Expand pytest coverage to include suite-specific tests and tier comparison assertions where they are stable enough to be useful.
-- [ ] Add repeatable Makefile and documentation entry points for local, CI, and release-time eval runs.
-- [ ] Define how eval failures should gate merges or releases without making local development unusably slow.
-- [ ] Document maintenance rules for updating suites when prompts, tools, or agent contracts change.
+- [x] Add the remaining suite definitions for map and document behaviors, plus any additional coverage needed for fix and validate regressions.
+- [x] Extend the evaluator so it can emit machine-readable reports and optionally persist summary results to the graph.
+- [x] Add fixture coverage for graph-shaped data and multi-agent outputs that the foundation task intentionally skipped.
+- [x] Expand pytest coverage to include suite-specific tests and tier comparison assertions where they are stable enough to be useful.
+- [x] Add repeatable Makefile and documentation entry points for local, CI, and release-time eval runs.
+- [x] Define how eval failures should gate merges or releases without making local development unusably slow.
+- [x] Document maintenance rules for updating suites when prompts, tools, or agent contracts change.
 
 ## Out Of Scope
 
@@ -58,10 +58,10 @@ Existing files to edit:
 
 ## Done When
 
-- [ ] Map and document agent behaviors are covered by maintained eval suites.
-- [ ] Evals can be run consistently in local and CI contexts.
-- [ ] The repo has a clear story for storing or reporting eval outcomes over time.
-- [ ] The split between foundation and expansion keeps both tasks below the requested file-count limit.
+- [x] Map and document agent behaviors are covered by maintained eval suites.
+- [x] Evals can be run consistently in local and CI contexts.
+- [x] The repo has a clear story for storing or reporting eval outcomes over time.
+- [x] The split between foundation and expansion keeps both tasks below the requested file-count limit.
 
 ## References
 

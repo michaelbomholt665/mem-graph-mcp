@@ -43,3 +43,4 @@ test_routes.py
 sonar-project.properties
 .sonarlint
 .scannerwork
+.logfire

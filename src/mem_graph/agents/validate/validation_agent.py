@@ -120,6 +120,7 @@ class ValidationDependencies:
 
 validation_agent: Agent[ValidationDependencies, ValidationReport] = Agent(
     _VALIDATION_MODEL,
+    name="validator",
     deps_type=ValidationDependencies,
     output_type=ValidationReport,
     defer_model_check=DEFER_AGENT_MODEL_CHECK,

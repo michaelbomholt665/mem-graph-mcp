@@ -137,13 +137,18 @@ TEXT_EMBED_MODEL: str = os.getenv(
 EMBED_DIM: int = int(os.getenv("OLLAMA_EMBED_DIM", "768"))
 EMBED_CACHE_SIZE: int = int(os.getenv("MEM_GRAPH_EMBED_CACHE_SIZE", "512"))
 
-JIRA_URL: str = os.getenv("JIRA_URL", "").rstrip("/")
-JIRA_USERNAME: str = os.getenv("JIRA_USERNAME", "")
-JIRA_TOKEN: str = os.getenv("JIRA_TOKEN", "")
-JIRA_PROJECT_KEY: str = os.getenv("JIRA_PROJECT_KEY", "")
-JIRA_MATCH_THRESHOLD: float = float(os.getenv("JIRA_MATCH_THRESHOLD", "0.72"))
-JIRA_MAX_RESULTS: int = int(os.getenv("JIRA_MAX_RESULTS", "25"))
-JIRA_EMBEDDER_TTL_SECONDS: int = int(os.getenv("JIRA_EMBEDDER_TTL_SECONDS", "300"))
+# Ollama-specific keep_alive durations (e.g. "20m" or "2m")
+# Short timeout for the large code model to free VRAM quickly.
+OLLAMA_KEEP_ALIVE: str = os.getenv("OLLAMA_KEEP_ALIVE", "20m")
+OLLAMA_CODE_KEEP_ALIVE: str = os.getenv("OLLAMA_CODE_KEEP_ALIVE", "2m")
+
+JINA_URL: str = os.getenv("JINA_URL", "").rstrip("/")
+JINA_USERNAME: str = os.getenv("JINA_USERNAME", "")
+JINA_TOKEN: str = os.getenv("JINA_TOKEN", "")
+JINA_PROJECT_KEY: str = os.getenv("JINA_PROJECT_KEY", "")
+JINA_MATCH_THRESHOLD: float = float(os.getenv("JINA_MATCH_THRESHOLD", "0.72"))
+JINA_MAX_RESULTS: int = int(os.getenv("JINA_MAX_RESULTS", "25"))
+JINA_EMBEDDER_TTL_SECONDS: int = int(os.getenv("JINA_EMBEDDER_TTL_SECONDS", "300"))
 FILE_TREE_DEFAULT_ROOT: str = os.getenv("MEM_GRAPH_FILE_TREE_ROOT", "")
 
 

@@ -158,18 +158,18 @@ Backs the static file explorer and exposes file-tree metadata over MCP.
 
 The explorer page is served separately from MCP at `/file-tree` with JSON endpoints under `/file-tree/api/*`.
 
-### Integrations Tools (`src/mem_graph/tools/integrations/jira.py`)
-Provides read-only Jira ingestion and semantic ticket-to-code linking.
+### Integrations Tools (`src/mem_graph/tools/integrations/jina.py`)
+Provides read-only Jina ingestion and semantic ticket-to-code linking.
 
 **Key Tools:**
-- `jira_fetch_issues(jql, limit, project_id)` - Fetch Jira issues with bounded JQL and persist them into the graph
-- `jira_find_code_for_ticket(issue_key, root_path, project_id, limit, threshold)` - Match a Jira issue to likely code files and persist code links
-- `jira_find_tickets_for_file(file_path, root_path, project_id, limit, threshold)` - Find persisted Jira issues related to a specific file
+- `jina_fetch_issues(jql, limit, project_id)` - Fetch Jina issues with bounded JQL and persist them into the graph
+- `jina_find_code_for_ticket(issue_key, root_path, project_id, limit, threshold)` - Match a Jina issue to likely code files and persist code links
+- `jina_find_tickets_for_file(file_path, root_path, project_id, limit, threshold)` - Find persisted Jina issues related to a specific file
 
 **Read-only Contract:**
-- Only Jira search/read endpoints are used
-- The integration never writes back to Jira
-- Missing Jira credentials do not block server startup; the tools return a configuration error when invoked unconfigured
+- Only Jina search/read endpoints are used
+- The integration never writes back to Jina
+- Missing Jina credentials do not block server startup; the tools return a configuration error when invoked unconfigured
 
 ### Graph Tools (`src/mem_graph/tools/graph/graph_queries.py`)
 Backs the lightweight dashboard and graph-aware MCP clients.

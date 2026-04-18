@@ -22,7 +22,7 @@ This directory contains comprehensive design documents for implementing the "202
 7. [**007-phase4a-icons.md**](007-phase4a-icons.md) — Icons, rich content, progress reporting
 8. [**008-phase4b-tasks.md**](008-phase4b-tasks.md) — Background tasks with poll-based progress
 9. [**009-phase5a-dashboard.md**](009-phase5a-dashboard.md) — Interactive ForceGraph 3D visualization
-10. [**010-phase5b-jira.md**](010-phase5b-jira.md) — Semantic Jira-to-code linking via embeddings
+10. [**010-phase5b-jina.md**](010-phase5b-jina.md) — Semantic Jina-to-code linking via embeddings
 11. [**011-phase5c-files.md**](011-phase5c-files.md) — File explorer with violation markers
 
 ### Quality Control & Observability (CRITICAL)
@@ -44,7 +44,7 @@ This directory contains comprehensive design documents for implementing the "202
 │  **Presentation (Phase 5)**                                      │
 │  - Dashboard (ForceGraph 3D)                                     │
 │  - File Explorer (TreeView)                                      │
-│  - Jira Integration (Semantic Linking)                           │
+│  - Jina Integration (Semantic Linking)                           │
 └─────────────────────────────────────────────────────────────────┘
                               ▲
 ┌─────────────────────────────────────────────────────────────────┐
@@ -94,7 +94,7 @@ This directory contains comprehensive design documents for implementing the "202
 
 ### Phase 3: Knowledge Visualization (Weeks 5-6)
 - [x] **009:** Phase 5a dashboard (ForceGraph)
-- [x] **010:** Phase 5b Jira embedder
+- [x] **010:** Phase 5b Jina embedder
 - [x] **011:** Phase 5c file explorer
 
 **Outcome:** Users can visualize and navigate the knowledge graph.
@@ -131,7 +131,7 @@ This directory contains comprehensive design documents for implementing the "202
 
 ### Dashboard Dependency
 ```
-009 (ForceGraph) → 010 (Jira) → 011 (Files)
+009 (ForceGraph) → 010 (Jina) → 011 (Files)
         ↓
    All require graph query APIs
 ```
@@ -185,7 +185,7 @@ This directory contains comprehensive design documents for implementing the "202
 - [ ] Dashboard displays graph with 3D layout
 - [ ] Nodes are interactive and queryable
 - [ ] File tree shows violations
-- [ ] Jira tickets link to code
+- [ ] Jina tickets link to code
 
 ### Phase 4: Quality ✓
 - [ ] All operations emit OpenTelemetry spans

@@ -140,6 +140,7 @@ class MapDependencies:
 
 map_agent: Agent[MapDependencies, MapReport] = Agent(
     AGENT_MODEL,
+    name="map-codebase",
     deps_type=MapDependencies,
     output_type=MapReport,
     model_settings=config_model_settings(

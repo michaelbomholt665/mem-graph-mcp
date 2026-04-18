@@ -146,6 +146,7 @@ class TriageDependencies:
 
 triage_agent: Agent[TriageDependencies, TriageReport] = Agent(
     AGENT_MODEL,
+    name="triage",
     deps_type=TriageDependencies,
     output_type=TriageReport,
     model_settings=config_model_settings(

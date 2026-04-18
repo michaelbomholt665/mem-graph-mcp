@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Jira issue ingestion and ticket-to-code semantic linking."""
+"""Jina issue ingestion and ticket-to-code semantic linking."""
 
 from __future__ import annotations
 
@@ -16,13 +16,13 @@ from pydantic import BaseModel, Field
 
 from ..config import (
     FILE_TREE_DEFAULT_ROOT,
-    JIRA_EMBEDDER_TTL_SECONDS,
-    JIRA_MATCH_THRESHOLD,
-    JIRA_MAX_RESULTS,
-    JIRA_PROJECT_KEY,
-    JIRA_TOKEN,
-    JIRA_URL,
-    JIRA_USERNAME,
+    JINA_EMBEDDER_TTL_SECONDS,
+    JINA_MATCH_THRESHOLD,
+    JINA_MAX_RESULTS,
+    JINA_PROJECT_KEY,
+    JINA_TOKEN,
+    JINA_URL,
+    JINA_USERNAME,
 )
 from ..db import db_get_connection, db_update_embedding
 from ..embeddings import embeddings_code, embeddings_code_query
@@ -106,30 +106,30 @@ _LANGUAGE_BY_SUFFIX = {
 }
 
 
-class JiraConfigurationError(RuntimeError):
-    """Raised when Jira access is requested without the required configuration."""
+class JinaConfigurationError(RuntimeError):
+    """Raised when Jina access is requested without the required configuration."""
 
 
-class JiraIssue(BaseModel):
-    """A Jira issue payload normalized for semantic matching."""
+class JinaIssue(BaseModel):
+    """A Jina issue payload normalized for semantic matching."""
 
     key: str = Field(description="Issue key, for example MEM-42.")
-    title: str = Field(description="Short Jira issue summary.")
+    title: str = Field(description="Short Jina issue summary.")
     description: str = Field(default="", description="Flattened issue description.")
-    status: str = Field(default="Unknown", description="Current Jira workflow state.")
+    status: str = Field(default="Unknown", description="Current Jina workflow state.")
     assignee: str | None = Field(default=None, description="Display name of the current assignee.")
     created_at: datetime | None = Field(default=None, description="Original creation timestamp.")
     url: str = Field(description="Browsable issue URL.")
 
     def issue_id(self) -> str:
-        return jira_issue_id(self.key)
+        return jina_issue_id(self.key)
 
     def as_embedding_text(self) -> str:
         return f"{self.key}\n{self.title}\n{self.description}".strip()
 
 
 class CodeMatch(BaseModel):
-    """A semantic match between a Jira issue and a code file."""
+    """A semantic match between a Jina issue and a code file."""
 
     file_id: str
     file_path: str
@@ -141,7 +141,7 @@ class CodeMatch(BaseModel):
 
 
 class TicketMatch(BaseModel):
-    """A semantic match between a code file and a Jira issue."""
+    """A semantic match between a code file and a Jina issue."""
 
     issue_id: str
     key: str
@@ -168,8 +168,8 @@ class IndexedCodeFile:
     embedding: list[float]
 
 
-def jira_issue_id(issue_key: str) -> str:
-    return f"jira:{issue_key.strip().upper()}"
+def jina_issue_id(issue_key: str) -> str:
+    return f"jina:{issue_key.strip().upper()}"
 
 
 def code_file_id(relative_path: str) -> str:
@@ -243,7 +243,7 @@ def _summarize_content(content: str) -> str:
     return " ".join(lines[:3])[:220]
 
 
-def _extract_snippet(issue: JiraIssue, content: str, *, context_lines: int = 3) -> str:
+def _extract_snippet(issue: JinaIssue, content: str, *, context_lines: int = 3) -> str:
     tokens = {
         token.lower()
         for token in (issue.title + " " + issue.description).replace("-", " ").split()
@@ -259,25 +259,25 @@ def _extract_snippet(issue: JiraIssue, content: str, *, context_lines: int = 3) 
     return "\n".join(lines[: min(len(lines), context_lines * 2 + 1)]).strip()
 
 
-class JiraCodeEmbedder:
-    """Read-only Jira integration with lazy code indexing and graph persistence."""
+class JinaCodeEmbedder:
+    """Read-only Jina integration with lazy code indexing and graph persistence."""
 
     def __init__(
         self,
         *,
-        jira_url: str | None = None,
-        jira_username: str | None = None,
-        jira_token: str | None = None,
+        jina_url: str | None = None,
+        jina_username: str | None = None,
+        jina_token: str | None = None,
         project_key: str | None = None,
-        match_threshold: float = JIRA_MATCH_THRESHOLD,
-        max_results: int = JIRA_MAX_RESULTS,
-        ttl_seconds: int = JIRA_EMBEDDER_TTL_SECONDS,
+        match_threshold: float = JINA_MATCH_THRESHOLD,
+        max_results: int = JINA_MAX_RESULTS,
+        ttl_seconds: int = JINA_EMBEDDER_TTL_SECONDS,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        self.jira_url = (jira_url or JIRA_URL).rstrip("/")
-        self.jira_username = jira_username or JIRA_USERNAME
-        self.jira_token = jira_token or JIRA_TOKEN
-        self.project_key = project_key or JIRA_PROJECT_KEY
+        self.jina_url = (jina_url or JINA_URL).rstrip("/")
+        self.jina_username = jina_username or JINA_USERNAME
+        self.jina_token = jina_token or JINA_TOKEN
+        self.project_key = project_key or JINA_PROJECT_KEY
         self.match_threshold = match_threshold
         self.max_results = max(1, max_results)
         self.ttl_seconds = max(30, ttl_seconds)
@@ -289,7 +289,7 @@ class JiraCodeEmbedder:
 
     @property
     def configured(self) -> bool:
-        return _bool_has_value(self.jira_url) and _bool_has_value(self.jira_token)
+        return _bool_has_value(self.jina_url) and _bool_has_value(self.jina_token)
 
     @property
     def index_loaded(self) -> bool:
@@ -312,14 +312,14 @@ class JiraCodeEmbedder:
         if current - self._last_used_at < timedelta(seconds=self.ttl_seconds):
             return False
 
-        logger.info("jira_embedder_unloaded root=%s files=%s", self._indexed_root, len(self._indexed_files))
+        logger.info("jina_embedder_unloaded root=%s files=%s", self._indexed_root, len(self._indexed_files))
         self._indexed_files.clear()
         self._indexed_root = None
         self._loaded_at = None
         self._last_used_at = None
         return True
 
-    async def fetch_issues(self, *, jql: str | None = None, limit: int | None = None) -> list[JiraIssue]:
+    async def fetch_issues(self, *, jql: str | None = None, limit: int | None = None) -> list[JinaIssue]:
         self._require_configuration()
         bounded_limit = min(max(limit or self.max_results, 1), self.max_results)
         bounded_jql = (jql or self.default_jql()).strip()
@@ -333,51 +333,51 @@ class JiraCodeEmbedder:
         )
         headers = {"Accept": "application/json"}
         client_kwargs: dict[str, Any] = {
-            "base_url": self.jira_url,
+            "base_url": self.jina_url,
             "headers": headers,
             "timeout": _DEFAULT_TIMEOUT_SECONDS,
         }
         if self._transport is not None:
             client_kwargs["transport"] = self._transport
-        if _bool_has_value(self.jira_username):
-            client_kwargs["auth"] = (self.jira_username, self.jira_token)
+        if _bool_has_value(self.jina_username):
+            client_kwargs["auth"] = (self.jina_username, self.jina_token)
         else:
-            headers["Authorization"] = f"Bearer {self.jira_token}"
+            headers["Authorization"] = f"Bearer {self.jina_token}"
 
         async with httpx.AsyncClient(**client_kwargs) as client:
             response = await client.get("/rest/api/3/search", params=params)
             response.raise_for_status()
             payload = response.json()
 
-        issues: list[JiraIssue] = []
+        issues: list[JinaIssue] = []
         for raw in payload.get("issues", []):
             fields = raw.get("fields", {})
             assignee = fields.get("assignee") or {}
-            issue = JiraIssue(
+            issue = JinaIssue(
                 key=str(raw.get("key", "")).strip(),
                 title=str(fields.get("summary", "")).strip(),
                 description=_flatten_description(fields.get("description")),
                 status=str((fields.get("status") or {}).get("name", "Unknown")).strip() or "Unknown",
                 assignee=str(assignee.get("displayName", "")).strip() or None,
                 created_at=_parse_timestamp(fields.get("created")),
-                url=f"{self.jira_url}/browse/{raw.get('key', '')}",
+                url=f"{self.jina_url}/browse/{raw.get('key', '')}",
             )
             if issue.key:
                 issues.append(issue)
         return issues
 
-    async def fetch_issue(self, issue_key: str) -> JiraIssue | None:
+    async def fetch_issue(self, issue_key: str) -> JinaIssue | None:
         issues = await self.fetch_issues(jql=f"key = {issue_key.strip().upper()}", limit=1)
         return issues[0] if issues else None
 
-    async def sync_issues(self, issues: list[JiraIssue], *, project_id: str | None = None) -> list[JiraIssue]:
+    async def sync_issues(self, issues: list[JinaIssue], *, project_id: str | None = None) -> list[JinaIssue]:
         for issue in issues:
             await self._upsert_issue(issue, project_id=project_id)
         return issues
 
     async def find_code_for_issue(
         self,
-        issue: JiraIssue,
+        issue: JinaIssue,
         *,
         root_path: str | None = None,
         project_id: str | None = None,
@@ -473,8 +473,8 @@ class JiraCodeEmbedder:
     def _require_configuration(self) -> None:
         if self.configured:
             return
-        raise JiraConfigurationError(
-            "Jira integration is not configured. Set JIRA_URL plus JIRA_TOKEN, and optionally JIRA_USERNAME for Basic auth."
+        raise JinaConfigurationError(
+            "Jina integration is not configured. Set JINA_URL plus JINA_TOKEN, and optionally JINA_USERNAME for Basic auth."
         )
 
     def _project_root(self, project_id: str | None) -> str | None:
@@ -513,7 +513,7 @@ class JiraCodeEmbedder:
         self._indexed_files = indexed_files
         self._loaded_at = _now()
         self._last_used_at = self._loaded_at
-        logger.info("jira_embedder_loaded root=%s files=%s", root, len(indexed_files))
+        logger.info("jina_embedder_loaded root=%s files=%s", root, len(indexed_files))
         return list(indexed_files.values())
 
     async def _index_single_file(
@@ -641,11 +641,11 @@ class JiraCodeEmbedder:
         if project_id:
             self._ensure_project_link(project_id, record.file_id, "CodeFile", "HAS_FILE")
 
-    async def _upsert_issue(self, issue: JiraIssue, *, project_id: str | None) -> None:
+    async def _upsert_issue(self, issue: JinaIssue, *, project_id: str | None) -> None:
         issue_id = issue.issue_id()
         source_hash = hashlib.sha256(issue.as_embedding_text().encode("utf-8")).hexdigest()
         existing = _rows(
-            "MATCH (j:JiraIssue {id: $id}) RETURN j.source_hash LIMIT 1",
+            "MATCH (j:JinaIssue {id: $id}) RETURN j.source_hash LIMIT 1",
             {"id": issue_id},
         )
         ts = _now()
@@ -655,7 +655,7 @@ class JiraCodeEmbedder:
         if not existing:
             conn.execute(
                 """
-                CREATE (j:JiraIssue {
+                CREATE (j:JinaIssue {
                     id: $id,
                     issue_key: $issue_key,
                     title: $title,
@@ -687,7 +687,7 @@ class JiraCodeEmbedder:
             previous_hash = str(existing[0][0] or "")
             conn.execute(
                 """
-                MATCH (j:JiraIssue {id: $id})
+                MATCH (j:JinaIssue {id: $id})
                 SET j.issue_key = $issue_key,
                     j.title = $title,
                     j.description = $description,
@@ -712,10 +712,10 @@ class JiraCodeEmbedder:
                 },
             )
             if previous_hash != source_hash:
-                await db_update_embedding("JiraIssue", issue_id, embedding, "idx_jira_issue_emb")
+                await db_update_embedding("JinaIssue", issue_id, embedding, "idx_jina_issue_emb")
 
         if project_id:
-            self._ensure_project_link(project_id, issue_id, "JiraIssue", "HAS_JIRA_ISSUE")
+            self._ensure_project_link(project_id, issue_id, "JinaIssue", "HAS_JINA_ISSUE")
 
     def _ensure_project_link(self, project_id: str, node_id: str, label: str, rel_name: str) -> None:
         rows = _rows(
@@ -742,7 +742,7 @@ class JiraCodeEmbedder:
         conn = db_get_connection()
         conn.execute(
             f"""
-            MATCH (j:JiraIssue {{id: $issue_id}}), (f:CodeFile {{id: $file_id}})
+            MATCH (j:JinaIssue {{id: $issue_id}}), (f:CodeFile {{id: $file_id}})
             CREATE (j)-[:{match.relation} {{score: $score, snippet: $snippet, linked_at: $ts}}]->(f)
             """,
             {
@@ -758,7 +758,7 @@ class JiraCodeEmbedder:
         for relation in ("IMPLEMENTS", "MENTIONS"):
             rows = _rows(
                 f"""
-                MATCH (:JiraIssue {{id: $issue_id}})-[:{relation}]->(:CodeFile {{id: $file_id}})
+                MATCH (:JinaIssue {{id: $issue_id}})-[:{relation}]->(:CodeFile {{id: $file_id}})
                 RETURN count(*)
                 """,
                 {"issue_id": issue_id, "file_id": file_id},
@@ -772,9 +772,9 @@ class JiraCodeEmbedder:
         *,
         project_id: str | None,
         include_resolved: bool,
-    ) -> list[tuple[JiraIssue, list[float]]]:
+    ) -> list[tuple[JinaIssue, list[float]]]:
         rows = self._query_stored_issue_rows(project_id)
-        issues: list[tuple[JiraIssue, list[float]]] = []
+        issues: list[tuple[JinaIssue, list[float]]] = []
         for row in rows:
             issue_record = self._stored_issue_from_row(row)
             if issue_record is None:
@@ -789,7 +789,7 @@ class JiraCodeEmbedder:
         if project_id:
             return _rows(
                 """
-                MATCH (p:Project {id: $project_id})-[:HAS_JIRA_ISSUE]->(j:JiraIssue)
+                MATCH (p:Project {id: $project_id})-[:HAS_JINA_ISSUE]->(j:JinaIssue)
                 RETURN j.issue_key, j.title, j.description, j.status, j.assignee, j.created_at, j.url, j.embedding
                 ORDER BY j.synced_at DESC
                 """,
@@ -797,18 +797,18 @@ class JiraCodeEmbedder:
             )
         return _rows(
             """
-            MATCH (j:JiraIssue)
+            MATCH (j:JinaIssue)
             RETURN j.issue_key, j.title, j.description, j.status, j.assignee, j.created_at, j.url, j.embedding
             ORDER BY j.synced_at DESC
             """
         )
 
-    def _stored_issue_from_row(self, row: list[Any]) -> tuple[JiraIssue, list[float]] | None:
+    def _stored_issue_from_row(self, row: list[Any]) -> tuple[JinaIssue, list[float]] | None:
         issue_key = str(row[0] or "")
         embedding = [float(value) for value in cast(list[float], row[7] or [])]
         if not issue_key or not embedding:
             return None
-        issue = JiraIssue(
+        issue = JinaIssue(
             key=issue_key,
             title=str(row[1] or ""),
             description=str(row[2] or ""),
@@ -820,24 +820,24 @@ class JiraCodeEmbedder:
         return issue, embedding
 
 
-_jira_embedder: JiraCodeEmbedder | None = None
+_jina_embedder: JinaCodeEmbedder | None = None
 
 
-def get_jira_embedder(
+def get_jina_embedder(
     *,
     force_reload: bool = False,
     transport: httpx.AsyncBaseTransport | None = None,
-) -> JiraCodeEmbedder:
-    """Return the process-wide Jira embedder instance."""
+) -> JinaCodeEmbedder:
+    """Return the process-wide Jina embedder instance."""
 
-    global _jira_embedder
-    if _jira_embedder is None or force_reload:
-        _jira_embedder = JiraCodeEmbedder(transport=transport)
-    return _jira_embedder
+    global _jina_embedder
+    if _jina_embedder is None or force_reload:
+        _jina_embedder = JinaCodeEmbedder(transport=transport)
+    return _jina_embedder
 
 
-def reset_jira_embedder() -> None:
-    """Clear the process-wide Jira embedder cache, mainly for tests."""
+def reset_jina_embedder() -> None:
+    """Clear the process-wide Jina embedder cache, mainly for tests."""
 
-    global _jira_embedder
-    _jira_embedder = None
+    global _jina_embedder
+    _jina_embedder = None

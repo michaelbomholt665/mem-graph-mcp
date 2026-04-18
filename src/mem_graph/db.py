@@ -31,16 +31,17 @@ import logging
 import os
 from pathlib import Path
 from time import perf_counter
-from typing import cast, Any
+from typing import Any, cast
 
 import ollama as _ollama
-from opentelemetry import trace
-from opentelemetry.trace import Status, StatusCode
 import real_ladybug as lb
 from dotenv import load_dotenv
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 from .embeddings import EMBED_DIM
-from .observability import record_graph_query
+from .observability import logfire_debug, logfire_exception, record_graph_query
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,7 @@ SCHEMA_PATH = (
     Path(__file__).parent.parent.parent / "schema" / "agent_memory_schema.cypher"
 )
 DB_PATH = os.getenv("LADYBUG_DB_PATH", "./data/syntx_memory.lbug")
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 
 _KNOWN_EMBED_PROVIDERS = (
     "ollama",
@@ -104,11 +105,12 @@ class _InstrumentedConnection:
 
     def execute(self, query: str, params: dict[str, Any] | None = None) -> Any:
         query_class = _classify_query(query)
+        fingerprint = _query_fingerprint(query)
         start = perf_counter()
         with _QUERY_TRACER.start_as_current_span("graph.query") as span:
             span.set_attribute("db.system", "ladybug")
             span.set_attribute("graph.query.class", query_class)
-            span.set_attribute("graph.query.fingerprint", _query_fingerprint(query))
+            span.set_attribute("graph.query.fingerprint", fingerprint)
             span.set_attribute("graph.query.parameter_count", len(params or {}))
 
             try:
@@ -121,6 +123,14 @@ class _InstrumentedConnection:
                 span.set_attribute("error.type", type(exc).__name__)
                 span.set_status(Status(StatusCode.ERROR))
                 span.record_exception(exc)
+                logfire_exception(
+                    "Graph query failed",
+                    query_class=query_class,
+                    query_fingerprint=fingerprint,
+                    parameter_count=len(params or {}),
+                    duration_ms=duration_ms,
+                    error_type=type(exc).__name__,
+                )
                 record_graph_query(query_class, duration_ms, status="error")
                 raise
 
@@ -130,6 +140,14 @@ class _InstrumentedConnection:
             span.set_status(Status(StatusCode.OK))
             if result_count is not None:
                 span.set_attribute("graph.result.count", result_count)
+            logfire_debug(
+                "Graph query completed",
+                query_class=query_class,
+                query_fingerprint=fingerprint,
+                parameter_count=len(params or {}),
+                duration_ms=duration_ms,
+                result_count=result_count if result_count is not None else -1,
+            )
             record_graph_query(
                 query_class,
                 duration_ms,
@@ -187,6 +205,7 @@ def _instrument_result(raw_result: Any) -> tuple[Any, int | None]:
         observed_result = _ObservedQueryResult(raw_result)
         return observed_result, len(observed_result.get_all())
     return raw_result, None
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -258,16 +277,16 @@ async def db_update_embedding(
 def _probe_ollama() -> None:
     """Fail loudly at startup if Ollama is not running, and pull models if missing."""
     from .config import CODE_EMBED_MODEL, TEXT_EMBED_MODEL
-    
+
     models_to_check = [CODE_EMBED_MODEL, TEXT_EMBED_MODEL]
-    
+
     try:
         models = _ollama.list()
         existing_models = [m.model for m in models.get("models", [])]
-        
+
         for model in models_to_check:
             ollama_model = model.split(":")[-1] if ":" in model else model
-            
+
             if (
                 model not in existing_models
                 and ollama_model not in existing_models
@@ -351,17 +370,25 @@ def _clean_stmt(stmt: str) -> str:
         content_lines.append(ln)
     return "\n".join(content_lines).strip()
 
+
 def _should_run_stmt(clean: str) -> bool:
     if not clean:
         return False
     upper = clean.upper()
     if upper.startswith("INSTALL") or upper.startswith("LOAD"):
         return False
-    if upper.startswith("CALL CREATE_VECTOR_INDEX") or upper.startswith("CALL DROP_VECTOR_INDEX"):
+    if upper.startswith("CALL CREATE_VECTOR_INDEX") or upper.startswith(
+        "CALL DROP_VECTOR_INDEX"
+    ):
         return False
-    if not (upper.startswith("CREATE") or upper.startswith("DROP") or upper.startswith("ALTER")):
+    if not (
+        upper.startswith("CREATE")
+        or upper.startswith("DROP")
+        or upper.startswith("ALTER")
+    ):
         return False
     return True
+
 
 def _run_schema(conn: lb.Connection) -> None:
     raw = SCHEMA_PATH.read_text()
@@ -390,7 +417,7 @@ def _ensure_vector_indexes(conn: lb.Connection) -> None:
         ("Memory", "idx_memory_emb", "embedding"),
         ("CodeSymbol", "idx_symbol_emb", "embedding"),
         ("CodeFile", "idx_codefile_emb", "embedding"),
-        ("JiraIssue", "idx_jira_issue_emb", "embedding"),
+        ("JinaIssue", "idx_jina_issue_emb", "embedding"),
     ]
 
     for table, index_name, prop in indexes:
@@ -412,14 +439,14 @@ def _ensure_fts_indexes(conn: lb.Connection) -> None:
     existing = {row[1] for row in result}
 
     fts_indexes = [
-        ("Memory",     "fts_memory_content", ["content"]),
-        ("Note",       "fts_note_body",      ["body", "title"]),
-        ("Task",       "fts_task_desc",      ["description", "title"]),
-        ("Decision",   "fts_decision_rat",   ["rationale", "title"]),
-        ("Violation",  "fts_violation_desc", ["description"]),
-        ("CodeSymbol", "fts_symbol_name",    ["name", "signature"]),
-        ("CodeFile",   "fts_codefile_path",  ["path", "name", "summary"]),
-        ("JiraIssue",  "fts_jira_issue_text", ["issue_key", "title", "description"]),
+        ("Memory", "fts_memory_content", ["content"]),
+        ("Note", "fts_note_body", ["body", "title"]),
+        ("Task", "fts_task_desc", ["description", "title"]),
+        ("Decision", "fts_decision_rat", ["rationale", "title"]),
+        ("Violation", "fts_violation_desc", ["description"]),
+        ("CodeSymbol", "fts_symbol_name", ["name", "signature"]),
+        ("CodeFile", "fts_codefile_path", ["path", "name", "summary"]),
+        ("JinaIssue", "fts_jina_issue_text", ["issue_key", "title", "description"]),
     ]
 
     for table, index_name, props in fts_indexes:

@@ -5,7 +5,11 @@ from __future__ import annotations
 import json
 import logging
 import re
+from dataclasses import dataclass
 from functools import lru_cache
+from typing import Any
+
+from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 
 from ..models.evals import EvalCase, ScorerName
 
@@ -105,3 +109,32 @@ def score_case_output(
     if scorer == "regex":
         return scorer, regex_score(output, case.expected_pattern or "")
     return scorer, semantic_similarity_score(output, case.expected_output)
+
+
+def _field(value: object, name: str, default: Any = None) -> Any:
+    if value is None:
+        return default
+    if isinstance(value, dict):
+        return value.get(name, default)
+    return getattr(value, name, default)
+
+
+@dataclass
+class HostedTextScorer(Evaluator[Any, Any, Any]):
+    """pydantic-evals scorer for hosted dataset cases with text outputs."""
+
+    def evaluate(self, ctx: EvaluatorContext[Any, Any, Any]) -> float:
+        output = str(_field(ctx.output, "text", ctx.output))
+        expected_output = _field(ctx.expected_output, "text", "")
+        scorer = _field(ctx.metadata, "scorer", "semantic")
+
+        if scorer == "exact":
+            return exact_match_score(output, str(expected_output))
+        if scorer == "keywords":
+            return keyword_score(
+                output,
+                list(_field(ctx.metadata, "expected_keywords", []) or []),
+            )
+        if scorer == "regex":
+            return regex_score(output, str(_field(ctx.metadata, "expected_pattern", "") or ""))
+        return semantic_similarity_score(output, str(expected_output))

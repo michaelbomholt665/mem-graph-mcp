@@ -123,6 +123,7 @@ class RouterDependencies:
 
 router_agent: Agent[RouterDependencies, RouterDecision] = Agent(
     _ROUTER_MODEL,
+    name="router",
     deps_type=RouterDependencies,
     output_type=RouterDecision,
     defer_model_check=DEFER_AGENT_MODEL_CHECK,

@@ -38,7 +38,7 @@ export LADYBUG_DB_PATH=/var/data/syntx_memory.lbug
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OLLAMA_CODE_EMBED_MODEL` | `hf.co/jinaai/jina-embeddings-v4-text-code-GGUF:Q5_K_M` | Code-oriented embedding model used for code files and Jira code-linking |
+| `OLLAMA_CODE_EMBED_MODEL` | `hf.co/jinaai/jina-embeddings-v4-text-code-GGUF:Q5_K_M` | Code-oriented embedding model used for code files and Jina code-linking |
 | `OLLAMA_TEXT_EMBED_MODEL` | `hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF:F16` | Text-oriented embedding model used for memory, tasks, decisions, and notes |
 | `OLLAMA_EMBED_DIM` | `768` | Embedding vector dimensions used by the schema bootstrap and validation checks |
 | `MEM_GRAPH_EMBED_CACHE_SIZE` | `512` | In-process LRU cache size for generated embeddings |
@@ -50,19 +50,19 @@ export OLLAMA_TEXT_EMBED_MODEL=hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF:F16
 export OLLAMA_EMBED_DIM=768
 ```
 
-### Jira Integration
+### Jina Integration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JIRA_URL` | _unset_ | Base Jira URL, for example `https://jira.example.com` |
-| `JIRA_USERNAME` | _unset_ | Optional Jira username or email for Basic auth |
-| `JIRA_TOKEN` | _unset_ | Jira API token or bearer token |
-| `JIRA_PROJECT_KEY` | _unset_ | Default project key used when no JQL is provided |
-| `JIRA_MATCH_THRESHOLD` | `0.72` | Default semantic score threshold for Jira-to-code matching |
-| `JIRA_MAX_RESULTS` | `25` | Maximum number of issues returned by Jira read tools |
-| `JIRA_EMBEDDER_TTL_SECONDS` | `300` | Idle timeout before the in-process code index is released |
+| `JINA_URL` | _unset_ | Base Jina URL, for example `https://jina.example.com` |
+| `JINA_USERNAME` | _unset_ | Optional Jina username or email for Basic auth |
+| `JINA_TOKEN` | _unset_ | Jina API token or bearer token |
+| `JINA_PROJECT_KEY` | _unset_ | Default project key used when no JQL is provided |
+| `JINA_MATCH_THRESHOLD` | `0.72` | Default semantic score threshold for Jina-to-code matching |
+| `JINA_MAX_RESULTS` | `25` | Maximum number of issues returned by Jina read tools |
+| `JINA_EMBEDDER_TTL_SECONDS` | `300` | Idle timeout before the in-process code index is released |
 
-The Jira tools are read-only. If these values are not configured, the server still starts normally and the Jira tools return a configuration error only when called.
+The Jina tools are read-only. If these values are not configured, the server still starts normally and the Jina tools return a configuration error only when called.
 
 ### File Explorer
 

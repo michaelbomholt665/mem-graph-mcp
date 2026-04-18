@@ -102,6 +102,33 @@ journalctl -u syntx-memory | grep -i error | tail -10
 journalctl -u syntx-memory | grep "tool_call" | awk '{print $1, $2}' | uniq -c | tail -5
 ```
 
+### Logfire Operations
+When `MEM_GRAPH_LOGFIRE_ENABLED=true`, the service also emits live traces to Logfire.
+
+**Safe defaults:**
+- Prompt, completion, and tool payload content stay excluded unless `MEM_GRAPH_LOGFIRE_INCLUDE_CONTENT=true` is explicitly set.
+- Graph queries are represented by query class, fingerprint, parameter count, duration, and result count instead of raw Cypher text.
+- HTTPX spans are instrumented without request and response body capture unless `MEM_GRAPH_LOGFIRE_CAPTURE_HTTPX=true` is set for a debugging session.
+
+**Useful searches:**
+```text
+tool_name = "audit_package" and level >= error
+query_class = "match" and duration_ms > 500
+memory_id is not null and message = "Memory stored"
+message = "Tool failed" and component = "tool.worker"
+```
+
+**Alert patterns:**
+- Repeated `Tool failed` events for the same `tool_name` in a short window.
+- Sustained graph query durations above normal for the same `query_class`.
+- Eval runs persisted with `trigger=ci` where `suite_pass_rate < 1.0`.
+
+**Operator workflow:**
+1. Filter by `service_name=syntx-memory` and the failing time window.
+2. Open the failing trace and inspect the tool spans first, then the nested Pydantic AI spans.
+3. For data-access incidents, pivot to `query_fingerprint` to find the hot graph operation without exposing raw query text.
+4. For model-provider incidents, temporarily enable `MEM_GRAPH_LOGFIRE_CAPTURE_HTTPX=true`, restart, reproduce once, then disable it again.
+
 ### Configuration Updates
 **Environment Changes:**
 1. Edit `.env` file or environment

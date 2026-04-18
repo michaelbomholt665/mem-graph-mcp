@@ -9,7 +9,7 @@ Prerequisite: See `docs/planning/tasks/007-fastmcp-task.md` — FastMCP readines
 ## Dependencies
 
 - Depends on graph data being queryable from the current Ladybug/Kuzu layer.
-- Should stay compatible with the future Jira and file-explorer views planned after this phase.
+- Should stay compatible with the future Jina and file-explorer views planned after this phase.
 - Use the structure described in `docs/planning/design/009-phase5a-dashboard.md` and `docs/planning/design/FILE_STRUCTURE.md`.
 
 ## Work Envelope
@@ -61,7 +61,7 @@ Existing files to edit:
 - [x] A browser route renders the dashboard and loads graph data from server APIs.
 - [x] Search, node selection, and type filters work on real graph data.
 - [x] The dashboard remains responsive on moderately sized graphs.
-- [x] The implementation leaves room for Jira and file-explorer tabs instead of boxing them out.
+- [x] The implementation leaves room for Jina and file-explorer tabs instead of boxing them out.
 
 ## References
 

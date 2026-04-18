@@ -1,7 +1,7 @@
 """External integration MCP tools."""
 
-from . import jira
+from . import jina
 
-mcp = jira.mcp
+mcp = jina.mcp
 
-__all__ = ["jira", "mcp"]
+__all__ = ["jina", "mcp"]

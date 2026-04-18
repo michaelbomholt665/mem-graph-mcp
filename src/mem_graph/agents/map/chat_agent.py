@@ -98,6 +98,7 @@ class ChatDependencies:
 
 chat_agent: Agent[ChatDependencies, ChatAnswer] = Agent(
     _CHAT_MODEL,
+    name="chat-assistant",
     deps_type=ChatDependencies,
     output_type=ChatAnswer,
     defer_model_check=DEFER_AGENT_MODEL_CHECK,

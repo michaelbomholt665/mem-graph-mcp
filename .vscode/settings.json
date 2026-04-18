@@ -1,7 +1,74 @@
 {
+  // --- Existing Settings ---
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
   "sonarlint.connectedMode.project": {
     "connectionId": "michaelbomholt665",
     "projectKey": "michaelbomholt665_mem-graph-mcp"
-  }
+  },
+
+  // --- Ruff Integration ---
+  // Tells VS Code to use Ruff for formatting and organizing imports
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    },
+    "editor.formatOnSave": true
+  },
+  "ruff.importStrategy": "fromEnvironment",
+  "ruff.configurationPreference": "filesystemFirst", // Prioritizes your ruff.toml/pyproject.toml
+
+  // --- File Exclusions (UI) ---
+  // This hides files from the Explorer sidebar to keep it clean
+  "files.exclude": {
+    "**/.git": true,
+    "**/.venv": false, // Keep visible if you like, set to true to hide
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/.ruff_cache": true,
+    "**/.mypy_cache": true,
+    "**/.DS_Store": true,
+    "**/build": true,
+    "**/dist": true,
+    "**/*.egg-info": true,
+    ".scannerwork/": true,
+    ".sonarlint/": true,
+    "**/dist/**": true,
+  },
+
+  // --- Search & Watcher Exclusions ---
+  // Prevents VS Code from indexing/searching inside these folders (Performance boost)
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/bower_components": true,
+    "**/.venv": true,
+    "**/build": true,
+    "**/dist": true
+  },
+  "files.watcherExclude": {
+    "**/.venv/**": true,
+    "**/build/**": true,
+    "**/dist/**": true,
+  },
+
+  // --- Pylance (Analysis) Settings ---
+  // Optimized for src-layout and strict type checking
+  "python.analysis.typeCheckingMode": "strict",
+  "python.analysis.autoImportCompletions": true,
+  "python.analysis.include": ["src"],
+  "python.analysis.exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".git",
+    "**/.venv",
+    "**/build",
+    "**/dist"
+  ],
+
+  // --- General Editor Polish ---
+  "editor.ruleIndex": [88, 120], // Visual vertical lines for line length limits
+  "editor.renderWhitespace": "boundary",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true
 }

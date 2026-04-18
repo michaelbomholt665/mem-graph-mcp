@@ -25,14 +25,14 @@ async def _fake_embeddings_code_query(text: str) -> list[float]:
 
 
 @pytest.mark.asyncio
-async def test_jira_tools_round_trip(monkeypatch, db, tmp_path):
-    from mem_graph.services import jira_embedder as jira_mod
-    from mem_graph.services.jira_embedder import JiraCodeEmbedder
-    from mem_graph.tools.integrations import jira as jira_tools
+async def test_jina_tools_round_trip(monkeypatch, db, tmp_path):
+    from mem_graph.services import jina_embedder as jina_mod
+    from mem_graph.services.jina_embedder import JinaCodeEmbedder
+    from mem_graph.tools.integrations import jina as jina_tools
     from mem_graph.tools.work.projects import project_create
 
-    monkeypatch.setattr(jira_mod, "embeddings_code", _fake_embeddings_code)
-    monkeypatch.setattr(jira_mod, "embeddings_code_query", _fake_embeddings_code_query)
+    monkeypatch.setattr(jina_mod, "embeddings_code", _fake_embeddings_code)
+    monkeypatch.setattr(jina_mod, "embeddings_code_query", _fake_embeddings_code_query)
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -63,15 +63,15 @@ async def test_jira_tools_round_trip(monkeypatch, db, tmp_path):
             },
         )
 
-    service = JiraCodeEmbedder(
-        jira_url="https://jira.example.com",
-        jira_token="token",
+    service = JinaCodeEmbedder(
+        jina_url="https://jina.example.com",
+        jina_token="token",
         transport=httpx.MockTransport(handler),
         ttl_seconds=300,
     )
-    monkeypatch.setattr(jira_tools, "get_jira_embedder", lambda: service)
+    monkeypatch.setattr(jina_tools, "get_jina_embedder", lambda: service)
 
-    project = await project_create(name="Tools", description="Jira tool tests", repo_path=str(tmp_path))
+    project = await project_create(name="Tools", description="Jina tool tests", repo_path=str(tmp_path))
     project_id = project["project_id"]
 
     src_dir = tmp_path / "src"
@@ -79,11 +79,11 @@ async def test_jira_tools_round_trip(monkeypatch, db, tmp_path):
     (src_dir / "auth.py").write_text("def validate_login_token():\n    return 'auth login token'\n")
     (src_dir / "cache.py").write_text("def warm_cache():\n    return 'cache redis'\n")
 
-    fetched = await jira_tools.jira_fetch_issues(project_id=project_id)
+    fetched = await jina_tools.jina_fetch_issues(project_id=project_id)
     assert fetched["count"] == 1
     assert fetched["issues"][0]["key"] == "MEM-88"
 
-    code_matches = await jira_tools.jira_find_code_for_ticket(
+    code_matches = await jina_tools.jina_find_code_for_ticket(
         "MEM-88",
         root_path=str(tmp_path),
         project_id=project_id,
@@ -92,7 +92,7 @@ async def test_jira_tools_round_trip(monkeypatch, db, tmp_path):
     assert code_matches["count"] == 1
     assert code_matches["matches"][0]["file_path"] == "src/auth.py"
 
-    ticket_matches = await jira_tools.jira_find_tickets_for_file(
+    ticket_matches = await jina_tools.jina_find_tickets_for_file(
         "src/auth.py",
         root_path=str(tmp_path),
         project_id=project_id,
@@ -103,16 +103,16 @@ async def test_jira_tools_round_trip(monkeypatch, db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_jira_fetch_issues_reports_config_error(monkeypatch):
-    from mem_graph.tools.integrations import jira as jira_tools
-    from mem_graph.services.jira_embedder import JiraCodeEmbedder
+async def test_jina_fetch_issues_reports_config_error(monkeypatch):
+    from mem_graph.tools.integrations import jina as jina_tools
+    from mem_graph.services.jina_embedder import JinaCodeEmbedder
 
     monkeypatch.setattr(
-        jira_tools,
-        "get_jira_embedder",
-        lambda: JiraCodeEmbedder(jira_url="", jira_token=""),
+        jina_tools,
+        "get_jina_embedder",
+        lambda: JinaCodeEmbedder(jina_url="", jina_token=""),
     )
 
-    result = await jira_tools.jira_fetch_issues()
+    result = await jina_tools.jina_fetch_issues()
     assert "error" in result
     assert "not configured" in result["error"].lower()

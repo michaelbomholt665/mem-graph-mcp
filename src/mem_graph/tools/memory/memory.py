@@ -14,8 +14,7 @@ FastMCP 3.0 upgrades:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Annotated, Any, cast
+from typing import Annotated, Any
 
 from fastmcp import FastMCP
 from fastmcp.dependencies import Depends
@@ -24,32 +23,38 @@ from mcp.types import Icon
 from pydantic import Field
 
 from ...db import db_get_connection
-from ...embeddings import embeddings_query
-from ...ids import id_generate_v7
 from ...observability import traced_tool
+from ...services.memory import MemoryService
 
 logger = logging.getLogger(__name__)
 mcp = FastMCP("memory")
 
 
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
 @mcp.tool(
     tags={"namespace:memory"},
-    icons=[Icon(src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTkgM0g1Yy0xLjEgMC0yIC45LTIgMnYxNGMwIDEuMS45IDIgMiAyaDE0YzEuMSAwIDItLjkgMi0yVjVjMC0xLjEtLjktMi0yLTJ6bTAgMTZINVY1aDE0djE0em0tMi1xIDIgMGg2VjExaC0zdi41aDAyaC0zczB2MWgzVjloLTZ6bS0yIDB2LTNoLTZ6bS00LTJoMnYyaC0yeiIvPjwvc3ZnPg==", mimeType="image/svg+xml")]
+    icons=[
+        Icon(
+            src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTkgM0g1Yy0xLjEgMC0yIC45LTIgMnYxNGMwIDEuMS45IDIgMiAyaDE0YzEuMSAwIDItLjkgMi0yVjVjMC0xLjEtLjktMi0yLTJ6bTAgMTZINVY1aDE0djE0em0tMi1xIDIgMGg2VjExaC0zdi41aDAyaC0zczB2MWgzVjloLTZ6bS0yIDB2LTNoLTZ6bS00LTJoMnYyaC0yeiIvPjwvc3ZnPg==",
+            mimeType="image/svg+xml",
+        )
+    ],
 )
 @traced_tool("memory_store")
 async def memory_store(
-    content: Annotated[str, Field(description="The fact, pattern, or preference to remember")],
+    content: Annotated[
+        str, Field(description="The fact, pattern, or preference to remember")
+    ],
     kind: Annotated[
         str,
-        Field(description="What type of memory this is: fact | preference | pattern | violation | architecture"),
+        Field(
+            description="What type of memory this is: fact | preference | pattern | violation | architecture"
+        ),
     ] = "fact",
     scope: Annotated[
         str,
-        Field(description="How broadly this applies: global | project | backend | task"),
+        Field(
+            description="How broadly this applies: global | project | backend | task"
+        ),
     ] = "global",
     project_id: Annotated[
         str | None, Field(description="Associate with a specific project (optional)")
@@ -63,48 +68,25 @@ async def memory_store(
     facts, preferences, recurring patterns, or architectural decisions. Provide the
     content and categorise it with kind and scope. Returns the new memory ID.
     """
-    mem_id = id_generate_v7()
-    vec = await embeddings_query(content)
-
-    conn.execute(
-        """
-        CREATE (m:Memory {
-            id: $id,
-            kind: $kind,
-            scope: $scope,
-            content: $content,
-            confidence: 1.0,
-            embedding: $embedding,
-            created_at: $ts,
-            updated_at: $ts
-        })
-        """,
-        {
-            "id": mem_id,
-            "kind": kind,
-            "scope": scope,
-            "content": content,
-            "embedding": vec,
-            "ts": _now(),
-        },
+    service = MemoryService(conn)
+    memory_id = await service.store(
+        content=content,
+        kind=kind,
+        scope=scope,
+        project_id=project_id,
     )
-
-    if project_id:
-        conn.execute(
-            """
-            MATCH (p:Project {id: $project_id}), (m:Memory {id: $mem_id})
-            CREATE (p)-[:PROJECT_MEMORY]->(m)
-            """,
-            {"project_id": project_id, "mem_id": mem_id},
-        )
-
-    logger.info("Stored memory %s (kind=%s, scope=%s)", mem_id, kind, scope)
-    return {"memory_id": mem_id}
+    logger.info("Stored memory %s (kind=%s, scope=%s)", memory_id, kind, scope)
+    return {"memory_id": memory_id}
 
 
 @mcp.tool(
     tags={"namespace:memory"},
-    icons=[Icon(src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTkgNkg1Yy0xLjEgMC0yIC45LTIgMnYxMGMwIDEuMS45IDIgMiAyaDE0YzEuMSAwIDItLjkgMi0yVjhj MC0xLjEtLjktMi0yLTJ6bTAgMTJINVY4aDE0djEweiIvPjwvc3ZnPg==", mimeType="image/svg+xml")]
+    icons=[
+        Icon(
+            src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTkgNkg1Yy0xLjEgMC0yIC45LTIgMnYxMGMwIDEuMS45IDIgMiAyaDE0YzEuMSAwIDItLjkgMi0yVjhj MC0xLjEtLjktMi0yLTJ6bTAgMTJINVY4aDE0djEweiIvPjwvc3ZnPg==",
+            mimeType="image/svg+xml",
+        )
+    ],
 )
 @traced_tool("memory_manage")
 async def memory_manage(
@@ -118,7 +100,9 @@ async def memory_manage(
     ] = None,
     scope: Annotated[
         str | None,
-        Field(description="Filter by scope when action='list': global | project | backend | task"),
+        Field(
+            description="Filter by scope when action='list': global | project | backend | task"
+        ),
     ] = None,
     project_id: Annotated[
         str | None,
@@ -150,58 +134,26 @@ async def memory_manage(
                     message=f"Are you sure you want to expire memory {memory_id!r}? This cannot be undone.",
                     response_type=["yes", "no"],  # type: ignore[arg-type]
                 )
-                if not isinstance(confirmation, AcceptedElicitation) or confirmation.data != "yes":
-                    return {"memory_id": memory_id, "status": "cancelled", "reason": "User did not confirm."}
+                if (
+                    not isinstance(confirmation, AcceptedElicitation)
+                    or confirmation.data != "yes"
+                ):
+                    return {
+                        "memory_id": memory_id,
+                        "status": "cancelled",
+                        "reason": "User did not confirm.",
+                    }
             except Exception as exc:
-                logger.debug("Elicitation unavailable, proceeding without confirmation: %s", exc)
+                logger.debug(
+                    "Elicitation unavailable, proceeding without confirmation: %s", exc
+                )
 
-        conn.execute(
-            """
-            MATCH (m:Memory {id: $id})
-            SET m.expires_at = $ts, m.updated_at = $ts
-            """,
-            {"id": memory_id, "ts": _now()},
-        )
+        service = MemoryService(conn)
         logger.info("Expired memory %s", memory_id)
-        return {"memory_id": memory_id, "status": "expired"}
+        return service.expire(memory_id)
 
     if action == "list":
-        return _list_memories(conn, scope, project_id)
+        service = MemoryService(conn)
+        return {"memories": service.list_active(scope=scope, project_id=project_id)}
 
     return {"error": f"Unknown action {action!r}. Use 'expire' or 'list'."}
-
-
-def _list_memories(conn: Any, scope: str | None, project_id: str | None) -> dict[str, Any]:
-    if project_id:
-        result = conn.execute(
-            """
-            MATCH (p:Project {id: $project_id})-[:PROJECT_MEMORY]->(m:Memory)
-            WHERE m.expires_at IS NULL OR m.expires_at > current_timestamp()
-            RETURN m.id, m.kind, m.scope, m.content, m.confidence, m.created_at
-            ORDER BY m.created_at DESC
-            """,
-            {"project_id": project_id},
-        )
-    else:
-        result = conn.execute(
-            """
-            MATCH (m:Memory)
-            WHERE m.expires_at IS NULL OR m.expires_at > current_timestamp()
-            RETURN m.id, m.kind, m.scope, m.content, m.confidence, m.created_at
-            ORDER BY m.created_at DESC
-            """,
-        )
-
-    memories = [
-        {
-            "id": row[0],
-            "kind": row[1],
-            "scope": row[2],
-            "content": row[3],
-            "confidence": row[4],
-            "created_at": str(row[5]),
-        }
-        for row in cast(list[list[Any]], result)
-        if scope is None or row[2] == scope
-    ]
-    return {"memories": memories}

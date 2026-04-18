@@ -92,20 +92,20 @@ This document outlines the strategy for upgrading the `syntx-memory` MCP server 
     - Transition heavy tools to `task=True`.
 
 5. Phase 5: Knowledge Graph Dashboard (The "Sidecar" UI)
-    - **Goal:** Provide a visual, interactive dashboard of the Memory Graph, Jira tickets, and Codebase structure that runs alongside the CLI.
+    - **Goal:** Provide a visual, interactive dashboard of the Memory Graph, Jina tickets, and Codebase structure that runs alongside the CLI.
     - **Interactive Components (Prefab UI + AG-UI):**
         - **ForceGraph Visualization:** A zoomable, interactive graph representing:
             - **Memory Nodes:** Facts, preferences, and architectural patterns.
             - **Code Nodes:** Files and Symbols (functions/classes) extracted via `map_codebase`.
-            - **Jira Nodes:** Tickets and epics fetched via a dedicated **Jira Embedder** service.
+            - **Jina Nodes:** Tickets and epics fetched via a dedicated **Jina Embedder** service.
             - **Relationships:** `AFFECTS`, `IMPLEMENTS`, `MENTIONS`, and `RESOLVES`.
-        - **Jira Code Embedder (On-Demand):** A specialized tool to search and link Jira tickets. 
+        - **Jina Code Embedder (On-Demand):** A specialized tool to search and link Jina tickets. 
             - **Model:** `hf.co/jinaai/jina-embeddings-v4-text-code-GGUF:Q5_K_M` (~1.9GB).
             - **VRAM Fallback:** If VRAM usage is excessive, fall back to `IQ4_NL` variant.
             - **VRAM Management:** Model is **lazy-loaded** via Ollama only upon first use. 
             - **Auto-Unload:** Implements a TTL (Time-To-Live) mechanism to stop the model and free VRAM after 5 minutes of inactivity.
-            - **Manual Control:** `tools_deactivate(namespace='jira')` explicitly stops the model.
+            - **Manual Control:** `tools_deactivate(namespace='jina')` explicitly stops the model.
 
         - **File Explorer Tab:** A `TreeView` component to browse the audited codebase with inline markers for violations and memories.
-    - **Workflow:** The user runs `fastmcp dev apps` to open this visual "Command Center." As the agent audits code in the CLI, the graph updates in the browser to show new violations linked to their corresponding source files and Jira tasks.
+    - **Workflow:** The user runs `fastmcp dev apps` to open this visual "Command Center." As the agent audits code in the CLI, the graph updates in the browser to show new violations linked to their corresponding source files and Jina tasks.
 

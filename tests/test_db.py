@@ -7,15 +7,15 @@ tests/test_db.py — DB bootstrap and idempotency tests.
 from __future__ import annotations
 
 import os
-from unittest.mock import patch
 from typing import Any, cast
+from unittest.mock import patch
 
 import pytest
 
 
 @pytest.mark.asyncio
 async def test_bootstrap_creates_all_tables(tmp_path):
-    """All 12 node tables must exist after db_init_engine()."""
+    """Core node tables must exist after db_init_engine()."""
     import importlib
 
     os.environ["LADYBUG_DB_PATH"] = str(tmp_path / "test.lbug")
@@ -35,14 +35,19 @@ async def test_bootstrap_creates_all_tables(tmp_path):
             "Decision",
             "Note",
             "Violation",
+            "EvalRun",
             "Conversation",
             "Message",
             "Memory",
             "CodeSymbol",
+            "CodeFile",
+            "JinaIssue",
             "Tag",
         ]
         for table in tables:
-            result = cast(Any, conn.execute(f"MATCH (n:{table}) RETURN count(n)")).get_all()
+            result = cast(
+                Any, conn.execute(f"MATCH (n:{table}) RETURN count(n)")
+            ).get_all()
             assert result[0][0] == 0, f"Expected empty {table} table"
 
         db_mod.db_close_engine()
@@ -74,7 +79,7 @@ async def test_bootstrap_creates_all_vector_indexes(tmp_path):
             "idx_memory_emb",
             "idx_symbol_emb",
             "idx_codefile_emb",
-            "idx_jira_issue_emb",
+            "idx_jina_issue_emb",
             "fts_memory_content",
             "fts_note_body",
             "fts_task_desc",
@@ -82,7 +87,7 @@ async def test_bootstrap_creates_all_vector_indexes(tmp_path):
             "fts_violation_desc",
             "fts_symbol_name",
             "fts_codefile_path",
-            "fts_jira_issue_text",
+            "fts_jina_issue_text",
         }
         result = cast(Any, conn.execute("CALL SHOW_INDEXES() RETURN *;"))
         actual = {row[1] for row in result.get_all()}

@@ -1,0 +1,84 @@
+{
+  "project_id": "proj-evals",
+  "map": {
+    "known_features": [
+      "observability",
+      "memory",
+      "evals"
+    ],
+    "files": [
+      {
+        "path": "src/mem_graph/server.py",
+        "content": "from .observability import setup_logfire, setup_observability\nfrom .tools.memory import memory\n\nasync def lifespan():\n    setup_logfire(service_name='syntx-memory', service_version='0.2.0')\n    setup_observability(service_name='syntx-memory', service_version='0.2.0')\n"
+      },
+      {
+        "path": "src/mem_graph/observability/otel_setup.py",
+        "content": "def setup_observability(service_name: str, service_version: str) -> None:\n    pass\n"
+      },
+      {
+        "path": "src/mem_graph/tools/memory/memory.py",
+        "content": "@mcp.tool()\nasync def memory_store(content: str) -> dict[str, str]:\n    return {'memory_id': '123'}\n"
+      }
+    ]
+  },
+  "document": {
+    "feature_description": "Add Logfire instrumentation to memory store and graph query operations.",
+    "codebase_map": [
+      {
+        "feature_name": "observability",
+        "primary_file": "src/mem_graph/observability/otel_setup.py",
+        "consumers": [
+          "src/mem_graph/server.py"
+        ],
+        "description": "Bootstraps tracing and metrics exporters."
+      },
+      {
+        "feature_name": "memory",
+        "primary_file": "src/mem_graph/tools/memory/memory.py",
+        "consumers": [
+          "src/mem_graph/server.py"
+        ],
+        "description": "Stores and manages persistent memory records."
+      }
+    ],
+    "open_violations": [
+      {
+        "id": "V-001",
+        "rule": "observability:missing-span",
+        "severity": "major",
+        "file_path": "src/mem_graph/tools/memory/memory.py",
+        "description": "Memory writes are not traced end to end."
+      }
+    ],
+    "prior_decisions": [
+      {
+        "id": "D-001",
+        "title": "Prefer redacted observability metadata",
+        "rationale": "Do not send raw prompts or graph payloads to external observability backends.",
+        "alternatives": "Capture full payloads by default.",
+        "status": "active",
+        "impact": "high"
+      }
+    ],
+    "decisions": [
+      {
+        "id": "D-001",
+        "title": "Prefer redacted observability metadata",
+        "rationale": "Do not send raw prompts or graph payloads to external observability backends.",
+        "alternatives": "Capture full payloads by default.",
+        "status": "active",
+        "impact": "high"
+      }
+    ],
+    "decision_files": [
+      {
+        "path": "src/mem_graph/observability/logfire_setup.py",
+        "content": "def setup_logfire(service_name: str, service_version: str) -> None:\n    pass\n"
+      },
+      {
+        "path": "src/mem_graph/db.py",
+        "content": "span.set_attribute('graph.query.class', query_class)\nspan.set_attribute('graph.query.fingerprint', fingerprint)\n"
+      }
+    ]
+  }
+}

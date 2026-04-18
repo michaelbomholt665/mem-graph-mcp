@@ -110,6 +110,7 @@ class FixerDependencies:
 
 fixer_agent: Agent[FixerDependencies, FixerReport] = Agent(
     _FIXER_MODEL,
+    name="fixer",
     deps_type=FixerDependencies,
     output_type=FixerReport,
     defer_model_check=DEFER_AGENT_MODEL_CHECK,

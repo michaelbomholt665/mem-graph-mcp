@@ -3,11 +3,40 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
+
+from pydantic_evals import Case, Dataset
 
 from ..agents.audit.audit_agent import AuditDependencies, audit_agent
 from ..models.audit import AuditReport
-from ..models.evals import EvalCase, EvalMode, EvalSuite, SuiteBinding
+from ..models.evals import EvalCase, EvalMode, EvalSuite, ScorerName, SuiteBinding
 from .fixtures import load_code_fixtures
+from .scorers import HostedTextScorer
+
+
+@dataclass
+class AuditInput:
+    prompt: str
+    file_content: str
+    file_path: str
+    language: str = "python"
+
+
+@dataclass
+class AuditOutput:
+    text: str
+
+
+@dataclass
+class AuditMeta:
+    case_id: str
+    description: str
+    scorer: ScorerName
+    expected_keywords: list[str]
+    expected_pattern: str | None
+    tags: list[str]
+    rule_focus: str
+    source: str = "synthetic"
 
 _CODE_FIXTURES = load_code_fixtures()
 
@@ -103,4 +132,73 @@ def build_audit_binding(mode: EvalMode) -> SuiteBinding:
     return SuiteBinding(
         suite=AUDIT_EVAL_SUITE,
         runner=_run_fixture if mode == "fixture" else _run_live,
+    )
+
+
+def build_audit_dataset() -> Dataset[AuditInput, AuditOutput, AuditMeta]:
+    cases: list[Case[AuditInput, AuditOutput, AuditMeta]] = []
+    for case in AUDIT_EVAL_SUITE.cases:
+        fixture_key = case.metadata["fixture_key"]
+        scorer = case.scorer or AUDIT_EVAL_SUITE.default_scorer
+        cases.append(
+            Case(
+                name=case.case_id,
+                inputs=AuditInput(
+                    prompt=case.prompt,
+                    file_content=_CODE_FIXTURES[fixture_key],
+                    file_path=case.metadata.get("file_path", "fixtures/eval_fixture.py"),
+                ),
+                expected_output=AuditOutput(
+                    text=case.expected_output or " ".join(case.expected_keywords)
+                ),
+                metadata=AuditMeta(
+                    case_id=case.case_id,
+                    description=case.description,
+                    scorer=scorer,
+                    expected_keywords=list(case.expected_keywords),
+                    expected_pattern=case.expected_pattern,
+                    tags=list(case.tags),
+                    rule_focus="security" if "security" in case.tags else "bugs",
+                ),
+                evaluators=(HostedTextScorer(),),
+            )
+        )
+
+    return Dataset[AuditInput, AuditOutput, AuditMeta](
+        name="audit-golden-set",
+        cases=cases,
+    )
+
+
+def push_audit_dataset() -> dict[str, object]:
+    from .logfire_client import get_client
+
+    with get_client() as client:
+        result = client.push_dataset(
+            build_audit_dataset(),
+            description=AUDIT_EVAL_SUITE.description,
+        )
+        print(f"Pushed: {result['name']} - {result['id']}")
+        return result
+
+
+async def run_audit_eval() -> None:
+    """Fetch the hosted audit dataset and evaluate it against the live agent."""
+    from .evaluator import run_eval_from_hosted
+
+    async def audit_task(inputs: AuditInput) -> AuditOutput:
+        deps = AuditDependencies(
+            package_path="eval-fixture",
+            file_extension=".py",
+            extra_file_context=_fixture_context(inputs.file_path, inputs.file_content),
+        )
+        result = await audit_agent.run(inputs.prompt, deps=deps)
+        return AuditOutput(text=_render_audit_report(result.output))
+
+    await run_eval_from_hosted(
+        "audit-golden-set",
+        audit_task,
+        AuditInput,
+        AuditOutput,
+        AuditMeta,
     )

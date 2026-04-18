@@ -3,11 +3,40 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
+
+from pydantic_evals import Case, Dataset
 
 from ..agents.fix.fixer_agent import FixerDependencies, FixerReport, fixer_agent
 from ..config import ModelTier
-from ..models.evals import EvalCase, EvalMode, EvalSuite, SuiteBinding
+from ..models.evals import EvalCase, EvalMode, EvalSuite, ScorerName, SuiteBinding
 from .fixtures import load_code_fixtures, load_violation_fixtures
+from .scorers import HostedTextScorer
+
+
+@dataclass
+class FixInput:
+    prompt: str
+    file_content: str
+    file_path: str
+    violation_count: int
+    language: str = "python"
+
+
+@dataclass
+class FixOutput:
+    text: str
+
+
+@dataclass
+class FixMeta:
+    case_id: str
+    description: str
+    scorer: ScorerName
+    expected_keywords: list[str]
+    expected_pattern: str | None
+    tags: list[str]
+    source: str = "synthetic"
 
 _CODE_FIXTURES = load_code_fixtures()
 _VIOLATION_FIXTURES = load_violation_fixtures()
@@ -83,4 +112,81 @@ def build_fix_binding(mode: EvalMode) -> SuiteBinding:
     return SuiteBinding(
         suite=FIX_EVAL_SUITE,
         runner=_run_fixture if mode == "fixture" else _run_live,
+    )
+
+
+def build_fix_dataset() -> Dataset[FixInput, FixOutput, FixMeta]:
+    cases: list[Case[FixInput, FixOutput, FixMeta]] = []
+    for case in FIX_EVAL_SUITE.cases:
+        fixture_key = case.metadata["fixture_key"]
+        scorer = case.scorer or FIX_EVAL_SUITE.default_scorer
+        cases.append(
+            Case(
+                name=case.case_id,
+                inputs=FixInput(
+                    prompt=case.prompt,
+                    file_content=_CODE_FIXTURES[fixture_key],
+                    file_path=case.metadata.get("file_path", "fixtures/eval_fix.py"),
+                    violation_count=len(_VIOLATION_FIXTURES["fix"][case.case_id]),
+                ),
+                expected_output=FixOutput(
+                    text=case.expected_output
+                    or " ".join(case.expected_keywords)
+                    or (case.expected_pattern or "")
+                ),
+                metadata=FixMeta(
+                    case_id=case.case_id,
+                    description=case.description,
+                    scorer=scorer,
+                    expected_keywords=list(case.expected_keywords),
+                    expected_pattern=case.expected_pattern,
+                    tags=list(case.tags),
+                ),
+                evaluators=(HostedTextScorer(),),
+            )
+        )
+
+    return Dataset[FixInput, FixOutput, FixMeta](
+        name="fix-golden-set",
+        cases=cases,
+    )
+
+
+def push_fix_dataset() -> dict[str, object]:
+    from .logfire_client import get_client
+
+    with get_client() as client:
+        result = client.push_dataset(
+            build_fix_dataset(),
+            description=FIX_EVAL_SUITE.description,
+        )
+        print(f"Pushed: {result['name']} - {result['id']}")
+        return result
+
+
+async def run_fix_eval() -> None:
+    """Fetch the hosted fixer dataset and evaluate it against the live agent."""
+    from .evaluator import run_eval_from_hosted
+
+    async def fix_task(inputs: FixInput) -> FixOutput:
+        case_id = inputs.file_path.split("/")[-1].removesuffix(".py")
+        violations = list(_VIOLATION_FIXTURES["fix"].get(case_id, []))
+        if not violations:
+            case_id = "fix-hardcoded-secret" if "payment" in case_id else "fix-bare-except"
+            violations = list(_VIOLATION_FIXTURES["fix"][case_id])
+        deps = FixerDependencies(
+            violations=violations,
+            file_contents={inputs.file_path: inputs.file_content},
+            tier=ModelTier.STANDARD.value,
+            project_id="eval-fixture",
+        )
+        result = await fixer_agent.run(inputs.prompt, deps=deps)
+        return FixOutput(text=_render_fix_report(result.output))
+
+    await run_eval_from_hosted(
+        "fix-golden-set",
+        fix_task,
+        FixInput,
+        FixOutput,
+        FixMeta,
     )

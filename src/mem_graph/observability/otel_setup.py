@@ -12,8 +12,16 @@ from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import ConsoleMetricExporter, PeriodicExportingMetricReader
-from opentelemetry.sdk.resources import DEPLOYMENT_ENVIRONMENT, SERVICE_NAME, SERVICE_VERSION, Resource
+from opentelemetry.sdk.metrics.export import (
+    ConsoleMetricExporter,
+    PeriodicExportingMetricReader,
+)
+from opentelemetry.sdk.resources import (
+    DEPLOYMENT_ENVIRONMENT,
+    SERVICE_NAME,
+    SERVICE_VERSION,
+    Resource,
+)
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 
@@ -32,6 +40,24 @@ class ObservabilityState:
     service_version: str
     console_exporter: bool
     otlp_configured: bool
+
+
+def _provider_is_logfire(provider: object) -> bool:
+    return provider.__class__.__module__.startswith("logfire.")
+
+
+def _default_proxy_provider(provider: object, *, namespace: str) -> bool:
+    return (
+        provider.__class__.__name__ == "ProxyTracerProvider"
+        and provider.__class__.__module__.startswith(namespace)
+    )
+
+
+def _default_proxy_meter_provider(provider: object) -> bool:
+    return (
+        provider.__class__.__name__ == "_ProxyMeterProvider"
+        and provider.__class__.__module__.startswith("opentelemetry.metrics")
+    )
 
 
 def _bool_env(name: str, *, default: bool = False) -> bool:
@@ -87,6 +113,37 @@ def _resolve_state(service_name: str, service_version: str) -> ObservabilityStat
     )
 
 
+def _build_resource(service_name: str, service_version: str) -> Resource:
+    resource_attributes: dict[str, str] = {
+        SERVICE_NAME: service_name,
+        SERVICE_VERSION: service_version,
+    }
+    environment = os.getenv("MEM_GRAPH_ENV") or os.getenv("ENV")
+    if environment:
+        resource_attributes[DEPLOYMENT_ENVIRONMENT] = environment
+    return Resource.create(resource_attributes)
+
+
+def _build_span_processors(state: ObservabilityState) -> list[BatchSpanProcessor]:
+    processors: list[BatchSpanProcessor] = []
+    if state.console_exporter:
+        processors.append(BatchSpanProcessor(ConsoleSpanExporter(out=sys.stderr)))
+    if state.otlp_configured:
+        processors.append(BatchSpanProcessor(OTLPSpanExporter()))
+    return processors
+
+
+def _build_metric_readers(
+    state: ObservabilityState,
+) -> list[PeriodicExportingMetricReader]:
+    readers: list[PeriodicExportingMetricReader] = []
+    if state.console_exporter:
+        readers.append(PeriodicExportingMetricReader(ConsoleMetricExporter()))
+    if state.otlp_configured:
+        readers.append(PeriodicExportingMetricReader(OTLPMetricExporter()))
+    return readers
+
+
 def setup_observability(
     *,
     service_name: str,
@@ -105,35 +162,29 @@ def setup_observability(
             logger.info("OpenTelemetry disabled.")
             return state
 
-        resource_attributes: dict[str, str] = {
-            SERVICE_NAME: state.service_name,
-            SERVICE_VERSION: state.service_version,
-        }
-        environment = os.getenv("MEM_GRAPH_ENV") or os.getenv("ENV")
-        if environment:
-            resource_attributes[DEPLOYMENT_ENVIRONMENT] = environment
+        current_tracer_provider = trace.get_tracer_provider()
+        if _provider_is_logfire(current_tracer_provider):
+            logger.info("OpenTelemetry exporter setup delegated to Logfire bootstrap.")
+            return state
 
-        resource = Resource.create(resource_attributes)
-
-        tracer_provider = TracerProvider(resource=resource)
-        if state.console_exporter:
-            tracer_provider.add_span_processor(
-                BatchSpanProcessor(ConsoleSpanExporter(out=sys.stderr))
+        if not _default_proxy_provider(
+            current_tracer_provider, namespace="opentelemetry.trace"
+        ):
+            logger.info(
+                "OpenTelemetry provider already configured by %s; leaving it in place.",
+                current_tracer_provider.__class__.__module__,
             )
-        if state.otlp_configured:
-            tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+            return state
+
+        resource = _build_resource(state.service_name, state.service_version)
+        tracer_provider = TracerProvider(resource=resource)
+        for processor in _build_span_processors(state):
+            tracer_provider.add_span_processor(processor)
         trace.set_tracer_provider(tracer_provider)
 
-        metric_readers = []
-        if state.console_exporter:
-            metric_readers.append(
-                PeriodicExportingMetricReader(ConsoleMetricExporter())
-            )
-        if state.otlp_configured:
-            metric_readers.append(
-                PeriodicExportingMetricReader(OTLPMetricExporter())
-            )
-        if metric_readers:
+        metric_readers = _build_metric_readers(state)
+        current_meter_provider = metrics.get_meter_provider()
+        if metric_readers and _default_proxy_meter_provider(current_meter_provider):
             metrics.set_meter_provider(
                 MeterProvider(resource=resource, metric_readers=metric_readers)
             )
@@ -154,6 +205,11 @@ def shutdown_observability() -> None:
         return
 
     tracer_provider = trace.get_tracer_provider()
+    if _provider_is_logfire(tracer_provider):
+        logger.debug(
+            "Skipping standalone OpenTelemetry shutdown because Logfire owns the providers."
+        )
+        return
     meter_provider = metrics.get_meter_provider()
 
     try:

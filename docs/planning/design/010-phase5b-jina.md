@@ -1,4 +1,4 @@
-# Design: Phase 5b - Jira Code Embedder
+# Design: Phase 5b - Jina Code Embedder
 
 **Status:** Design Phase  
 **Priority:** Low-Medium (Advanced integration)  
@@ -8,9 +8,9 @@
 
 ## Overview
 
-Phase 5b adds semantic linking between Jira tickets and code. A "Jira Code Embedder" service uses embeddings to find code that "belongs" to a Jira ticket:
+Phase 5b adds semantic linking between Jina tickets and code. A "Jina Code Embedder" service uses embeddings to find code that "belongs" to a Jina ticket:
 
-- **Input:** Jira issue (title + description)
+- **Input:** Jina issue (title + description)
 - **Process:** Embed ticket description + code files, find semantic matches
 - **Output:** Code references in graph as `MENTIONS` or `IMPLEMENTS` edges
 
@@ -20,8 +20,8 @@ This enables traceability: agents can see which code implements which ticket, an
 
 ## Goals
 
-1. **Semantic Traceability:** Link Jira tickets to relevant code without manual mapping
-2. **Bidirectional:** Agents know what code implements a decision (Jira ticket)
+1. **Semantic Traceability:** Link Jina tickets to relevant code without manual mapping
+2. **Bidirectional:** Agents know what code implements a decision (Jina ticket)
 3. **Lazy Loading:** Embedder runs on-demand, doesn't block server startup
 4. **VRAM Efficient:** Model is unloaded after use (TTL 5 min)
 
@@ -30,26 +30,26 @@ This enables traceability: agents can see which code implements which ticket, an
 ## Scope
 
 ### In Scope
-- Implement Jira embedder service (embeddings + semantic search)
-- Add Jira API integration to fetch tickets
-- Create graph entities for Jira issues
+- Implement Jina embedder service (embeddings + semantic search)
+- Add Jina API integration to fetch tickets
+- Create graph entities for Jina issues
 - Implement lazy model loading (TTL-based unload)
 - Build search tool: find code for a ticket
 - Build reverse search: find tickets for code
 
 ### Out of Scope
-- Two-way Jira sync (write back to Jira) - read-only for now
-- Jira webhook handling (polling is sufficient)
-- Figuring out which Jira project to use (user specifies in env)
+- Two-way Jina sync (write back to Jina) - read-only for now
+- Jina webhook handling (polling is sufficient)
+- Figuring out which Jina project to use (user specifies in env)
 
 ---
 
 ## Architecture
 
-### 1. Jira Code Embedder Service
+### 1. Jina Code Embedder Service
 
 ```python
-# src/mem_graph/services/jira_embedder.py
+# src/mem_graph/services/jina_embedder.py
 
 from datetime import datetime, timedelta
 from typing import Optional
@@ -57,8 +57,8 @@ import httpx
 from sentence_transformers import SentenceTransformer
 from pydantic import BaseModel
 
-class JiraIssue(BaseModel):
-    """Jira issue from API."""
+class JinaIssue(BaseModel):
+    """Jina issue from API."""
     key: str
     title: str
     description: str
@@ -68,14 +68,14 @@ class JiraIssue(BaseModel):
     url: str
 
 class CodeMatch(BaseModel):
-    """Match between code and Jira issue."""
+    """Match between code and Jina issue."""
     file_path: str
     score: float  # 0-1 semantic similarity
     context: str  # Code snippet
 
-class JiraCodeEmbedder:
+class JinaCodeEmbedder:
     """
-    Embeds Jira issues and code together, finds semantic matches.
+    Embeds Jina issues and code together, finds semantic matches.
     
     Uses Ollama with jinaai embeddings for efficient inference.
     Model is loaded lazily and unloaded after TTL expires.
@@ -84,9 +84,9 @@ class JiraCodeEmbedder:
     MODEL_NAME = "hf.co/jinaai/jina-embeddings-v4-text-code-GGUF:Q5_K_M"
     UNLOAD_AFTER_MINUTES = 5
     
-    def __init__(self, jira_url: str, jira_token: str):
-        self.jira_url = jira_url
-        self.jira_token = jira_token
+    def __init__(self, jina_url: str, jina_token: str):
+        self.jina_url = jina_url
+        self.jina_token = jina_token
         self.model: Optional[SentenceTransformer] = None
         self._model_loaded_at: Optional[datetime] = None
     
@@ -114,39 +114,39 @@ class JiraCodeEmbedder:
         
         return self.model
     
-    async def fetch_jira_issues(self, jql: str = "project = PROJ") -> list[JiraIssue]:
-        """Fetch issues from Jira."""
+    async def fetch_jina_issues(self, jql: str = "project = PROJ") -> list[JinaIssue]:
+        """Fetch issues from Jina."""
         
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{self.jira_url}/rest/api/3/search",
+                f"{self.jina_url}/rest/api/3/search",
                 params={"jql": jql, "maxResults": 100},
-                headers={"Authorization": f"Bearer {self.jira_token}"},
+                headers={"Authorization": f"Bearer {self.jina_token}"},
             )
             response.raise_for_status()
             
             issues = []
             for issue in response.json()["issues"]:
-                issues.append(JiraIssue(
+                issues.append(JinaIssue(
                     key=issue["key"],
                     title=issue["fields"]["summary"],
                     description=issue["fields"]["description"] or "",
                     status=issue["fields"]["status"]["name"],
                     assignee=issue["fields"].get("assignee", {}).get("displayName"),
                     created_at=issue["fields"]["created"],
-                    url=f"{self.jira_url}/browse/{issue['key']}",
+                    url=f"{self.jina_url}/browse/{issue['key']}",
                 ))
             
             return issues
     
     async def find_code_for_issue(
         self,
-        issue: JiraIssue,
+        issue: JinaIssue,
         code_files: list[tuple[str, str]],  # [(file_path, content), ...]
         threshold: float = 0.7,
     ) -> list[CodeMatch]:
         """
-        Find code files related to a Jira issue.
+        Find code files related to a Jina issue.
         
         Uses semantic similarity to match issue description to code.
         """
@@ -198,56 +198,56 @@ class JiraCodeEmbedder:
         return '\n'.join(lines[:5])
 
 # Global instance
-jira_embedder: Optional[JiraCodeEmbedder] = None
+jina_embedder: Optional[JinaCodeEmbedder] = None
 
-def get_jira_embedder() -> JiraCodeEmbedder:
+def get_jina_embedder() -> JinaCodeEmbedder:
     """Get or create embedder."""
-    global jira_embedder
+    global jina_embedder
     
-    if not jira_embedder:
-        jira_url = os.getenv("JIRA_URL", "https://jira.example.com")
-        jira_token = os.getenv("JIRA_TOKEN", "")
+    if not jina_embedder:
+        jina_url = os.getenv("JINA_URL", "https://jina.example.com")
+        jina_token = os.getenv("JINA_TOKEN", "")
         
-        jira_embedder = JiraCodeEmbedder(jira_url, jira_token)
+        jina_embedder = JinaCodeEmbedder(jina_url, jina_token)
     
-    return jira_embedder
+    return jina_embedder
 ```
 
 ### 2. Graph Integration
 
-Store Jira issues and code matches in graph:
+Store Jina issues and code matches in graph:
 
 ```python
 # Cypher schema extensions
 
-CREATE (:JiraIssue {
+CREATE (:JinaIssue {
   issue_key: "PROJ-123",
   title: "Fix null pointer bug in parser",
   description: "...",
   status: "Open",
-  url: "https://jira.example.com/browse/PROJ-123",
+  url: "https://jina.example.com/browse/PROJ-123",
   created_at: datetime(),
 })
 
-(jira:JiraIssue)-[:MENTIONS]->(file:File)  # Jira issue mentions this code file
-(violation:Violation)-[:RESOLVES]->(jira:JiraIssue)  # Fix resolves this ticket
-(decision:Decision)-[:IMPLEMENTS]->(jira:JiraIssue)  # Decision is about this ticket
+(jina:JinaIssue)-[:MENTIONS]->(file:File)  # Jina issue mentions this code file
+(violation:Violation)-[:RESOLVES]->(jina:JinaIssue)  # Fix resolves this ticket
+(decision:Decision)-[:IMPLEMENTS]->(jina:JinaIssue)  # Decision is about this ticket
 ```
 
-### 3. Tools for Jira Integration
+### 3. Tools for Jina Integration
 
 ```python
-# src/mem_graph/tools/integrations/jira.py
+# src/mem_graph/tools/integrations/jina.py
 
-from ..services.jira_embedder import get_jira_embedder
+from ..services.jina_embedder import get_jina_embedder
 
 @mcp.tool()
-async def fetch_jira_issues(
+async def fetch_jina_issues(
     jql: str = "project = MEM",
     limit: int = 50,
 ) -> dict:
     """
-    Fetch Jira issues and link to code.
+    Fetch Jina issues and link to code.
     
     Args:
         jql: JQL query (e.g., "assignee = currentUser()")
@@ -257,8 +257,8 @@ async def fetch_jira_issues(
         List of issues with related code files
     """
     
-    embedder = get_jira_embedder()
-    issues = await embedder.fetch_jira_issues(jql)
+    embedder = get_jina_embedder()
+    issues = await embedder.fetch_jina_issues(jql)
     
     # Enumerate code files
     code_files = await enumerate_code_files()
@@ -270,10 +270,10 @@ async def fetch_jira_issues(
         matches = await embedder.find_code_for_issue(issue, code_files, threshold=0.7)
         
         # Store in graph
-        await store_jira_issue_to_graph(issue)
+        await store_jina_issue_to_graph(issue)
         
         for match in matches:
-            await store_jira_code_mention(issue.key, match.file_path, match.score)
+            await store_jina_code_mention(issue.key, match.file_path, match.score)
         
         results.append({
             "key": issue.key,
@@ -289,11 +289,11 @@ async def fetch_jira_issues(
 
 @mcp.tool()
 async def find_code_for_ticket(ticket_key: str) -> dict:
-    """Find code that implements a specific Jira ticket."""
+    """Find code that implements a specific Jina ticket."""
     
-    # Get issue from Jira
-    embedder = get_jira_embedder()
-    issues = await embedder.fetch_jira_issues(f"key = {ticket_key}")
+    # Get issue from Jina
+    embedder = get_jina_embedder()
+    issues = await embedder.fetch_jina_issues(f"key = {ticket_key}")
     
     if not issues:
         return {"error": f"Ticket {ticket_key} not found"}
@@ -319,15 +319,15 @@ async def find_code_for_ticket(ticket_key: str) -> dict:
 
 @mcp.tool()
 async def find_tickets_for_code(file_path: str) -> dict:
-    """Find Jira tickets related to a code file."""
+    """Find Jina tickets related to a code file."""
     
     # Read file
     content = await asyncio.to_thread(read_file, file_path)
     
-    # Fetch all Jira issues
-    embedder = get_jira_embedder()
+    # Fetch all Jina issues
+    embedder = get_jina_embedder()
     query = "status IN (Open, 'In Progress')"  # Only active tickets
-    issues = await embedder.fetch_jira_issues(query)
+    issues = await embedder.fetch_jina_issues(query)
     
     # Find matching issues
     matches = []
@@ -362,15 +362,15 @@ async def find_tickets_for_code(file_path: str) -> dict:
 ```python
 # src/mem_graph/server.py
 
-# On startup, preload Jira issues (optional)
+# On startup, preload Jina issues (optional)
 @mcp.lifespan
 async def startup():
-    # Fetch Jira issues on startup (can be slow)
-    if os.getenv("JIRA_PRELOAD", "false").lower() == "true":
-        embedder = get_jira_embedder()
-        logger.info("Preloading Jira issues...")
-        issues = await embedder.fetch_jira_issues()
-        logger.info(f"Loaded {len(issues)} Jira issues")
+    # Fetch Jina issues on startup (can be slow)
+    if os.getenv("JINA_PRELOAD", "false").lower() == "true":
+        embedder = get_jina_embedder()
+        logger.info("Preloading Jina issues...")
+        issues = await embedder.fetch_jina_issues()
+        logger.info(f"Loaded {len(issues)} Jina issues")
     
     yield
     
@@ -395,10 +395,10 @@ async def startup():
 ```bash
 # .env
 
-JIRA_URL=https://jira.example.com
-JIRA_TOKEN=<your-jira-token>
-JIRA_PRELOAD=false  # Whether to load issues on server startup
-JIRA_THRESHOLD=0.7  # Similarity threshold for matches
+JINA_URL=https://jina.example.com
+JINA_TOKEN=<your-jina-token>
+JINA_PRELOAD=false  # Whether to load issues on server startup
+JINA_THRESHOLD=0.7  # Similarity threshold for matches
 ```
 
 ---
@@ -414,24 +414,24 @@ JIRA_THRESHOLD=0.7  # Similarity threshold for matches
 
 ## Implementation Checklist
 
-- [ ] Implement `JiraCodeEmbedder` service
-- [ ] Add Jira API client for fetching issues
+- [ ] Implement `JinaCodeEmbedder` service
+- [ ] Add Jina API client for fetching issues
 - [ ] Implement embedding inference (jina model + Ollama)
 - [ ] Add lazy model loading with TTL
-- [ ] Create `fetch_jira_issues` tool
+- [ ] Create `fetch_jina_issues` tool
 - [ ] Create `find_code_for_ticket` tool
 - [ ] Create `find_tickets_for_code` tool
-- [ ] Extend graph schema for JiraIssue nodes
+- [ ] Extend graph schema for JinaIssue nodes
 - [ ] Store embeddings for future use (optional)
-- [ ] Test with sample Jira instance
+- [ ] Test with sample Jina instance
 
 ---
 
 ## Success Criteria
 
-1. Jira issues are fetched and embedded
+1. Jina issues are fetched and embedded
 2. Code files are matched to issues semantically
-3. Graph stores Jira nodes and edges
+3. Graph stores Jina nodes and edges
 4. Tools return relevant code matches
 5. Model is unloaded after TTL expires
 6. No VRAM regression after model unload
@@ -442,7 +442,7 @@ JIRA_THRESHOLD=0.7  # Similarity threshold for matches
 
 - `sentence-transformers>=5.4.0` (already in `pyproject.toml`)
 - Ollama (docker or local) for efficient inference
-- Jira API access (token or user:pass)
+- Jina API access (token or user:pass)
 - jinaai/jina-embeddings-v4-text-code model (~100MB)
 
 ---

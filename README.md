@@ -88,16 +88,24 @@ OpenTelemetry is now wired into the server lifecycle through `src/mem_graph/obse
 - Structured logs now carry `trace_id` and `span_id` when a request is inside an active span.
 - Metrics currently cover tool duration, background task throughput, and graph-query latency/result counts.
 
+Logfire now sits alongside that OTEL path as the live execution recorder for agent runs, tool spans, memory operations, and graph queries.
+
+- Enable it with `MEM_GRAPH_LOGFIRE_ENABLED=true`.
+- If `LOGFIRE_TOKEN` is present, telemetry is sent to Logfire automatically; otherwise the bootstrap falls back to a safe tokenless path.
+- Pydantic AI instrumentation is enabled with prompt and tool payload content excluded by default. Opt in with `MEM_GRAPH_LOGFIRE_INCLUDE_CONTENT=true` only when you explicitly need that visibility.
+- HTTPX spans are instrumented by default without body capture. Set `MEM_GRAPH_LOGFIRE_CAPTURE_HTTPX=true` to capture raw provider payloads when debugging model traffic.
+- Existing OTEL exporters continue to work through the same startup path, so Logfire and OTLP exports can run together without racing over the global providers.
+
 The graph-query instrumentation records query class, query fingerprint, parameter count, duration, and row counts. It does not attach raw Cypher text or query parameters to spans.
 
 ## Evals
 
-The repository now includes a reusable eval framework under `src/mem_graph/evals/` plus baseline suites for audit, fix, and validate agents.
+The repository now includes a reusable eval framework under `src/mem_graph/evals/` plus maintained suites for audit, map, fix, validate, and document-oriented agent workflows.
 
 Run the deterministic fixture-backed baseline from the repo root:
 
 ```bash
-uv run mem-graph-evals --mode fixture
+make evals
 ```
 
 Run a single suite or override the stochastic run count:
@@ -109,7 +117,7 @@ uv run mem-graph-evals --mode fixture audit --runs 1
 Run the live agent suites when model credentials are configured:
 
 ```bash
-uv run mem-graph-evals --mode live
+make evals-live
 ```
 
 You can also use the direct script entry point:
@@ -117,5 +125,14 @@ You can also use the direct script entry point:
 ```bash
 uv run python scripts/run_evals.py --mode fixture
 ```
+
+Write a machine-readable report to disk and optionally persist a compact summary to the graph:
+
+```bash
+uv run mem-graph-evals --mode fixture --output build/evals/fixture-report.json
+uv run mem-graph-evals --mode fixture --output build/evals/ci-report.json --persist-project-id <project-id> --persist-label ci
+```
+
+The default merge gate should stay fast and deterministic: `make evals-ci` runs the fixture suites once and fails if any maintained case regresses. Live suites remain appropriate for release checks and manual investigation because they depend on model credentials and introduce normal LLM variance. Use `make evals-release` before cutting a release when you want that higher-confidence live signal.
 
 The default suite threshold is `0.67`, which means a case must pass at least 2 out of the default 3 runs to be considered healthy. This keeps the foundation useful for stochastic agents without turning every run into a flaky all-or-nothing gate.

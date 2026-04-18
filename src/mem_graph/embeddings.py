@@ -63,8 +63,10 @@ _TEXT_EMBEDDER = Embedder(_normalise_model_name(_TEXT_MODEL), defer_model_check=
 EMBED_DIM: int = _CONFIG_EMBED_DIM
 _CACHE_MAXSIZE: int = _CONFIG_EMBED_CACHE_SIZE
 
-# Context Safety: Set truncate=True in EmbeddingSettings to prevent errors on long docs
-_SETTINGS = EmbeddingSettings(truncate=True)
+# Context Safety & Keep-Alive Settings:
+# We use separate settings to allow the large code model to unload quickly.
+_CODE_SETTINGS = EmbeddingSettings(truncate=True)
+_TEXT_SETTINGS = EmbeddingSettings(truncate=True)
 
 ################
 #   OVERRIDE HOOK
@@ -155,10 +157,12 @@ async def _cached_embed_async(text: str, input_type: str) -> list[float]:
         return cached
 
     embedder = _CODE_EMBEDDER if is_code else _TEXT_EMBEDDER
+    settings = _CODE_SETTINGS if is_code else _TEXT_SETTINGS
+
     if key_type in {"query", "code_query"}:
-        result = await embedder.embed_query(text, settings=_SETTINGS)
+        result = await embedder.embed_query(text, settings=settings)
     else:
-        result = await embedder.embed(text, input_type="document", settings=_SETTINGS)
+        result = await embedder.embed(text, input_type="document", settings=settings)
 
     vec = [float(v) for v in result.embeddings[0]]
     validated = _validate(vec, text)
@@ -177,10 +181,12 @@ def _cached_embed_sync(text: str, input_type: str) -> list[float]:
         return cached
 
     embedder = _CODE_EMBEDDER if is_code else _TEXT_EMBEDDER
+    settings = _CODE_SETTINGS if is_code else _TEXT_SETTINGS
+
     if key_type in {"query", "code_query"}:
-        result = embedder.embed_query_sync(text, settings=_SETTINGS)
+        result = embedder.embed_query_sync(text, settings=settings)
     else:
-        result = embedder.embed_sync(text, input_type="document", settings=_SETTINGS)
+        result = embedder.embed_sync(text, input_type="document", settings=settings)
 
     vec = [float(v) for v in result.embeddings[0]]
     validated = _validate(vec, text)

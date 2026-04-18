@@ -173,7 +173,7 @@ Maintain version history:
 - Phase 4a: Icons and rich content visualization
 - Phase 4b: Background tasks with task=True
 - Phase 5a: Knowledge graph dashboard with ForceGraph
-- Phase 5b: Jira code embedder for semantic ticket linking
+- Phase 5b: Jina code embedder for semantic ticket linking
 - Phase 5c: File explorer tab with violation markers
 - OpenTelemetry integration for full observability
 - Versioning and website URL support

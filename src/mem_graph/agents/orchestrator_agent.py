@@ -17,7 +17,6 @@ from __future__ import annotations
 ################
 #   IMPORTS
 ################
-
 import logging
 import os
 from dataclasses import dataclass, field
@@ -70,7 +69,9 @@ class BatchResult(BaseModel):
     batch_index: int = Field(description="Zero-based index of this batch.")
     files_processed: list[str] = Field(description="Paths processed in this batch.")
     output: Any = Field(description="Raw output from the sub-agent.")
-    failed: bool = Field(default=False, description="True if sub-agent failed this batch.")
+    failed: bool = Field(
+        default=False, description="True if sub-agent failed this batch."
+    )
     error: str | None = Field(default=None, description="Error message on failure.")
 
 
@@ -130,6 +131,7 @@ class OrchestratorDependencies:
 
 orchestrator_agent = Agent(
     AGENT_MODEL,
+    name="orchestrator",
     deps_type=OrchestratorDependencies,
     output_type=OrchestratorReport,
     defer_model_check=DEFER_AGENT_MODEL_CHECK,
@@ -208,9 +210,16 @@ async def process_batch(
     Results are stored in working state for aggregation by finalize.
     Call this once per batch before moving to the next group of files.
     """
-    capped_paths = file_paths[:ctx.deps.batch_size]
+    capped_paths = file_paths[: ctx.deps.batch_size]
     state = _get_state(ctx)
     batch_index = len(state["batch_results"])
+
+    logger.info(
+        "[ORCH] starting batch=%d subagent=%s files=%d",
+        batch_index,
+        ctx.deps.subagent_name,
+        len(capped_paths),
+    )
 
     file_contents = await _read_batch(capped_paths)
     result = await _invoke_subagent(ctx, batch_index, file_contents)
@@ -220,6 +229,14 @@ async def process_batch(
 
     status = "FAILED" if result.failed else f"{len(capped_paths)} files processed"
     finding_summary = _summarise_batch_result(result, ctx.deps.subagent_name)
+
+    logger.info(
+        "[ORCH] finished batch=%d subagent=%s failed=%s summary=%s",
+        batch_index,
+        ctx.deps.subagent_name,
+        result.failed,
+        finding_summary,
+    )
 
     return f"Batch {batch_index}: {status}. {finding_summary}"
 
@@ -239,6 +256,14 @@ async def finalize(
     batch_results = state["batch_results"]
     failed = sum(1 for r in batch_results if r.failed)
     total_files = sum(len(r.files_processed) for r in batch_results)
+
+    logger.info(
+        "[ORCH] finalize subagent=%s total_batches=%d failed_batches=%d total_files=%d",
+        ctx.deps.subagent_name,
+        len(batch_results),
+        failed,
+        total_files,
+    )
 
     return OrchestratorReport(
         package_path=ctx.deps.package_path,
@@ -444,9 +469,7 @@ def _merge_audit(aggregate: dict, output: Any) -> None:
 
     if hasattr(output, "file_results"):
         for fr in output.file_results:
-            aggregate["all_findings"].extend(
-                [f.model_dump() for f in fr.findings]
-            )
+            aggregate["all_findings"].extend([f.model_dump() for f in fr.findings])
             if fr.skipped:
                 aggregate["files_skipped"] += 1
             else:
@@ -462,7 +485,9 @@ def _merge_map(aggregate: dict, output: Any) -> None:
     if hasattr(output, "features"):
         aggregate["features"].extend([f.model_dump() for f in output.features])
     if hasattr(output, "relationships"):
-        aggregate["relationships"].extend([r.model_dump() for r in output.relationships])
+        aggregate["relationships"].extend(
+            [r.model_dump() for r in output.relationships]
+        )
     if hasattr(output, "entry_points"):
         aggregate["entry_points"].extend(output.entry_points)
 
@@ -511,7 +536,9 @@ async def _read_single(path: str) -> BatchFileContent:
     Returns error content if the file cannot be read.
     """
     if not os.path.exists(path):
-        return BatchFileContent(path=path, content="ERROR: file not found", truncated=False)
+        return BatchFileContent(
+            path=path, content="ERROR: file not found", truncated=False
+        )
 
     try:
         raw = await anyio.Path(path).read_bytes()

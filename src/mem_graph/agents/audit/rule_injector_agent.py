@@ -87,6 +87,7 @@ class RuleInjectorDependencies:
 
 rule_injector_agent: Agent[RuleInjectorDependencies, RuleSetResult] = Agent(
     _INJECTOR_MODEL,
+    name="rule-injector",
     deps_type=RuleInjectorDependencies,
     output_type=RuleSetResult,
     defer_model_check=DEFER_AGENT_MODEL_CHECK,
