@@ -41,7 +41,9 @@ def keyword_score(output: str, expected_keywords: list[str]) -> float:
 
     output_normalized = _normalize_text(output)
     matches = sum(
-        1 for keyword in expected_keywords if _normalize_text(keyword) in output_normalized
+        1
+        for keyword in expected_keywords
+        if _normalize_text(keyword) in output_normalized
     )
     return matches / len(expected_keywords)
 
@@ -54,8 +56,12 @@ def regex_score(output: str, pattern: str) -> float:
 
 
 def _semantic_token_overlap(output: str, expected: str) -> float:
-    output_tokens = {token for token in re.findall(r"[a-z0-9_]+", _normalize_text(output)) if token}
-    expected_tokens = {token for token in re.findall(r"[a-z0-9_]+", _normalize_text(expected)) if token}
+    output_tokens = {
+        token for token in re.findall(r"[a-z0-9_]+", _normalize_text(output)) if token
+    }
+    expected_tokens = {
+        token for token in re.findall(r"[a-z0-9_]+", _normalize_text(expected)) if token
+    }
     if not output_tokens or not expected_tokens:
         return exact_match_score(output, expected)
 
@@ -69,8 +75,8 @@ def _load_sentence_model():
         from sentence_transformers import SentenceTransformer
 
         return SentenceTransformer("all-MiniLM-L6-v2")
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("Falling back to token-overlap semantic scorer: %s", exc)
+    except Exception:  # noqa: BLE001
+        logger.debug("Falling back to token-overlap semantic scorer due to error")
         return None
 
 
@@ -136,5 +142,7 @@ class HostedTextScorer(Evaluator[Any, Any, Any]):
                 list(_field(ctx.metadata, "expected_keywords", []) or []),
             )
         if scorer == "regex":
-            return regex_score(output, str(_field(ctx.metadata, "expected_pattern", "") or ""))
+            return regex_score(
+                output, str(_field(ctx.metadata, "expected_pattern", "") or "")
+            )
         return semantic_similarity_score(output, str(expected_output))

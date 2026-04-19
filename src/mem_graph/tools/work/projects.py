@@ -135,14 +135,14 @@ async def project_search(
     vec = await embeddings_generate(query)
 
     result = conn.execute(
-        f"""
-        CALL QUERY_VECTOR_INDEX('Project', 'idx_project_emb', $qvec, {limit})
+        """
+        CALL QUERY_VECTOR_INDEX('Project', 'idx_project_emb', $qvec, $limit)
         WITH node AS p, distance
         RETURN p.id, p.name, p.description, p.status, distance
         ORDER BY distance
-        LIMIT {limit}
+        LIMIT $limit
         """,
-        {"qvec": vec},
+        {"qvec": vec, "limit": limit},
     )
 
     if isinstance(result, list):

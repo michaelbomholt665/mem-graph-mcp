@@ -213,30 +213,30 @@ async def decision_search(
     candidate_size = limit * 3
 
     vector_raw = conn.execute(
-        f"""
-        CALL QUERY_VECTOR_INDEX('Decision', 'idx_decision_emb', $qvec, {candidate_size})
+        """
+        CALL QUERY_VECTOR_INDEX('Decision', 'idx_decision_emb', $qvec, $candidate_size)
         WITH node AS d, distance
         OPTIONAL MATCH (p:Project)-[:HAS_DECISION]->(d)
         RETURN d.id, d.title, d.rationale, d.status, d.impact, p.id AS project_id, distance
         ORDER BY distance
-        LIMIT {candidate_size}
+        LIMIT $candidate_size
         """,
-        {"qvec": vec},
+        {"qvec": vec, "candidate_size": candidate_size},
     )
     if isinstance(vector_raw, list):
         vector_raw = vector_raw[0]
     vector_rows = cast(list[list[Any]], vector_raw.get_all())
 
     fts_raw = conn.execute(
-        f"""
+        """
         CALL QUERY_FTS_INDEX('Decision', 'fts_decision_rat', $q)
         WITH node AS d, score
         OPTIONAL MATCH (p:Project)-[:HAS_DECISION]->(d)
         RETURN d.id, d.title, d.rationale, d.status, d.impact, p.id AS project_id, score
         ORDER BY score DESC
-        LIMIT {candidate_size}
+        LIMIT $candidate_size
         """,
-        {"q": query},
+        {"q": query, "candidate_size": candidate_size},
     )
     if isinstance(fts_raw, list):
         fts_raw = fts_raw[0]
@@ -321,7 +321,11 @@ async def decision_review(
     ]
 
     if not decisions:
-        return {"summary": "No active decisions to review.", "honoured": 0, "drifted": 0}
+        return {
+            "summary": "No active decisions to review.",
+            "honoured": 0,
+            "drifted": 0,
+        }
 
     skills_content = await _load_decision_skills()
     deps = DecisionDependencies(

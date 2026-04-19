@@ -25,12 +25,17 @@ if not os.getenv("OPENAI_API_KEY"):
 import anyio
 import uvicorn
 from fastmcp import FastMCP
-from fastmcp.experimental.transforms.code_mode import CodeMode  # type: ignore[import-untyped]
+from fastmcp.experimental.transforms.code_mode import (
+    CodeMode,  # type: ignore[import-untyped]
+)
 from fastmcp.server.context import Context
-from fastmcp.server.providers.skills import SkillsProvider  # type: ignore[import-untyped]
+from fastmcp.server.providers.skills import (
+    SkillsProvider,  # type: ignore[import-untyped]
+)
 from mcp.types import Icon
 from starlette.responses import JSONResponse
 
+from .app import telemetry, web
 from .app.auth import StaticTokenVerifier, build_auth_provider
 from .app.constants import (
     HOST,
@@ -44,13 +49,18 @@ from .app.lifespan import build_lifespan
 from .app.middleware import LoggingMiddleware
 from .app.prompts import register_prompts
 from .app.resources import register_resources
-from .app import telemetry, web
-from .app.tools import get_server_info, get_namespace, register_tools, score_tool
-from .app.tools import server_info_payload
+from .app.tools import (
+    get_namespace,
+    get_server_info,
+    register_tools,
+    score_tool,
+    server_info_payload,
+)
 from .logging import logging_setup_engine
 from .tools import background, graph, integrations
 from .tools.agents import audit, diagrams, orchestrator, triage
 from .tools.agents import map as map_tool
+from .tools.code import parser as code_parser
 from .tools.filesystem import filesystem
 from .tools.memory import conversation, memory, notes
 from .tools.work import decisions, projects, tasks, violations
@@ -112,6 +122,7 @@ for sub_mcp in (
     background.mcp,
     graph.mcp,
     integrations.mcp,
+    code_parser.mcp,
 ):
     mcp.mount(sub_mcp)
 
@@ -138,7 +149,9 @@ def run() -> None:
         _run_http()
     else:
         mcp.run(
-            transport=cast(Literal["stdio", "http", "sse", "streamable-http"], TRANSPORT),
+            transport=cast(
+                Literal["stdio", "http", "sse", "streamable-http"], TRANSPORT
+            ),
             host=HOST,
             port=PORT,
         )
@@ -156,18 +169,7 @@ def _run_http() -> None:
             ws="websockets-sansio",
             log_level="warning",
         )
-        logger.info(
-            "Starting server %r v%s (HTTP: /mcp, SSE: /sse, Info: /info, Health: /health) on %s:%s",
-            mcp.name,
-            SERVER_VERSION,
-            HOST,
-            PORT,
-        )
-        logger.info("Dashboard:  http://%s:%s/dashboard", HOST, PORT)
-        logger.info("Files:      http://%s:%s/file-tree", HOST, PORT)
-        logger.info(
-            "Logfire:    https://logfire-eu.pydantic.dev/michaelbomholt/memgraph"
-        )
+        # Logs moved to lifespan for better positioning (below logo)
         server = uvicorn.Server(config)
         await server.serve()
 

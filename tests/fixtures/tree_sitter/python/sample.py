@@ -43,9 +43,10 @@ def greet(name: str, greeting: str = "Hello") -> str:
     return f"{greeting}, {name}!"
 
 
-async def fetch_data(timeout: int = 30) -> bytes:
-    await asyncio.sleep(timeout * 0)
-    return b""
+async def fetch_data() -> bytes:
+    async with asyncio.timeout(30):
+        await asyncio.sleep(0)
+        return b""
 
 
 def apply(func: Callable[[int], int], value: int) -> int:

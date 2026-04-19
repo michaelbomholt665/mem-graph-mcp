@@ -308,25 +308,43 @@ def _print_static_result(s: StaticResult | None) -> None:
         print(f"  {_SKIP}  Static validation: skipped")
 
 
+def _print_cli_skipped(tag: str, skip_reason: str) -> None:
+    print(f"{tag}  [skipped: {skip_reason}]")
+
+
+def _print_cli_noise_budget(language: str, capture_count: int) -> None:
+    lo, hi = _NOISE_BUDGET.get(language, (0, 999))
+    print(f"       Budget: [{lo}, {hi}], got {capture_count}")
+
+
+def _print_cli_success(tag: str, c: CliResult) -> None:
+    budget_sym = _OK if c.noise_ok else _FAIL
+    print(f"{tag}  captures={c.capture_count}  {budget_sym}noise")
+    if not c.noise_ok:
+        _print_cli_noise_budget(c.language, c.capture_count)
+
+
+def _print_cli_failure(tag: str, c: CliResult) -> None:
+    print(f"{tag}  FAILED (rc={c.returncode})")
+    if c.stderr:
+        for line in c.stderr.strip().splitlines()[:5]:
+            print(f"       {line}")
+
+
 def _print_cli_generated(c: CliResult | None) -> None:
-    if c is not None:
-        sym = _sym(c.ok, c.skipped)
-        tag = f"  {sym}  CLI generated: {c.scm_path.name}"
-        if c.skipped:
-            print(f"{tag}  [skipped: {c.skip_reason}]")
-        elif c.ok:
-            budget_sym = _OK if c.noise_ok else _FAIL
-            print(f"{tag}  captures={c.capture_count}  {budget_sym}noise")
-            if not c.noise_ok:
-                lo, hi = _NOISE_BUDGET.get(c.language, (0, 999))
-                print(f"       Budget: [{lo}, {hi}], got {c.capture_count}")
-        else:
-            print(f"{tag}  FAILED (rc={c.returncode})")
-            if c.stderr:
-                for line in c.stderr.strip().splitlines()[:5]:
-                    print(f"       {line}")
-    else:
+    if c is None:
         print(f"  {_SKIP}  CLI generated: no generated file found")
+        return
+
+    sym = _sym(c.ok, c.skipped)
+    tag = f"  {sym}  CLI generated: {c.scm_path.name}"
+
+    if c.skipped:
+        _print_cli_skipped(tag, c.skip_reason)
+    elif c.ok:
+        _print_cli_success(tag, c)
+    else:
+        _print_cli_failure(tag, c)
 
 
 def _print_vendor_results(cli_vendor: list[CliResult]) -> None:
@@ -419,7 +437,12 @@ def _add_error_reasons(lines: list[str], reports: list[ValidationReport]) -> Non
 def build_decision(reports: list[ValidationReport]) -> str:
     """Build a Task 024 decision record from validation results."""
     viable, partial, failed = _categorize_languages(reports)
-    overall = "viable" if not failed and not partial else ("partial" if viable else "failed")
+    if not failed and not partial:
+        overall = "viable"
+    elif viable:
+        overall = "partial"
+    else:
+        overall = "failed"
 
     lines = [
         "",

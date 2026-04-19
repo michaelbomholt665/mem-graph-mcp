@@ -121,6 +121,12 @@ def logging_setup_engine(level: str = "INFO") -> None:
     root.addHandler(handler)
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
 
+    # Quiet specific third-party loggers that are too noisy at startup
+    logging.getLogger("docket").setLevel(logging.WARNING)
+    logging.getLogger("mcp").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
 
 class logging_tool_span:
     """Async context manager that logs tool invocation timing."""

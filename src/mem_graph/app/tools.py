@@ -30,7 +30,7 @@ def server_info_payload() -> dict[str, str]:
     }
 
 
-async def get_server_info() -> dict[str, str]:
+def get_server_info() -> dict[str, str]:
     """Return stable server metadata for clients and operators."""
     return server_info_payload()
 

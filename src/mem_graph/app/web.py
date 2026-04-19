@@ -90,11 +90,15 @@ def _evals(request: Request) -> FileResponse:  # noqa: ARG001
 
 
 def _dashboard_js(_request: Request) -> FileResponse:  # noqa: ARG001
-    return FileResponse(_asset_path("js/dashboard.js", "dashboard.js"), media_type=JS_MIME)
+    return FileResponse(
+        _asset_path("js/dashboard.js", "dashboard.js"), media_type=JS_MIME
+    )
 
 
 def _dashboard_css(_request: Request) -> FileResponse:  # noqa: ARG001
-    return FileResponse(_asset_path("style/dashboard.css", "dashboard.css"), media_type=CSS_MIME)
+    return FileResponse(
+        _asset_path("style/dashboard.css", "dashboard.css"), media_type=CSS_MIME
+    )
 
 
 def _force_graph_js(_request: Request) -> Response:  # noqa: ARG001
@@ -109,7 +113,7 @@ def _asset_path(current: str, legacy: str):
     return STATIC_DIR / legacy
 
 
-async def _dashboard_system(request: Request) -> JSONResponse:  # noqa: ARG001
+def _dashboard_system(request: Request) -> JSONResponse:  # noqa: ARG001
     db_status = "connected"
     telemetry: dict[str, Any] = {}
     try:
@@ -131,12 +135,12 @@ async def _dashboard_system(request: Request) -> JSONResponse:  # noqa: ARG001
     )
 
 
-async def _dashboard_agents(request: Request) -> JSONResponse:  # noqa: ARG001
+def _dashboard_agents(request: Request) -> JSONResponse:  # noqa: ARG001
     agents = discover_agent_modules()
     return JSONResponse({"agents": agents, "count": len(agents)})
 
 
-async def _dashboard_workflows(request: Request) -> JSONResponse:  # noqa: ARG001
+def _dashboard_workflows(request: Request) -> JSONResponse:  # noqa: ARG001
     workflows = workflow_definitions()
     return JSONResponse({"workflows": workflows, "count": len(workflows)})
 
@@ -198,7 +202,7 @@ def dashboard_tools_handler(mcp: FastMCP):
     return _dashboard_tools
 
 
-async def _dashboard_evals(request: Request) -> JSONResponse:
+def _dashboard_evals(request: Request) -> JSONResponse:
     project_id = request.query_params.get("project_id")
     limit = min(max(int(request.query_params.get("limit", 20)), 1), 100)
     if project_id:
@@ -278,7 +282,9 @@ async def _dashboard_graph(request: Request) -> JSONResponse:
 
 async def _dashboard_node(request: Request) -> JSONResponse:
     try:
-        details = await graph.graph_queries.get_node_details(request.path_params["node_id"])
+        details = await graph.graph_queries.get_node_details(
+            request.path_params["node_id"]
+        )
         if not isinstance(details, dict):
             return JSONResponse(details.model_dump())
         return JSONResponse(details, status_code=404 if "error" in details else 200)
@@ -326,17 +332,19 @@ async def _file_tree_data(request: Request) -> JSONResponse:
         payload = await filesystem_tree.get_file_tree(
             root_path=request.query_params.get("root_path"),
             project_id=request.query_params.get("project_id"),
-            include_hidden=_query_flag(request.query_params.get("include_hidden"), False),
+            include_hidden=_query_flag(
+                request.query_params.get("include_hidden"), False
+            ),
             include_graph_metadata=_query_flag(
                 request.query_params.get("include_graph_metadata"),
                 True,
             ),
             max_depth=int(request.query_params.get("max_depth", 8)),
         )
-        status_code = 400 if isinstance(payload, dict) and "error" in payload else 200
-        if hasattr(payload, "model_dump"):
-            return JSONResponse(payload.model_dump(), status_code=status_code)
-        return JSONResponse(payload, status_code=status_code)
+        if isinstance(payload, dict):
+            status_code = 400 if "error" in payload else 200
+            return JSONResponse(payload, status_code=status_code)
+        return JSONResponse(payload.model_dump(), status_code=200)
     except Exception as exc:
         logger.error("File tree data error: %s", exc)
         return JSONResponse({"error": str(exc)}, status_code=500)
@@ -347,12 +355,14 @@ async def _file_tree_violations(request: Request) -> JSONResponse:
         file_path=request.query_params.get("file_path", ""),
         root_path=request.query_params.get("root_path"),
         project_id=request.query_params.get("project_id"),
-        include_resolved=_query_flag(request.query_params.get("include_resolved"), True),
+        include_resolved=_query_flag(
+            request.query_params.get("include_resolved"), True
+        ),
     )
-    status_code = 400 if isinstance(payload, dict) and "error" in payload else 200
-    if hasattr(payload, "model_dump"):
-        return JSONResponse(payload.model_dump(), status_code=status_code)
-    return JSONResponse(payload, status_code=status_code)
+    if isinstance(payload, dict):
+        status_code = 400 if "error" in payload else 200
+        return JSONResponse(payload, status_code=status_code)
+    return JSONResponse(payload.model_dump(), status_code=200)
 
 
 def build_http_app(

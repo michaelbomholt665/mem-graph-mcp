@@ -16,7 +16,6 @@ from __future__ import annotations
 ################
 #   IMPORTS
 ################
-
 import logging
 from dataclasses import dataclass
 from typing import Any, cast
@@ -181,24 +180,24 @@ async def chat_recall_memories(
         candidate_size = limit * 3
 
         vector_raw = conn.execute(
-            f"""
-            CALL QUERY_VECTOR_INDEX('Memory', 'idx_memory_emb', $qvec, {candidate_size})
+            """
+            CALL QUERY_VECTOR_INDEX('Memory', 'idx_memory_emb', $qvec, $candidate_size)
             WITH node AS m, distance
             WHERE m.expires_at IS NULL OR m.expires_at > current_timestamp()
             OPTIONAL MATCH (m)<-[:PROJECT_MEMORY]-(p:Project)
             RETURN m.id, m.kind, m.scope, m.content, m.confidence,
                    p.id AS project_id, distance
             ORDER BY distance
-            LIMIT {candidate_size}
+            LIMIT $candidate_size
             """,
-            {"qvec": vec},
+            {"qvec": vec, "candidate_size": candidate_size},
         )
         if isinstance(vector_raw, list):
             vector_raw = vector_raw[0]
         vector_rows = cast(list[list[Any]], vector_raw.get_all())
 
         fts_raw = conn.execute(
-            f"""
+            """
             CALL QUERY_FTS_INDEX('Memory', 'fts_memory_content', $q)
             WITH node AS m, score
             WHERE m.expires_at IS NULL OR m.expires_at > current_timestamp()
@@ -206,9 +205,9 @@ async def chat_recall_memories(
             RETURN m.id, m.kind, m.scope, m.content, m.confidence,
                    p.id AS project_id, score
             ORDER BY score DESC
-            LIMIT {candidate_size}
+            LIMIT $candidate_size
             """,
-            {"q": query},
+            {"q": query, "candidate_size": candidate_size},
         )
         if isinstance(fts_raw, list):
             fts_raw = fts_raw[0]
@@ -223,11 +222,17 @@ async def chat_recall_memories(
             data_map[row[0]] = row
 
         results: list[dict[str, Any]] = []
-        for node_id, relevance in sorted(ranks.items(), key=lambda item: item[1], reverse=True):
+        for node_id, relevance in sorted(
+            ranks.items(), key=lambda item: item[1], reverse=True
+        ):
             if node_id not in data_map:
                 continue
             row = data_map[node_id]
-            if not ctx.deps.cross_scope and ctx.deps.project_id and row[5] != ctx.deps.project_id:
+            if (
+                not ctx.deps.cross_scope
+                and ctx.deps.project_id
+                and row[5] != ctx.deps.project_id
+            ):
                 continue
             results.append(
                 {
@@ -277,24 +282,24 @@ async def chat_search_violations(
         candidate_size = limit * 3
 
         vector_raw = conn.execute(
-            f"""
-            CALL QUERY_VECTOR_INDEX('Violation', 'idx_violation_emb', $qvec, {candidate_size})
+            """
+            CALL QUERY_VECTOR_INDEX('Violation', 'idx_violation_emb', $qvec, $candidate_size)
             WITH node AS v, distance
             OPTIONAL MATCH (p:Project)-[:HAS_VIOLATION]->(v)
             WHERE ($status_filter = 'all' OR v.status = $status_filter)
             RETURN v.id, v.rule, v.severity, v.file_path, v.description,
                    v.status, p.id AS project_id, distance
             ORDER BY distance
-            LIMIT {candidate_size}
+            LIMIT $candidate_size
             """,
-            {"qvec": vec, "status_filter": status_filter},
+            {"qvec": vec, "status_filter": status_filter, "candidate_size": candidate_size},
         )
         if isinstance(vector_raw, list):
             vector_raw = vector_raw[0]
         vector_rows = cast(list[list[Any]], vector_raw.get_all())
 
         fts_raw = conn.execute(
-            f"""
+            """
             CALL QUERY_FTS_INDEX('Violation', 'fts_violation_desc', $q)
             WITH node AS v, score
             OPTIONAL MATCH (p:Project)-[:HAS_VIOLATION]->(v)
@@ -302,9 +307,9 @@ async def chat_search_violations(
             RETURN v.id, v.rule, v.severity, v.file_path, v.description,
                    v.status, p.id AS project_id, score
             ORDER BY score DESC
-            LIMIT {candidate_size}
+            LIMIT $candidate_size
             """,
-            {"q": query, "status_filter": status_filter},
+            {"q": query, "status_filter": status_filter, "candidate_size": candidate_size},
         )
         if isinstance(fts_raw, list):
             fts_raw = fts_raw[0]
@@ -319,11 +324,17 @@ async def chat_search_violations(
             data_map[row[0]] = row
 
         results: list[dict[str, Any]] = []
-        for node_id, relevance in sorted(ranks.items(), key=lambda item: item[1], reverse=True):
+        for node_id, relevance in sorted(
+            ranks.items(), key=lambda item: item[1], reverse=True
+        ):
             if node_id not in data_map:
                 continue
             row = data_map[node_id]
-            if ctx.deps.project_id and not ctx.deps.cross_scope and row[6] != ctx.deps.project_id:
+            if (
+                ctx.deps.project_id
+                and not ctx.deps.cross_scope
+                and row[6] != ctx.deps.project_id
+            ):
                 continue
             results.append(
                 {
@@ -371,33 +382,33 @@ async def chat_search_decisions(
         vec = await embeddings_query(query)
         candidate_size = limit * 3
 
-        vector_raw = conn.execute(
-            f"""
-            CALL QUERY_VECTOR_INDEX('Decision', 'idx_decision_emb', $qvec, {candidate_size})
+        vector_raw = conn.execute(  # nosemgrep
+            """
+            CALL QUERY_VECTOR_INDEX('Decision', 'idx_decision_emb', $qvec, $candidate_size)
             WITH node AS d, distance
             OPTIONAL MATCH (p:Project)-[:HAS_DECISION]->(d)
             RETURN d.id, d.title, d.rationale, d.status, d.impact,
                    p.id AS project_id, distance
             ORDER BY distance
-            LIMIT {candidate_size}
+            LIMIT $candidate_size
             """,
-            {"qvec": vec},
+            {"qvec": vec, "candidate_size": candidate_size},
         )
         if isinstance(vector_raw, list):
             vector_raw = vector_raw[0]
         vector_rows = cast(list[list[Any]], vector_raw.get_all())
 
-        fts_raw = conn.execute(
-            f"""
+        fts_raw = conn.execute(  # nosemgrep
+            """
             CALL QUERY_FTS_INDEX('Decision', 'fts_decision_rat', $q)
             WITH node AS d, score
             OPTIONAL MATCH (p:Project)-[:HAS_DECISION]->(d)
             RETURN d.id, d.title, d.rationale, d.status, d.impact,
                    p.id AS project_id, score
             ORDER BY score DESC
-            LIMIT {candidate_size}
+            LIMIT $candidate_size
             """,
-            {"q": query},
+            {"q": query, "candidate_size": candidate_size},
         )
         if isinstance(fts_raw, list):
             fts_raw = fts_raw[0]
@@ -412,11 +423,17 @@ async def chat_search_decisions(
             data_map[row[0]] = row
 
         results: list[dict[str, Any]] = []
-        for node_id, relevance in sorted(ranks.items(), key=lambda item: item[1], reverse=True):
+        for node_id, relevance in sorted(
+            ranks.items(), key=lambda item: item[1], reverse=True
+        ):
             if node_id not in data_map:
                 continue
             row = data_map[node_id]
-            if ctx.deps.project_id and not ctx.deps.cross_scope and row[5] != ctx.deps.project_id:
+            if (
+                ctx.deps.project_id
+                and not ctx.deps.cross_scope
+                and row[5] != ctx.deps.project_id
+            ):
                 continue
             results.append(
                 {
@@ -467,6 +484,13 @@ async def chat_traverse_relationship(
 
         conn = db_get_connection()
 
+        import re
+        identifier_pattern = r"^[a-zA-Z_][\w]*$"
+        if not re.match(identifier_pattern, relationship):
+            raise ValueError(f"Invalid relationship: {relationship}")
+        if not re.match(identifier_pattern, node_type):
+            raise ValueError(f"Invalid node_type: {node_type}")
+
         if direction == "incoming":
             pattern = f"(connected)-[:{relationship}]->(n:{node_type} {{id: $id}})"
         else:
@@ -474,7 +498,7 @@ async def chat_traverse_relationship(
 
         raw = cast(
             list[list[Any]],
-            conn.execute(
+            conn.execute(  # nosemgrep
                 f"""
                 MATCH {pattern}
                 RETURN connected

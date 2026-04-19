@@ -107,7 +107,7 @@ async def test_eval_report_can_be_written_and_persisted(db, tmp_path) -> None:
 
     from mem_graph import server as server_mod
 
-    response = await server_mod._dashboard_evals(
+    response = server_mod._dashboard_evals(
         _request("/dashboard/api/evals", f"project_id={project['project_id']}")
     )
 

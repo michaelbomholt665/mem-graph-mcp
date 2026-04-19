@@ -12,6 +12,8 @@
 // ---------------------------------------------------------------------------
 INSTALL vector; LOAD vector;
 INSTALL fts;    LOAD fts;
+INSTALL llm;    LOAD llm;
+INSTALL algo;   LOAD algo;
 
 
 // =============================================================================
@@ -181,14 +183,20 @@ CREATE NODE TABLE IF NOT EXISTS Memory (
 // CodeSymbol — symbol reference for traceability (ISR/Syntx integration)
 // ---------------------------------------------------------------------------
 CREATE NODE TABLE IF NOT EXISTS CodeSymbol (
-    id         STRING PRIMARY KEY,
-    name       STRING,
-    kind       STRING,                -- function | method | struct | interface | const | …
-    file_path  STRING,
-    language   STRING,
-    signature  STRING,
-    embedding  FLOAT[1536],
-    indexed_at TIMESTAMP DEFAULT current_timestamp()
+    id             STRING PRIMARY KEY,
+    name           STRING,
+    kind           STRING,                -- function | method | struct | interface | const | …
+    file_path      STRING,
+    language       STRING,
+    signature      STRING,
+    qualified_name STRING,
+    parent_id      STRING,
+    line_start     INT64,
+    line_end       INT64,
+    is_exported    BOOLEAN DEFAULT false,
+    is_async       BOOLEAN DEFAULT false,
+    embedding      FLOAT[1536],
+    indexed_at     TIMESTAMP DEFAULT current_timestamp()
 );
 
 // ---------------------------------------------------------------------------
@@ -342,6 +350,24 @@ CREATE REL TABLE IF NOT EXISTS TAGGED (
     FROM Violation TO Tag,
     FROM Decision  TO Tag
 );
+
+// ---------------------------------------------------------------------------
+// Code graph relationships (parser pipeline)
+// ---------------------------------------------------------------------------
+CREATE REL TABLE IF NOT EXISTS FILE_SYMBOL        (FROM CodeFile   TO CodeSymbol);
+CREATE REL TABLE IF NOT EXISTS CONTAINS           (FROM CodeSymbol TO CodeSymbol);
+CREATE REL TABLE IF NOT EXISTS IMPORTS            (FROM CodeSymbol TO CodeSymbol, module_path STRING, alias STRING, is_relative BOOLEAN);
+CREATE REL TABLE IF NOT EXISTS CALLS              (FROM CodeSymbol TO CodeSymbol, call_name STRING, receiver_name STRING, is_awaited BOOLEAN);
+CREATE REL TABLE IF NOT EXISTS RESOLVES_TO        (FROM CodeSymbol TO CodeSymbol, confidence DOUBLE, resolver STRING);
+CREATE REL TABLE IF NOT EXISTS EXTENDS            (FROM CodeSymbol TO CodeSymbol);
+CREATE REL TABLE IF NOT EXISTS IMPLEMENTS_SYMBOL  (FROM CodeSymbol TO CodeSymbol);
+CREATE REL TABLE IF NOT EXISTS HAS_TYPE           (FROM CodeSymbol TO CodeSymbol);
+CREATE REL TABLE IF NOT EXISTS RETURNS_TYPE       (FROM CodeSymbol TO CodeSymbol);
+CREATE REL TABLE IF NOT EXISTS READS_FROM         (FROM CodeSymbol TO CodeSymbol);
+CREATE REL TABLE IF NOT EXISTS PROJECTS           (FROM CodeSymbol TO CodeSymbol);
+CREATE REL TABLE IF NOT EXISTS FILTERS_ON         (FROM CodeSymbol TO CodeSymbol);
+CREATE REL TABLE IF NOT EXISTS JOINS_ON           (FROM CodeSymbol TO CodeSymbol);
+CREATE REL TABLE IF NOT EXISTS ALIASES            (FROM CodeSymbol TO CodeSymbol);
 
 
 // =============================================================================

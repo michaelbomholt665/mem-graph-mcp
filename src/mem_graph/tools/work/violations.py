@@ -231,30 +231,30 @@ async def violation_search(
     candidate_size = limit * 3
 
     vector_raw = conn.execute(
-        f"""
-        CALL QUERY_VECTOR_INDEX('Violation', 'idx_violation_emb', $qvec, {candidate_size})
+        """
+        CALL QUERY_VECTOR_INDEX('Violation', 'idx_violation_emb', $qvec, $candidate_size)
         WITH node AS v, distance
         OPTIONAL MATCH (p:Project)-[:HAS_VIOLATION]->(v)
         RETURN v.id, v.rule, v.severity, v.status, v.file_path, p.id AS project_id, distance
         ORDER BY distance
-        LIMIT {candidate_size}
+        LIMIT $candidate_size
         """,
-        {"qvec": vec},
+        {"qvec": vec, "candidate_size": candidate_size},
     )
     if isinstance(vector_raw, list):
         vector_raw = vector_raw[0]
     vector_rows = cast(list[list[Any]], vector_raw.get_all())
 
     fts_raw = conn.execute(
-        f"""
+        """
         CALL QUERY_FTS_INDEX('Violation', 'fts_violation_desc', $q)
         WITH node AS v, score
         OPTIONAL MATCH (p:Project)-[:HAS_VIOLATION]->(v)
         RETURN v.id, v.rule, v.severity, v.status, v.file_path, p.id AS project_id, score
         ORDER BY score DESC
-        LIMIT {candidate_size}
+        LIMIT $candidate_size
         """,
-        {"q": query},
+        {"q": query, "candidate_size": candidate_size},
     )
     if isinstance(fts_raw, list):
         fts_raw = fts_raw[0]

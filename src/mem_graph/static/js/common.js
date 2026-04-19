@@ -20,13 +20,13 @@ export function text(value, fallback = '') {
 export async function fetchJson(url) {
   const response = await fetch(url);
   let payload = {};
-  
+
   try {
     payload = await response.json().catch(() => ({}));
   } catch (e) {
     console.warn('[fetchJson] Could not parse response as JSON:', e);
   }
-  
+
   if (!response.ok) {
     throw new Error(payload.error || payload.status || `Request failed with ${response.status}`);
   }
@@ -46,7 +46,7 @@ export function initTheme() {
   const stored = localStorage.getItem('memory-atlas-theme');
   const fallback = globalThis.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   applyTheme(stored || fallback);
-  
+
   const toggle = qs('theme-toggle');
   if (toggle) {
     toggle.addEventListener('click', () => {
@@ -68,12 +68,9 @@ export function metaRow(label, value) {
 }
 
 export function escapeHtml(value) {
-  return text(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
+  const textarea = document.createElement('textarea');
+  textarea.textContent = text(value);
+  return textarea.innerHTML;
 }
 
 export async function initProjectDropdown(elementId, callback) {

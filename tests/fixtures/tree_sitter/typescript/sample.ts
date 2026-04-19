@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { readFile } from "node:fs/promises";
 import type { PathLike } from "node:fs";
 
@@ -47,7 +48,7 @@ export async function readFileContents(path: PathLike): Promise<string> {
 }
 
 export class Repository<T extends { id: number }> {
-  private items: Map<number, T> = new Map();
+  private readonly items: Map<number, T> = new Map();
 
   async findById(id: number): Promise<T | undefined> {
     return this.items.get(id);

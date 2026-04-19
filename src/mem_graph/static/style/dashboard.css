@@ -328,7 +328,7 @@
   border-radius: 6px;
   font-size: 11px;
   font-family: var(--font-mono);
-  color: #5a6a7a;
+  color: #8899aa;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -564,7 +564,7 @@
   padding: 3px 10px;
   border-radius: 4px;
   background: #141820;
-  color: #3a4a5a;
+  color: #7f8ea3;
   border: 1px solid #1a2030;
   cursor: pointer;
   transition: all 0.12s;
@@ -640,7 +640,7 @@
 .schema-btn {
   font-size: 10px;
   font-family: var(--font-mono);
-  color: #2d3d4d;
+  color: #7f8ea3;
   background: #141820;
   border: 1px solid #1a2030;
   border-radius: 4px;

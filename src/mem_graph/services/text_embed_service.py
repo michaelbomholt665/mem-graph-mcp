@@ -212,7 +212,9 @@ class TextEmbedService:
             include_resolved=include_resolved,
         ):
             score = cosine_similarity(indexed.embedding, issue_embedding)
-            relation = self.load_relation(issue.issue_id(), indexed.file_id) or "MENTIONS"
+            relation = (
+                self.load_relation(issue.issue_id(), indexed.file_id) or "MENTIONS"
+            )
             if relation == "IMPLEMENTS":
                 score += 0.03
             if score < minimum_score:
@@ -242,7 +244,9 @@ class TextEmbedService:
 
     async def upsert_issue(self, issue: JinaIssue, *, project_id: str | None) -> None:
         issue_id = issue.issue_id()
-        source_hash = hashlib.sha256(issue.as_embedding_text().encode("utf-8")).hexdigest()
+        source_hash = hashlib.sha256(
+            issue.as_embedding_text().encode("utf-8")
+        ).hexdigest()
         existing = rows(
             "MATCH (j:JinaIssue {id: $id}) RETURN j.source_hash LIMIT 1",
             {"id": issue_id},
@@ -323,7 +327,14 @@ class TextEmbedService:
     def persist_issue_link(self, issue_id: str, match: CodeMatch) -> None:
         if self.load_relation(issue_id, match.file_id) is not None:
             return
-        db_get_connection().execute(
+        import re
+
+        # Validate relation to prevent injection
+        identifier_pattern = r"^[a-zA-Z_][\w]*$"
+        if not re.match(identifier_pattern, match.relation):
+            raise ValueError(f"Invalid relation: {match.relation}")
+
+        db_get_connection().execute(  # nosemgrep
             f"""
             MATCH (j:JinaIssue {{id: $issue_id}}), (f:CodeFile {{id: $file_id}})
             CREATE (j)-[:{match.relation} {{score: $score, snippet: $snippet, linked_at: $ts}}]->(f)
@@ -339,7 +350,7 @@ class TextEmbedService:
 
     def load_relation(self, issue_id: str, file_id: str) -> str | None:
         for relation in ("IMPLEMENTS", "MENTIONS"):
-            result_rows = rows(
+            result_rows = rows(  # nosemgrep
                 f"""
                 MATCH (:JinaIssue {{id: $issue_id}})-[:{relation}]->(:CodeFile {{id: $file_id}})
                 RETURN count(*)
@@ -385,7 +396,9 @@ class TextEmbedService:
             """
         )
 
-    def stored_issue_from_row(self, row: list[Any]) -> tuple[JinaIssue, list[float]] | None:
+    def stored_issue_from_row(
+        self, row: list[Any]
+    ) -> tuple[JinaIssue, list[float]] | None:
         issue_key = str(row[0] or "")
         embedding = [float(value) for value in cast(list[float], row[7] or [])]
         if not issue_key or not embedding:
@@ -400,4 +413,3 @@ class TextEmbedService:
             url=str(row[6] or ""),
         )
         return issue, embedding
-

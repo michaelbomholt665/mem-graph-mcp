@@ -49,10 +49,17 @@ class CodeEmbedService:
         root_path: str | None = None,
         project_id: str | None = None,
     ) -> Path:
-        candidate = root_path or self.project_root(project_id) or FILE_TREE_DEFAULT_ROOT or os.getcwd()
+        candidate = (
+            root_path
+            or self.project_root(project_id)
+            or FILE_TREE_DEFAULT_ROOT
+            or os.getcwd()
+        )
         root = Path(candidate).expanduser().resolve()
         if not root.exists() or not root.is_dir():
-            raise FileNotFoundError(f"Root path does not exist or is not a directory: {root}")
+            raise FileNotFoundError(
+                f"Root path does not exist or is not a directory: {root}"
+            )
         return root
 
     def project_root(self, project_id: str | None) -> str | None:
@@ -225,8 +232,19 @@ class CodeEmbedService:
             ensure_project_link(project_id, record.file_id, "CodeFile", "HAS_FILE")
 
 
-def ensure_project_link(project_id: str, node_id: str, label: str, rel_name: str) -> None:
-    result_rows = rows(
+def ensure_project_link(
+    project_id: str, node_id: str, label: str, rel_name: str
+) -> None:
+    import re
+
+    # Validate identifiers to prevent injection
+    identifier_pattern = r"^[a-zA-Z_][\w]*$"
+    if not re.match(identifier_pattern, label):
+        raise ValueError(f"Invalid label: {label}")
+    if not re.match(identifier_pattern, rel_name):
+        raise ValueError(f"Invalid relationship name: {rel_name}")
+
+    result_rows = rows(  # nosemgrep
         f"""
         MATCH (:Project {{id: $project_id}})-[:{rel_name}]->(:{label} {{id: $node_id}})
         RETURN count(*)
@@ -235,7 +253,7 @@ def ensure_project_link(project_id: str, node_id: str, label: str, rel_name: str
     )
     if result_rows and int(result_rows[0][0]) > 0:
         return
-    db_get_connection().execute(
+    db_get_connection().execute(  # nosemgrep
         f"""
         MATCH (p:Project {{id: $project_id}}), (n:{label} {{id: $node_id}})
         CREATE (p)-[:{rel_name}]->(n)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -16,7 +17,16 @@ from ..observability.otel_setup import shutdown_observability
 from ..providers.openapi import build_openapi_provider
 from ..services.summarizer import start_worker, stop_worker
 from ..services.task_queue import task_queue
-from .constants import BANNER, HOST, OPENAPI_SPECS, PORT, SERVER_VERSION
+from .constants import (
+    BANNER_BOX_TEMPLATE,
+    BANNER_LOGO,
+    HOST,
+    OPENAPI_SPECS,
+    PORT,
+    SERVER_VERSION,
+    TRANSPORT,
+)
+from ..config import CODE_EMBED_MODEL, TEXT_EMBED_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -25,17 +35,59 @@ def build_lifespan(mcp: FastMCP):
     @asynccontextmanager
     async def lifespan(server: FastMCP) -> AsyncGenerator[None, None]:  # noqa: ARG001
         if sys.stderr.isatty():
-            print(BANNER, file=sys.stderr)
-            print(
-                f"  Version: {SERVER_VERSION} | CodeMode: ENABLED | Host: {HOST}:{PORT}\n",
-                file=sys.stderr,
-            )
+            # 1. Status detection
+            try:
+                import tree_sitter  # noqa: F401
+                ts_status = "Ready"
+            except ImportError:
+                ts_status = "Unavailable"
+
+            ag_ui_status = "Ready"
+            sandbox_status = "Unavailable (Coming soon)"
+            lakehouse_status = "Available" if os.getenv("LAKEHOUSE_URL") else "Unavailable"
+
+            # 2. Extract counts and info
+            tool_count = len(await mcp.list_tools())
+            prompt_count = len(await mcp.list_prompts())
+            # Skills are providers in FastMCP 
+            skills_count = len(mcp.providers) 
+            
+            # Clean model names for display
+            text_model = TEXT_EMBED_MODEL.split("/")[-1] if TEXT_EMBED_MODEL else "Default"
+            code_model = CODE_EMBED_MODEL.split("/")[-1] if CODE_EMBED_MODEL else "Default"
+
+            # 3. Format lines for the banner box
+            status_lines = [
+                f"  | Dashboard:  http://{HOST}:{PORT}/dashboard".ljust(91) + "|",
+                "  | Logfire:    https://logfire-eu.pydantic.dev/michaelbomholt/memgraph".ljust(91) + "|",
+                f"  | Link:       http://{HOST}:{PORT}/mcp".ljust(91) + "|",
+                "  | ".ljust(91) + "|",
+                f"  | Tree-sitter parsers {ts_status}".ljust(91) + "|",
+                f"  | AG-UI {ag_ui_status}".ljust(91) + "|",
+                f"  | Sandbox {sandbox_status}".ljust(91) + "|",
+                f"  | Lakehouse {lakehouse_status}".ljust(91) + "|",
+                "  | ".ljust(91) + "|",
+                f"  | Embedding text model: {text_model}".ljust(91) + "|",
+                f"  | Embedding code model: {code_model}".ljust(91) + "|",
+                "  | ".ljust(91) + "|",
+                f"  | Tools: {tool_count} | Prompts: {prompt_count} | Skills: {skills_count} | Version: {SERVER_VERSION}".ljust(91) + "|",
+                f"  | CodeMode: ENABLED | Transport: {TRANSPORT.upper()}".ljust(91) + "|",
+            ]
+
+            print(BANNER_LOGO, file=sys.stderr)
+            print(BANNER_BOX_TEMPLATE.format(lines="\n".join(status_lines)), file=sys.stderr)
+            print(f"  Version: {SERVER_VERSION} | CodeMode: ENABLED | Host: {HOST}:{PORT}\n", file=sys.stderr)
 
         await to_thread.run_sync(db_init_engine)
         start_worker()
         await task_queue.startup()
         await _load_openapi_providers(mcp)
-        logger.info("mem-graph server ready.")
+        
+        # Minimised summary log exactly as requested to be below logo
+        logger.info(
+            "Starting server 'syntx-memory' v%s (HTTP/SSE/Health) on %s:%s",
+            SERVER_VERSION, HOST, PORT
+        )
         yield
         pending = await task_queue.shutdown()
         if pending["queued_cancelled"] or pending["running_cancelled"]:

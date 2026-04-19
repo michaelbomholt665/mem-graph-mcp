@@ -30,8 +30,8 @@ from ...models.conversation import (
     MemoryRecallResult,
     SessionCaptureResult,
 )
-from ...services.summarizer import enqueue_summary
 from ...services.search import rrf_fuse
+from ...services.summarizer import enqueue_summary
 
 logger = logging.getLogger(__name__)
 mcp = FastMCP("conversation")
@@ -46,7 +46,9 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-def _create_conversation(conn: Any, project_id: str, agent_name: str, model: str) -> str:
+def _create_conversation(
+    conn: Any, project_id: str, agent_name: str, model: str
+) -> str:
     """Create Agent (upsert), Conversation, and link edges. Returns conv_id."""
     conv_id = id_generate_v7()
     agent_id = agent_name
@@ -91,7 +93,9 @@ def _create_conversation(conn: Any, project_id: str, agent_name: str, model: str
     return conv_id
 
 
-def _bulk_insert_messages(conn: Any, conv_id: str, messages: list[ConversationMessage]) -> list[str]:
+def _bulk_insert_messages(
+    conn: Any, conv_id: str, messages: list[ConversationMessage]
+) -> list[str]:
     """Create Message nodes, link them to the Conversation and chain NEXT_MESSAGE."""
     msg_ids: list[str] = []
 
@@ -149,13 +153,19 @@ def _bulk_insert_messages(conn: Any, conv_id: str, messages: list[ConversationMe
 
 @mcp.tool(tags={"namespace:memory"})
 async def memory_capture_session(
-    project_id: Annotated[str, Field(description="ID of the project this session belongs to")],
-    agent_name: Annotated[str, Field(description="Your agent identifier, e.g. 'claude-sonnet-4-6'")],
+    project_id: Annotated[
+        str, Field(description="ID of the project this session belongs to")
+    ],
+    agent_name: Annotated[
+        str, Field(description="Your agent identifier, e.g. 'claude-sonnet-4-6'")
+    ],
     messages: Annotated[
         list[ConversationMessage],
         Field(description="Ordered list of all messages in this session"),
     ],
-    model: Annotated[str, Field(description="Model string used during this session")] = "unknown",
+    model: Annotated[
+        str, Field(description="Model string used during this session")
+    ] = "unknown",
     context: Annotated[
         str | None,
         Field(description="Optional extra context to attach to the session record"),
@@ -195,7 +205,9 @@ async def memory_capture_session(
 
 @mcp.tool(tags={"namespace:memory"})
 async def memory_recall(
-    query: Annotated[str, Field(description="What you want to remember — natural language")],
+    query: Annotated[
+        str, Field(description="What you want to remember — natural language")
+    ],
     project_id: Annotated[
         str | None, Field(description="Limit recall to a specific project")
     ] = None,
@@ -212,9 +224,14 @@ async def memory_recall(
     ] = 0.1,
     cross_scope: Annotated[
         bool,
-        Field(description="Search across all scopes and projects (ignores project_id filter)"),
+        Field(
+            description="Search across all scopes and projects (ignores project_id filter)"
+        ),
     ] = False,
-    limit: Annotated[int, Field(description="Candidate pool size before budget truncation", ge=5, le=50)] = 20,
+    limit: Annotated[
+        int,
+        Field(description="Candidate pool size before budget truncation", ge=5, le=50),
+    ] = 20,
 ) -> MemoryRecallResult:
     """
     Search and retrieve stored memories, past decisions, violations, and session summaries by semantic similarity.
@@ -229,38 +246,40 @@ async def memory_recall(
     candidate_size = limit * 3
 
     vector_raw = conn.execute(
-        f"""
-        CALL QUERY_VECTOR_INDEX('Memory', 'idx_memory_emb', $qvec, {candidate_size})
+        """
+        CALL QUERY_VECTOR_INDEX('Memory', 'idx_memory_emb', $qvec, $candidate_size)
         WITH node AS m, distance
         WHERE m.expires_at IS NULL OR m.expires_at > current_timestamp()
         OPTIONAL MATCH (m)<-[:PROJECT_MEMORY]-(p:Project)
         RETURN m.id, m.kind, m.scope, m.content, m.confidence, p.id AS project, distance
         ORDER BY distance
-        LIMIT {candidate_size}
+        LIMIT $candidate_size
         """,
-        {"qvec": vec},
+        {"qvec": vec, "candidate_size": candidate_size},
     )
     if isinstance(vector_raw, list):
         vector_raw = vector_raw[0]
     vector_rows = cast(list[list[Any]], vector_raw.get_all())
 
     keyword_raw = conn.execute(
-        f"""
+        """
         CALL QUERY_FTS_INDEX('Memory', 'fts_memory_content', $q)
         WITH node AS m, score
         WHERE m.expires_at IS NULL OR m.expires_at > current_timestamp()
         OPTIONAL MATCH (m)<-[:PROJECT_MEMORY]-(p:Project)
         RETURN m.id, m.kind, m.scope, m.content, m.confidence, p.id AS project, score
         ORDER BY score DESC
-        LIMIT {candidate_size}
+        LIMIT $candidate_size
         """,
-        {"q": query},
+        {"q": query, "candidate_size": candidate_size},
     )
     if isinstance(keyword_raw, list):
         keyword_raw = keyword_raw[0]
     keyword_rows = cast(list[list[Any]], keyword_raw.get_all())
 
-    vector_hits: list[tuple[str, float]] = [(row[0], float(row[6])) for row in vector_rows]
+    vector_hits: list[tuple[str, float]] = [
+        (row[0], float(row[6])) for row in vector_rows
+    ]
     fts_hits: list[tuple[str, float]] = [
         (row[0], float(rank)) for rank, row in enumerate(keyword_rows, start=1)
     ]
@@ -274,7 +293,9 @@ async def memory_recall(
     total_tokens = 0
     truncated = False
 
-    for node_id, relevance in sorted(ranks.items(), key=lambda item: item[1], reverse=True):
+    for node_id, relevance in sorted(
+        ranks.items(), key=lambda item: item[1], reverse=True
+    ):
         if node_id not in data_map:
             continue
         row = data_map[node_id]
@@ -313,8 +334,12 @@ async def memory_recall(
 
 @mcp.tool(tags={"namespace:memory"})
 async def memory_annotate(
-    conversation_id: Annotated[str, Field(description="Session ID to attach this annotation to")],
-    note: Annotated[str, Field(description="The insight, decision, or observation to preserve")],
+    conversation_id: Annotated[
+        str, Field(description="Session ID to attach this annotation to")
+    ],
+    note: Annotated[
+        str, Field(description="The insight, decision, or observation to preserve")
+    ],
     significance: Annotated[
         str,
         Field(description="How important this is: low | normal | high | critical"),

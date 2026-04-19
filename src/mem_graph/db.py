@@ -29,6 +29,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import re
 from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
@@ -46,6 +47,11 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 _QUERY_TRACER = trace.get_tracer("mem_graph.db")
+
+# Regex pattern for validating SQL/Cypher identifiers
+_IDENTIFIER_PATTERN = r"^[a-zA-Z_][\w]*$"
+_IDENTIFIER_WITH_SPACE_PATTERN = r"^[a-zA-Z_][\w ]*$"
+_DTYPE_PATTERN = r"^[a-zA-Z_][a-zA-Z0-9_\[\]]*$"
 
 _db: lb.Database | None = None
 _conn: lb.Connection | None = None
@@ -257,16 +263,22 @@ async def db_update_embedding(
     function serialises that sequence per-table via an asyncio.Lock so
     concurrent callers don't corrupt the index.
     """
+    # Validate identifiers to prevent injection
+    if not re.match(_IDENTIFIER_PATTERN, table):
+        raise ValueError(f"Invalid table name: {table}")
+    if not re.match(_IDENTIFIER_PATTERN, index_name):
+        raise ValueError(f"Invalid index name: {index_name}")
+
     lock = _index_locks.setdefault(table, asyncio.Lock())
     conn = db_get_connection()
 
     async with lock:
-        conn.execute(f"CALL DROP_VECTOR_INDEX('{table}', '{index_name}');")
-        conn.execute(
+        conn.execute(f"CALL DROP_VECTOR_INDEX('{table}', '{index_name}');")  # nosemgrep
+        conn.execute(  # nosemgrep
             f"MATCH (n:{table} {{id: $id}}) SET n.embedding = $vec",
             {"id": node_id, "vec": vec},
         )
-        conn.execute(
+        conn.execute(  # nosemgrep
             f"CALL CREATE_VECTOR_INDEX('{table}', '{index_name}', 'embedding', metric := 'cosine');"
         )
 
@@ -312,6 +324,14 @@ def _bootstrap(conn: lb.Connection) -> None:
     # 1. Extensions — must happen before any DDL referencing vector types
     conn.execute("INSTALL vector; LOAD vector;")
     conn.execute("INSTALL fts;    LOAD fts;")
+    # Optional extensions for parser pipeline — ignore if unavailable
+    for ext in ("llm", "algo"):
+        if not re.match(_IDENTIFIER_PATTERN, ext):
+            continue
+        try:
+            conn.execute(f"INSTALL {ext}; LOAD {ext};")  # nosemgrep
+        except Exception:
+            pass
 
     # 2. Schema DDL — all IF NOT EXISTS so safe to re-run
     _run_schema(conn)
@@ -335,10 +355,25 @@ def _migrate_schema(conn: lb.Connection) -> None:
         ("Violation", "last_seen_at", "TIMESTAMP"),
         ("Violation", "resolved_at", "TIMESTAMP"),
         ("EvalRun", "logfire_run_id", "STRING"),
+        # CodeSymbol parser fields (Task 024)
+        ("CodeSymbol", "qualified_name", "STRING"),
+        ("CodeSymbol", "parent_id", "STRING"),
+        ("CodeSymbol", "line_start", "INT64"),
+        ("CodeSymbol", "line_end", "INT64"),
+        ("CodeSymbol", "is_exported", "BOOLEAN"),
+        ("CodeSymbol", "is_async", "BOOLEAN"),
     ]
     for table, column, dtype in migrations:
+        # Validate identifiers to prevent injection
+        if not re.match(_IDENTIFIER_PATTERN, table):
+            raise ValueError(f"Invalid table name: {table}")
+        if not re.match(_IDENTIFIER_PATTERN, column):
+            raise ValueError(f"Invalid column name: {column}")
+        if not re.match(_DTYPE_PATTERN, dtype):
+            raise ValueError(f"Invalid data type: {dtype}")
+
         try:
-            conn.execute(f"ALTER TABLE {table} ADD {column} {dtype};")
+            conn.execute(f"ALTER TABLE {table} ADD {column} {dtype};")  # nosemgrep
         except Exception:
             # Column likely already exists
             pass
@@ -417,7 +452,7 @@ def _run_schema(conn: lb.Connection) -> None:
     for stmt in raw.split(";"):
         clean = _clean_stmt(stmt)
         if _should_run_stmt(clean):
-            conn.execute(clean)
+            conn.execute(clean)  # nosemgrep
 
 
 def _ensure_vector_indexes(conn: lb.Connection) -> None:
@@ -443,7 +478,14 @@ def _ensure_vector_indexes(conn: lb.Connection) -> None:
     for table, index_name, prop in indexes:
         if index_name in existing:
             continue
-        conn.execute(f"""
+        # Validate identifiers
+        if not (
+            re.match(_IDENTIFIER_WITH_SPACE_PATTERN, table)
+            and re.match(_IDENTIFIER_PATTERN, index_name)
+            and re.match(_IDENTIFIER_PATTERN, prop)
+        ):
+            continue
+        conn.execute(f"""  # nosemgrep
             CALL CREATE_VECTOR_INDEX(
                 '{table}',
                 '{index_name}',
@@ -472,7 +514,14 @@ def _ensure_fts_indexes(conn: lb.Connection) -> None:
     for table, index_name, props in fts_indexes:
         if index_name in existing:
             continue
+        # Validate identifiers
+        if not re.match(_IDENTIFIER_WITH_SPACE_PATTERN, table):
+            continue
+        if not re.match(_IDENTIFIER_PATTERN, index_name):
+            continue
+        if not all(re.match(_IDENTIFIER_PATTERN, p) for p in props):
+            continue
         props_str = ", ".join(f"'{p}'" for p in props)
-        conn.execute(
+        conn.execute(  # nosemgrep
             f"CALL CREATE_FTS_INDEX('{table}', '{index_name}', [{props_str}]);"
         )

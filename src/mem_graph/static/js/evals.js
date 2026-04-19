@@ -81,7 +81,7 @@ function renderSidebarList() {
       <span class="eval-run-time muted">${escapeHtml(text(run.started_at, ''))}</span>
     </div>`;
   }).join('');
-  if (elements.evalsRunCount) elements.evalsRunCount.textContent = `${state.evals.length} run${state.evals.length !== 1 ? 's' : ''}`;
+  if (elements.evalsRunCount) elements.evalsRunCount.textContent = `${state.evals.length} run${state.evals.length === 1 ? '' : 's'}`;
 }
 
 function renderEvals() {

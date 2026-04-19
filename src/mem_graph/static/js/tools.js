@@ -80,7 +80,7 @@ function renderTools() {
     });
   });
 
-  if (elements.toolsCount) elements.toolsCount.textContent = `${totalCount} tool${totalCount !== 1 ? 's' : ''}`;
+  if (elements.toolsCount) elements.toolsCount.textContent = `${totalCount} tool${totalCount === 1 ? '' : 's'}`;
 
   const tbody = elements.toolsTbody;
   if (!tbody) return;

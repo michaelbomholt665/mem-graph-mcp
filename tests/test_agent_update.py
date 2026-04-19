@@ -5,6 +5,7 @@ import os
 
 os.environ.setdefault("OPENAI_API_KEY", "test")
 
+import asyncio
 import pytest
 
 from mem_graph.agents.builder.agent_builder import (
@@ -40,6 +41,7 @@ async def test_deterministic_orchestrator_batches_and_aggregates(tmp_path):
         deps: OrchestratorDependencies,
         files: list[BatchFileContent],
     ) -> object:
+        await asyncio.sleep(0)
         return {"count": len(files), "project_id": deps.project_id}
 
     register_subagent("fake", fake_runner)

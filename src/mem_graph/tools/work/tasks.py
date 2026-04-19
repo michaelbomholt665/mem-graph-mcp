@@ -99,7 +99,9 @@ async def task_update(
     task_id: Annotated[str, Field(description="Task ID to update")],
     status: Annotated[
         str | None,
-        Field(description="New status: open | in_progress | blocked | done | cancelled"),
+        Field(
+            description="New status: open | in_progress | blocked | done | cancelled"
+        ),
     ] = None,
     phase: Annotated[
         str | None,
@@ -136,10 +138,11 @@ async def task_update(
         set_clauses.append("t.priority = $priority")
         params["priority"] = priority
 
-    conn.execute(
+    set_statement = ", ".join(set_clauses)
+    conn.execute(  # nosemgrep
         f"""
         MATCH (t:Task {{id: $id}})
-        SET {", ".join(set_clauses)}
+        SET {set_statement}
         """,
         params,
     )
@@ -181,16 +184,34 @@ async def task_get(
         "completed_at": str(r[8]) if r[8] else None,
     }
 
-    task["decisions"] = _query_linked(conn, task_id, "TASK_DECISION", "Decision", ["id", "title"])
-    task["violations"] = _query_linked(conn, task_id, "TASK_VIOLATION", "Violation", ["id", "rule", "severity"])
+    task["decisions"] = _query_linked(
+        conn, task_id, "TASK_DECISION", "Decision", ["id", "title"]
+    )
+    task["violations"] = _query_linked(
+        conn, task_id, "TASK_VIOLATION", "Violation", ["id", "rule", "severity"]
+    )
     task["blocked_by"] = _query_blockers(conn, task_id)
 
     return {"task": task}
 
 
-def _query_linked(conn: Any, task_id: str, rel: str, label: str, fields: list[str]) -> list[dict]:
+def _query_linked(
+    conn: Any, task_id: str, rel: str, label: str, fields: list[str]
+) -> list[dict]:
+    import re
+
+    # Validate identifiers to prevent injection
+    identifier_pattern = r"^[a-zA-Z_][\w]*$"
+    if not re.match(identifier_pattern, rel):
+        raise ValueError(f"Invalid relation: {rel}")
+    if not re.match(identifier_pattern, label):
+        raise ValueError(f"Invalid label: {label}")
+    for f in fields:
+        if not re.match(identifier_pattern, f):
+            raise ValueError(f"Invalid field: {f}")
+
     cypher_fields = ", ".join(f"x.{f}" for f in fields)
-    result = conn.execute(
+    result = conn.execute(  # nosemgrep
         f"""
         MATCH (t:Task {{id: $id}})-[:{rel}]->(x:{label})
         RETURN {cypher_fields}
@@ -212,7 +233,10 @@ def _query_blockers(conn: Any, task_id: str) -> list[dict]:
     )
     if isinstance(result, list):
         result = result[0]
-    return [{"id": row[0], "title": row[1]} for row in cast(list[list[Any]], result.get_all())]
+    return [
+        {"id": row[0], "title": row[1]}
+        for row in cast(list[list[Any]], result.get_all())
+    ]
 
 
 @mcp.tool()
@@ -229,30 +253,30 @@ async def task_search(
     candidate_size = limit * 3
 
     vector_raw = conn.execute(
-        f"""
-        CALL QUERY_VECTOR_INDEX('Task', 'idx_task_emb', $qvec, {candidate_size})
+        """
+        CALL QUERY_VECTOR_INDEX('Task', 'idx_task_emb', $qvec, $candidate_size)
         WITH node AS t, distance
         OPTIONAL MATCH (p:Project)-[:HAS_TASK]->(t)
         RETURN t.id, t.title, t.status, t.priority, p.id AS project_id, distance
         ORDER BY distance
-        LIMIT {candidate_size}
+        LIMIT $candidate_size
         """,
-        {"qvec": vec},
+        {"qvec": vec, "candidate_size": candidate_size},
     )
     if isinstance(vector_raw, list):
         vector_raw = vector_raw[0]
     vector_rows = cast(list[list[Any]], vector_raw.get_all())
 
     fts_raw = conn.execute(
-        f"""
+        """
         CALL QUERY_FTS_INDEX('Task', 'fts_task_desc', $q)
         WITH node AS t, score
         OPTIONAL MATCH (p:Project)-[:HAS_TASK]->(t)
         RETURN t.id, t.title, t.status, t.priority, p.id AS project_id, score
         ORDER BY score DESC
-        LIMIT {candidate_size}
+        LIMIT $candidate_size
         """,
-        {"q": query},
+        {"q": query, "candidate_size": candidate_size},
     )
     if isinstance(fts_raw, list):
         fts_raw = fts_raw[0]
@@ -388,7 +412,13 @@ def _fetch_open_violations(conn: Any, project_id: str) -> list[dict]:
     if isinstance(v_result, list):
         v_result = v_result[0]
     return [
-        {"id": r[0], "rule": r[1], "file_path": r[2], "severity": r[3], "description": r[4]}
+        {
+            "id": r[0],
+            "rule": r[1],
+            "file_path": r[2],
+            "severity": r[3],
+            "description": r[4],
+        }
         for r in cast(list[list[Any]], v_result.get_all())
     ]
 
@@ -396,7 +426,9 @@ def _fetch_open_violations(conn: Any, project_id: str) -> list[dict]:
 @mcp.tool(tags={"namespace:work"})
 async def task_decompose_feature(
     project_id: Annotated[str, Field(description="Project ID")],
-    feature_description: Annotated[str, Field(description="Detailed description of the feature to build")],
+    feature_description: Annotated[
+        str, Field(description="Detailed description of the feature to build")
+    ],
 ) -> dict:
     """
     Decompose and break down a complex feature request into sequenced tasks using an AI agent.

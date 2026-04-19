@@ -476,7 +476,7 @@ input::placeholder {
   padding: 2px 7px;
   border-radius: 3px;
   background: #141820;
-  color: #3a4a5a;
+  color: #7f8ea3;
   border: 1px solid #1a2030;
 }
 
@@ -530,7 +530,7 @@ input::placeholder {
   padding: 12px 14px;
   font-family: var(--font-mono);
   font-size: 10px;
-  color: #4a6a7a;
+  color: #8899aa;
   line-height: 1.7;
   overflow: auto;
   white-space: pre;
@@ -628,7 +628,7 @@ details[open] summary {
 .ns-fs      { background: #1a1408; color: #f5a623; border: 1px solid rgba(245, 166, 35, 0.13); }
 .ns-graph   { background: #0a1520; color: #3b9eff; border: 1px solid rgba(59, 158, 255, 0.13); }
 .ns-memory  { background: #0d2420; color: #00d4a8; border: 1px solid rgba(0, 212, 168, 0.13); }
-.ns-default { background: #141820; color: #5a6a7a; border: 1px solid #1e2530; }
+.ns-default { background: #141820; color: #7f8ea3; border: 1px solid #1e2530; }
 
 @media (max-width: 1024px) {
   .shell-body {

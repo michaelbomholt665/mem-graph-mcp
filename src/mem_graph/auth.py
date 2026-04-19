@@ -66,7 +66,10 @@ class auth_api_middleware(BaseHTTPMiddleware):
             )
         key = auth_header.removeprefix("Bearer ").strip()
         if not auth_verify_key(key):
-            logger.warning("Rejected request with invalid API key from %s", request.client)
+            logger.warning(  # nosemgrep
+                "Rejected request with invalid API key from %s",
+                request.client.host if request.client else "unknown",
+            )
             return JSONResponse(
                 {"error": "Unauthorized — invalid API key"},
                 status_code=401,

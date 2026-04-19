@@ -148,7 +148,7 @@ export async function initAgents() {
   await loadAgentsAndWorkflows();
 
   elements.workflowSelect?.addEventListener('change', () => {
-    const index = parseInt(elements.workflowSelect.value, 10);
+    const index = Number.parseInt(elements.workflowSelect.value, 10);
     if (!Number.isNaN(index)) renderWorkflowGraph(state.workflows[index] ?? null);
   });
 }

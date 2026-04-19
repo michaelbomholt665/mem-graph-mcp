@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pydantic AI Workflow Visualizer</title>
     <!-- Load Mermaid.js -->
-    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js" integrity="sha384-7yrIBNpxl3p6o5y+fgfOtG8l1tqvXm1j3s05Y0TsLKHy8qlPYPDVJj3lqR4VKfbP" crossorigin="anonymous"></script>
     <style>
         :root {
             /* Obsidian Canvas Style Dark Mode */
@@ -15,7 +15,7 @@
             --border-color: #2e3246;    /* Subtle borders */
             --text-color: #a6accd;      /* Soft white/gray text */
             --accent-color: #82aaff;    /* Blue accent */
-            
+
             --node-bg: #1a1d27;         /* Dark node fill */
             --node-border: #4e5579;     /* Visible node borders */
         }
@@ -117,7 +117,7 @@
 
         #graph-container {
             /* Force the diagram to be wide so the 8 agents don't get squished */
-            min-width: 1400px; 
+            min-width: 1400px;
             display: flex;
             justify-content: center;
         }
@@ -154,7 +154,7 @@
 
     <script>
         // Initialize Mermaid with custom theming matching the dark canvas
-        mermaid.initialize({ 
+        mermaid.initialize({
             startOnLoad: false,
             theme: 'base',
             themeVariables: {
@@ -166,11 +166,11 @@
                 fontSize: '16px',
                 fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
             },
-            flowchart: { 
+            flowchart: {
                 curve: 'basis',      // Smooth sweeping lines
                 rankSpacing: 100,    // High vertical spacing (Top-Down depth)
                 nodeSpacing: 60      // Horizontal spacing between nodes
-            } 
+            }
         });
 
         // The workflows map
@@ -206,7 +206,7 @@ flowchart TD
     Memory["Memory Agent"]:::mainNode
 
     %% --- Edges (Connections) ---
-    
+
     %% Fan Out Phase
     Orchestrator --> A1
     Orchestrator --> A2
@@ -230,10 +230,10 @@ flowchart TD
     %% Post-Audit Pipeline
     Audit --> Debug
     Audit --> Docs
-    
+
     %% Lateral connection down the pipe
     Debug --> Docs
-    
+
     Docs --> Memory
                 `
             },
@@ -254,7 +254,7 @@ flowchart TD
     %% Loop Logic
     Reason -->|Thought: Needs Tool| Tool
     Tool -->|Observation| Reason
-    
+
     Reason -->|Thought: Final Answer| Final
                 `
             }
@@ -269,9 +269,9 @@ flowchart TD
             document.getElementById('workflow-desc').innerText = data.desc;
 
             const container = document.getElementById('graph-container');
-            
+
             try {
-                container.innerHTML = ''; 
+                container.innerHTML = '';
                 const id = 'mermaid-svg-' + Date.now();
                 const { svg } = await mermaid.render(id, data.mermaidCode);
                 container.innerHTML = svg;
