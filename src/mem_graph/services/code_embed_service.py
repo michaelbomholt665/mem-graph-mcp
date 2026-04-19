@@ -23,6 +23,9 @@ from .jina_common import (
     summarize_content,
 )
 
+from ..app.parsers.ingest import ingest_batch
+from ..app.parsers.persist import CypherBatch, FileBatch
+
 EmbeddingFn = Callable[[str], Awaitable[list[float]]]
 
 
@@ -36,7 +39,8 @@ def rows(query: str, params: dict[str, Any] | None = None) -> list[list[Any]]:
 class CodeEmbedService:
     """Index local source files and persist CodeFile nodes."""
 
-    def __init__(self, *, embeddings_code: EmbeddingFn) -> None:
+    def __init__(self, *, embeddings_code: EmbeddingFn, db: Any | None = None) -> None:
+        self._db = db
         self._embeddings_code = embeddings_code
         self.indexed_root: str | None = None
         self.indexed_files: dict[str, IndexedCodeFile] = {}
@@ -160,76 +164,47 @@ class CodeEmbedService:
         *,
         project_id: str | None,
     ) -> None:
+        batch = CypherBatch(
+            file_batch=FileBatch(
+                record={
+                    "id": record.file_id,
+                    "path": record.relative_path,
+                    "name": Path(record.relative_path).name,
+                    "language": record.language,
+                    "size_bytes": record.size_bytes,
+                    "content_hash": record.content_hash,
+                    "summary": record.summary,
+                }
+            )
+        )
+
+        # Handle embedding update separately as ingest.py doesn't currently
+        # support CodeFile.embedding updates in its upsert template.
         existing = rows(
             "MATCH (f:CodeFile {id: $id}) RETURN f.content_hash LIMIT 1",
             {"id": record.file_id},
         )
-        ts = now_utc()
-        conn = db_get_connection()
-        if not existing:
-            conn.execute(
-                """
-                CREATE (f:CodeFile {
-                    id: $id,
-                    path: $path,
-                    name: $name,
-                    language: $language,
-                    size_bytes: $size_bytes,
-                    content_hash: $content_hash,
-                    summary: $summary,
-                    embedding: $embedding,
-                    indexed_at: $ts,
-                    updated_at: $ts
-                })
-                """,
-                {
-                    "id": record.file_id,
-                    "path": record.relative_path,
-                    "name": Path(record.relative_path).name,
-                    "language": record.language,
-                    "size_bytes": record.size_bytes,
-                    "content_hash": record.content_hash,
-                    "summary": record.summary,
-                    "embedding": record.embedding,
-                    "ts": ts,
-                },
+
+        # Perform the main node upsert through the parser's ingest boundary
+        ingest_batch(self._database(), batch)
+
+        # Update embedding if missing or content changed
+        if not existing or str(existing[0][0]) != record.content_hash:
+            await db_update_embedding(
+                "CodeFile",
+                record.file_id,
+                record.embedding,
+                "idx_codefile_emb",
             )
-        else:
-            previous_hash = str(existing[0][0] or "")
-            conn.execute(
-                """
-                MATCH (f:CodeFile {id: $id})
-                SET f.path = $path,
-                    f.name = $name,
-                    f.language = $language,
-                    f.size_bytes = $size_bytes,
-                    f.content_hash = $content_hash,
-                    f.summary = $summary,
-                    f.updated_at = $ts,
-                    f.indexed_at = CASE WHEN $content_changed THEN $ts ELSE f.indexed_at END
-                """,
-                {
-                    "id": record.file_id,
-                    "path": record.relative_path,
-                    "name": Path(record.relative_path).name,
-                    "language": record.language,
-                    "size_bytes": record.size_bytes,
-                    "content_hash": record.content_hash,
-                    "summary": record.summary,
-                    "ts": ts,
-                    "content_changed": previous_hash != record.content_hash,
-                },
-            )
-            if previous_hash != record.content_hash:
-                await db_update_embedding(
-                    "CodeFile",
-                    record.file_id,
-                    record.embedding,
-                    "idx_codefile_emb",
-                )
 
         if project_id:
             ensure_project_link(project_id, record.file_id, "CodeFile", "HAS_FILE")
+
+    def _database(self) -> Any:
+        if self._db is not None:
+            return self._db
+        conn = db_get_connection()
+        return conn.database
 
 
 def ensure_project_link(

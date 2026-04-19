@@ -94,75 +94,34 @@ def file_id(relative_path: str) -> str:
 # Statement strings (executed by ingest.py)
 # ---------------------------------------------------------------------------
 
-# Note: Ladybug does NOT support MERGE — use explicit MATCH + CREATE.
-# We use UNWIND for batch node/rel creation.
+# Ladybug supports MERGE since version 0.12.0.
 
 UPSERT_CODE_FILE = """
 UNWIND $records AS r
-OPTIONAL MATCH (f:CodeFile {id: r.id})
-CALL {{
-    WITH f, r
-    WHERE f IS NULL
-    CREATE (:CodeFile {
-        id: r.id,
-        path: r.path,
-        name: r.name,
-        language: r.language,
-        size_bytes: r.size_bytes,
-        content_hash: r.content_hash,
-        summary: r.summary,
-        indexed_at: current_timestamp(),
-        updated_at: current_timestamp()
-    })
-    UNION
-    WITH f, r
-    WHERE f IS NOT NULL
-    SET f.path = r.path,
-        f.name = r.name,
-        f.language = r.language,
-        f.size_bytes = r.size_bytes,
-        f.content_hash = r.content_hash,
-        f.summary = r.summary,
-        f.updated_at = current_timestamp()
-}}
+MERGE (f:CodeFile {id: r.id})
+ON CREATE SET f.indexed_at = current_timestamp(),
+              f.path = r.path, f.name = r.name, f.language = r.language,
+              f.size_bytes = r.size_bytes, f.content_hash = r.content_hash,
+              f.summary = r.summary, f.updated_at = current_timestamp()
+ON MATCH SET f.path = r.path, f.name = r.name, f.language = r.language,
+             f.size_bytes = r.size_bytes, f.content_hash = r.content_hash,
+             f.summary = r.summary, f.updated_at = current_timestamp()
 """
 
 UPSERT_CODE_SYMBOL = """
 UNWIND $records AS r
-OPTIONAL MATCH (s:CodeSymbol {id: r.id})
-CALL {{
-    WITH s, r
-    WHERE s IS NULL
-    CREATE (:CodeSymbol {
-        id: r.id,
-        name: r.name,
-        kind: r.kind,
-        file_path: r.file_path,
-        language: r.language,
-        signature: r.signature,
-        qualified_name: r.qualified_name,
-        parent_id: r.parent_id,
-        line_start: r.line_start,
-        line_end: r.line_end,
-        is_exported: r.is_exported,
-        is_async: r.is_async,
-        indexed_at: current_timestamp()
-    })
-    UNION
-    WITH s, r
-    WHERE s IS NOT NULL
-    SET s.name = r.name,
-        s.kind = r.kind,
-        s.file_path = r.file_path,
-        s.language = r.language,
-        s.signature = r.signature,
-        s.qualified_name = r.qualified_name,
-        s.parent_id = r.parent_id,
-        s.line_start = r.line_start,
-        s.line_end = r.line_end,
-        s.is_exported = r.is_exported,
-        s.is_async = r.is_async
-}}
+MERGE (s:CodeSymbol {id: r.id})
+ON CREATE SET s.indexed_at = current_timestamp(),
+              s.name = r.name, s.kind = r.kind, s.file_path = r.file_path,
+              s.language = r.language, s.signature = r.signature,
+              s.qualified_name = r.qualified_name, s.parent_id = r.parent_id,
+              s.line_start = r.line_start, s.line_end = r.line_end,
+              s.is_exported = r.is_exported, s.is_async = r.is_async
+ON MATCH SET s.name = r.name, s.kind = r.kind, s.file_path = r.file_path,
+             s.language = r.language, s.signature = r.signature,
+             s.qualified_name = r.qualified_name, s.parent_id = r.parent_id,
+             s.line_start = r.line_start, s.line_end = r.line_end,
+             s.is_exported = r.is_exported, s.is_async = r.is_async
 """
 
 _REL_UPSERT_TEMPLATES: dict[str, str] = {
@@ -170,91 +129,83 @@ _REL_UPSERT_TEMPLATES: dict[str, str] = {
 UNWIND $records AS r
 MATCH (f:CodeFile {id: r.from_id}), (s:CodeSymbol {id: r.to_id})
 OPTIONAL MATCH (f)-[e:FILE_SYMBOL]->(s)
-CALL {{
-    WITH f, s, e
-    WHERE e IS NULL
-    CREATE (f)-[:FILE_SYMBOL]->(s)
-}}
+WITH f, s, e
+WHERE e IS NULL
+CREATE (f)-[:FILE_SYMBOL]->(s)
 """,
     EdgeKind.CONTAINS.value: """
 UNWIND $records AS r
 MATCH (a:CodeSymbol {id: r.from_id}), (b:CodeSymbol {id: r.to_id})
 OPTIONAL MATCH (a)-[e:CONTAINS]->(b)
-CALL {{
-    WITH a, b, e
-    WHERE e IS NULL
-    CREATE (a)-[:CONTAINS]->(b)
-}}
+WITH a, b, e
+WHERE e IS NULL
+CREATE (a)-[:CONTAINS]->(b)
 """,
     EdgeKind.IMPORTS.value: """
 UNWIND $records AS r
 MATCH (a:CodeSymbol {id: r.from_id}), (b:CodeSymbol {id: r.to_id})
 OPTIONAL MATCH (a)-[e:IMPORTS]->(b)
-CALL {{
-    WITH a, b, e, r
-    WHERE e IS NULL
-    CREATE (a)-[:IMPORTS {module_path: r.module_path, alias: r.alias, is_relative: r.is_relative}]->(b)
-}}
+WITH a, b, e, r
+WHERE e IS NULL
+CREATE (a)-[:IMPORTS {
+    module_path: r.module_path,
+    alias: r.alias,
+    is_relative: r.is_relative
+}]->(b)
 """,
     EdgeKind.CALLS.value: """
 UNWIND $records AS r
 MATCH (a:CodeSymbol {id: r.from_id}), (b:CodeSymbol {id: r.to_id})
 OPTIONAL MATCH (a)-[e:CALLS]->(b)
-CALL {{
-    WITH a, b, e, r
-    WHERE e IS NULL
-    CREATE (a)-[:CALLS {call_name: r.call_name, is_awaited: r.is_awaited}]->(b)
-}}
+WITH a, b, e, r
+WHERE e IS NULL
+CREATE (a)-[:CALLS {
+    call_name: r.call_name,
+    is_awaited: r.is_awaited
+}]->(b)
 """,
     EdgeKind.RESOLVES_TO.value: """
 UNWIND $records AS r
 MATCH (a:CodeSymbol {id: r.from_id}), (b:CodeSymbol {id: r.to_id})
 OPTIONAL MATCH (a)-[e:RESOLVES_TO]->(b)
-CALL {{
-    WITH a, b, e, r
-    WHERE e IS NULL
-    CREATE (a)-[:RESOLVES_TO {confidence: r.confidence, resolver: r.resolver}]->(b)
-}}
+WITH a, b, e, r
+WHERE e IS NULL
+CREATE (a)-[:RESOLVES_TO {
+    confidence: r.confidence,
+    resolver: r.resolver
+}]->(b)
 """,
     EdgeKind.EXTENDS.value: """
 UNWIND $records AS r
 MATCH (a:CodeSymbol {id: r.from_id}), (b:CodeSymbol {id: r.to_id})
 OPTIONAL MATCH (a)-[e:EXTENDS]->(b)
-CALL {{
-    WITH a, b, e
-    WHERE e IS NULL
-    CREATE (a)-[:EXTENDS]->(b)
-}}
+WITH a, b, e
+WHERE e IS NULL
+CREATE (a)-[:EXTENDS]->(b)
 """,
     EdgeKind.IMPLEMENTS_SYMBOL.value: """
 UNWIND $records AS r
 MATCH (a:CodeSymbol {id: r.from_id}), (b:CodeSymbol {id: r.to_id})
 OPTIONAL MATCH (a)-[e:IMPLEMENTS_SYMBOL]->(b)
-CALL {{
-    WITH a, b, e
-    WHERE e IS NULL
-    CREATE (a)-[:IMPLEMENTS_SYMBOL]->(b)
-}}
+WITH a, b, e
+WHERE e IS NULL
+CREATE (a)-[:IMPLEMENTS_SYMBOL]->(b)
 """,
     EdgeKind.READS_FROM.value: """
 UNWIND $records AS r
 MATCH (a:CodeSymbol {id: r.from_id}), (b:CodeSymbol {id: r.to_id})
 OPTIONAL MATCH (a)-[e:READS_FROM]->(b)
-CALL {{
-    WITH a, b, e
-    WHERE e IS NULL
-    CREATE (a)-[:READS_FROM]->(b)
-}}
+WITH a, b, e
+WHERE e IS NULL
+CREATE (a)-[:READS_FROM]->(b)
 """,
     EdgeKind.ALIASES.value: """
 UNWIND $records AS r
 MATCH (a:CodeSymbol {id: r.from_id}), (b:CodeSymbol {id: r.to_id})
 OPTIONAL MATCH (a)-[e:ALIASES]->(b)
-CALL {{
-    WITH a, b, e
-    WHERE e IS NULL
-    CREATE (a)-[:ALIASES]->(b)
-}}
+WITH a, b, e
+WHERE e IS NULL
+CREATE (a)-[:ALIASES]->(b)
 """,
 }
 
@@ -266,11 +217,13 @@ def get_rel_template(kind: str) -> str | None:
 STALE_SYMBOL_CLEANUP = """
 UNWIND $stale_ids AS sid
 MATCH (s:CodeSymbol {id: sid})
-WHERE NOT EXISTS {{
-    (s)-[:SYMBOL_TASK]->(:Task)
-    | (s)-[:SYMBOL_DECISION]->(:Decision)
-    | (s)-[:SYMBOL_VIOLATION]->(:Violation)
-}}
+WHERE NOT EXISTS {
+    MATCH (s)-[:SYMBOL_TASK]->(:Task)
+} AND NOT EXISTS {
+    MATCH (s)-[:SYMBOL_DECISION]->(:Decision)
+} AND NOT EXISTS {
+    MATCH (s)-[:SYMBOL_VIOLATION]->(:Violation)
+}
 DETACH DELETE s
 """
 

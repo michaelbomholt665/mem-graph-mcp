@@ -29,12 +29,11 @@ This document enumerates files in src/ and lists their primary functions/classes
 - Purpose: FastMCP app definition, lifecycle, and gateway tools.
 - Key items and functions:
 	- `mcp` — FastMCP application instance (see file).
-	- `lifespan(server)` — [src/mem-graph/server.py](src/mem-graph/server.py#L60)
-	- `tools_search(query)` — [src/mem-graph/server.py](src/mem-graph/server.py#L97)
-	- `tools_activate(namespace, ctx)` — [src/mem-graph/server.py](src/mem-graph/server.py#L190)
-	- `run()` — [src/mem-graph/server.py](src/mem-graph/server.py#L238)
-	- `combined_lifespan(app_instance)` — [src/mem-graph/server.py](src/mem-graph/server.py#L252)
-	- `serve()` — [src/mem-graph/server.py](src/mem-graph/server.py#L262)
+	- `system_inspect(ctx)` — Server-wide orientation snapshot.
+	- `list_agents()` — Registry-driven public sub-agent catalog.
+	- `list_task_types()` — Public category → task-type map from the skill registry.
+	- `tools_activate(namespace, ctx)` — Lazy namespace activation entry point.
+	- `run()` — Server runner entry point.
 
 #### [src/mem-graph/agents/__init__.py](src/mem-graph/agents/__init__.py#L1)
 - Purpose: Re-export `audit_agent`.
@@ -164,4 +163,3 @@ This document enumerates files in src/ and lists their primary functions/classes
 - [ ] Configuration changes required (env vars, Ollama models, DB paths)
 
 Generated: Expanded context map with functions, start-line links and short descriptions.
-

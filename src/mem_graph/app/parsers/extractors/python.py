@@ -9,6 +9,7 @@ when returned/passed/decorated).
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from ..safety import SafetyContext
@@ -32,6 +33,8 @@ from .base import (
 )
 
 logger = logging.getLogger(__name__)
+
+_PYTHON_BASE_NAME_RE = re.compile(r"[A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*")
 
 
 class PythonExtractor(BaseExtractor):
@@ -202,9 +205,15 @@ class PythonExtractor(BaseExtractor):
         sid = make_symbol_id("python", file_path, NodeKind.CLASS.value, qname, ls, le)
 
         sig_parts = [f"class {name}"]
+        base_names: list[str] = []
         bases = actual.child_by_field_name("superclasses")
         if bases:
-            sig_parts.append(f"({node_text(bases, source)})")
+            bases_text = node_text(bases, source)
+            sig_parts.append(f"({bases_text})")
+            base_names = [
+                base.rsplit(".", 1)[-1]
+                for base in _PYTHON_BASE_NAME_RE.findall(bases_text)
+            ]
 
         sym = ExtractedNode(
             symbol_id=sid,
@@ -218,6 +227,7 @@ class PythonExtractor(BaseExtractor):
             signature="".join(sig_parts),
             parent_id=parent_id,
             is_exported=not name.startswith("_"),
+            extra={"extends": base_names},
         )
         if not ctx.inc_symbols():
             return
@@ -423,6 +433,18 @@ class PythonExtractor(BaseExtractor):
         )
         if left is None:
             return
+        if right is not None:
+            self._visit(
+                right,
+                source,
+                file_path,
+                file_id,
+                parent_id,
+                scope_prefix,
+                nodes,
+                edges,
+                ctx,
+            )
         name = node_text(left, source)
         # Only top-level or class-level constants / type aliases
         if not name.isupper() and not (right and right.type in ("lambda",)):

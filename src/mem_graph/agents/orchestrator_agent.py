@@ -24,7 +24,6 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import anyio
-import anyio.to_thread
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
@@ -208,7 +207,7 @@ async def list_files(ctx: RunContext[OrchestratorDependencies]) -> list[str]:
     Returns paths matching the configured extension, sorted for
     deterministic batch ordering across runs.
     """
-    return await list_source_files(ctx.deps.package_path, ctx.deps.file_extension)
+    return list_source_files(ctx.deps.package_path, ctx.deps.file_extension)
 
 
 @orchestrator_agent.tool
@@ -234,7 +233,7 @@ async def process_batch(
         len(capped_paths),
     )
 
-    file_contents = await _read_batch(capped_paths)
+    file_contents = _read_batch(capped_paths)
     result = await _invoke_subagent(ctx, batch_index, file_contents)
 
     ctx.deps.batch_results.append(result)
@@ -311,7 +310,7 @@ async def run_orchestrator_batches(
     deps.batch_results.clear()
     deps.aggregate.clear()
 
-    files = await list_source_files(deps.package_path, deps.file_extension)
+    files = list_source_files(deps.package_path, deps.file_extension)
     batches = _split_batches(files, deps.batch_size)
 
     for batch_index, batch_paths in enumerate(batches):
@@ -322,7 +321,7 @@ async def run_orchestrator_batches(
             deps.subagent_name,
             len(batch_paths),
         )
-        file_contents = await _read_batch(batch_paths)
+        file_contents = _read_batch(batch_paths)
         result = await _invoke_subagent(deps, batch_index, file_contents)
         deps.batch_results.append(result)
         _merge_into_aggregate(deps.aggregate, result, deps.subagent_name)
@@ -647,26 +646,21 @@ def _merge_decision(aggregate: dict, output: Any) -> None:
 ################
 
 
-async def _read_batch(paths: list[str]) -> list[BatchFileContent]:
+def _read_batch(paths: list[str]) -> list[BatchFileContent]:
     """
-    Read a list of files concurrently using anyio task group.
+    Read a list of files.
 
     Returns BatchFileContent for each path, truncating oversized files.
     Files that cannot be read are included with an error message as content.
     """
-    results: list[BatchFileContent | None] = [None] * len(paths)
+    results: list[BatchFileContent] = []
+    for path in paths:
+        results.append(_read_single(path))
 
-    async def read_one(index: int, path: str) -> None:
-        results[index] = await _read_single(path)
-
-    async with anyio.create_task_group() as tg:
-        for i, path in enumerate(paths):
-            tg.start_soon(read_one, i, path)
-
-    return [r for r in results if r is not None]
+    return results
 
 
-async def _read_single(path: str) -> BatchFileContent:
+def _read_single(path: str) -> BatchFileContent:
     """
     Read a single file and return a BatchFileContent.
 
@@ -679,7 +673,7 @@ async def _read_single(path: str) -> BatchFileContent:
         )
 
     try:
-        raw = await anyio.to_thread.run_sync(Path(path).read_bytes)
+        raw = Path(path).read_bytes()
     except Exception as exc:
         return BatchFileContent(path=path, content=f"ERROR: {exc}", truncated=False)
 
@@ -694,19 +688,17 @@ async def _read_single(path: str) -> BatchFileContent:
     )
 
 
-
 ################
 #   HELPERS
 ################
 
 
-async def list_source_files(package_path: str, file_extension: str) -> list[str]:
+def list_source_files(package_path: str, file_extension: str) -> list[str]:
     """List source files matching an extension in deterministic order."""
     import glob
 
     pattern = os.path.join(package_path, f"**/*{file_extension}")
-    return sorted(await anyio.to_thread.run_sync(lambda: glob.glob(pattern, recursive=True)))
-
+    return sorted(glob.glob(pattern, recursive=True))
 
 
 def _split_batches(paths: list[str], batch_size: int) -> list[list[str]]:

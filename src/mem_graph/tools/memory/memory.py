@@ -61,13 +61,7 @@ async def memory_store(
     ] = None,
     conn: Any = Depends(db_get_connection),
 ) -> dict[str, str]:
-    """
-    Persist and store a distilled memory, fact, preference, or architectural pattern for future recall.
-
-    Use this to save anything that should persist beyond the current conversation:
-    facts, preferences, recurring patterns, or architectural decisions. Provide the
-    content and categorise it with kind and scope. Returns the new memory ID.
-    """
+    """Store a memory for later recall."""
     service = MemoryService(conn)
     memory_id = await service.store(
         content=content,
@@ -111,16 +105,7 @@ async def memory_manage(
     conn: Any = Depends(db_get_connection),
     ctx: Context = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
-    """
-    Manage stored memories: expire outdated facts or list and browse what's saved.
-
-    Use action='expire' with a memory_id to soft-delete a fact that is no
-    longer accurate. Use action='list' to browse active memories, optionally
-    filtered by scope or project. Returns the operation result or memory list.
-
-    Expiring a memory is a destructive operation — the client will be asked
-    to confirm before the change is committed.
-    """
+    """Expire or list stored memories by scope or project."""
     if action == "expire":
         if not memory_id:
             return {"error": "memory_id is required for action='expire'"}
@@ -128,7 +113,7 @@ async def memory_manage(
         # Elicit confirmation for destructive operations
         if ctx is not None:
             try:
-                from fastmcp.server.context import AcceptedElicitation
+                from fastmcp.server.elicitation import AcceptedElicitation
 
                 confirmation = await ctx.elicit(
                     message=f"Are you sure you want to expire memory {memory_id!r}? This cannot be undone.",

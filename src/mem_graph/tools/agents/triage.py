@@ -21,6 +21,7 @@ from fastmcp.server.context import Context
 from mcp.types import Icon
 from pydantic import Field
 
+from ...app.registry import AgentEntry, register_agent
 from ...agents.document.triage_agent import TriageDependencies, RawFinding, triage_agent
 from ...db import db_get_connection
 from ...observability import traced_tool
@@ -30,6 +31,17 @@ from ..background.task_status import build_task_submission
 
 mcp = FastMCP("triage", instructions="Code violation triage tools.")
 logger = logging.getLogger(__name__)
+
+register_agent(
+    AgentEntry(
+        name="Triage Agent",
+        tool_name="triage_violations",
+        description="Classifies and deduplicates raw code findings.",
+        namespace="audit",
+        categories=["audit", "quality"],
+        task_types=["violation_triage", "deduplication", "severity_review"],
+    )
+)
 
 _SKILLS_PATH = os.path.join(os.getcwd(), "skills", "triage_agent", "SKILL.md")
 
@@ -94,13 +106,7 @@ async def triage_violations(
     ctx: Context = None,  # type: ignore[assignment]
     conn: Any = Depends(db_get_connection),
 ) -> dict:
-    """
-    Triage and classify raw code findings against existing open violations in the graph.
-
-    Deduplicates recurrences, assesses severity, and categorizes findings as
-    NEW, RECURRENCE, DUPLICATE, WONTFIX, or ESCALATE. Returns a structured
-    triage report with counts per category.
-    """
+    """Triage raw findings against existing violations."""
     if ctx is not None and ctx.is_background_task:
         reporter = ContextProgressReporter(ctx)
         return await _triage_violations_worker(
@@ -183,7 +189,7 @@ async def _triage_violations_worker(
 
     if ctx is not None and report.escalated_count > 0:
         try:
-            from fastmcp.server.context import AcceptedElicitation
+            from fastmcp.server.elicitation import AcceptedElicitation
 
             escalation_desc = (
                 f"Found {report.escalated_count} violation(s) to escalate. "

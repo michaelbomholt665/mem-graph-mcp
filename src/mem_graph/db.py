@@ -40,8 +40,10 @@ from dotenv import load_dotenv
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
-from .embeddings import EMBED_DIM
+from .embeddings import CODE_EMBED_DIM, TEXT_EMBED_DIM
 from .observability import logfire_debug, logfire_exception, record_graph_query
+
+EMBED_DIM = TEXT_EMBED_DIM  # Legacy alias for tests
 
 load_dotenv()
 
@@ -362,6 +364,8 @@ def _migrate_schema(conn: lb.Connection) -> None:
         ("CodeSymbol", "line_end", "INT64"),
         ("CodeSymbol", "is_exported", "BOOLEAN"),
         ("CodeSymbol", "is_async", "BOOLEAN"),
+        ("SchemaMeta", "text_embed_dim", "INT64"),
+        ("SchemaMeta", "code_embed_dim", "INT64"),
     ]
     for table, column, dtype in migrations:
         # Validate identifiers to prevent injection
@@ -380,9 +384,9 @@ def _migrate_schema(conn: lb.Connection) -> None:
 
 
 def _init_schema_meta(conn: lb.Connection) -> None:
-    """Write SchemaMeta on first run; validate embed_dim on subsequent runs."""
+    """Write SchemaMeta on first run; validate dimensions on subsequent runs."""
     query_result = conn.execute(
-        "MATCH (s:SchemaMeta {version: $v}) RETURN s.embed_dim",
+        "MATCH (s:SchemaMeta {version: $v}) RETURN s.text_embed_dim, s.code_embed_dim",
         {"v": SCHEMA_VERSION},
     )
     if isinstance(query_result, list):
@@ -396,20 +400,30 @@ def _init_schema_meta(conn: lb.Connection) -> None:
             """
             CREATE (s:SchemaMeta {
                 version:        $v,
-                embed_dim:      $dim,
+                text_embed_dim: $tdim,
+                code_embed_dim: $cdim,
                 initialized_at: current_timestamp()
             })
             """,
-            {"v": SCHEMA_VERSION, "dim": EMBED_DIM},
+            {"v": SCHEMA_VERSION, "tdim": TEXT_EMBED_DIM, "cdim": CODE_EMBED_DIM},
         )
         return
 
-    stored_dim = int(cast(int, result[0][0]))
-    if stored_dim != EMBED_DIM:
+    # Backwards compatibility check: old schemas might only have s.embed_dim
+    # or the query returned NULL for new fields if they didn't exist.
+    row = result[0]
+    stored_tdim = int(row[0]) if row[0] is not None else None
+    stored_cdim = int(row[1]) if row[1] is not None else None
+
+    # If we find old SchemaMeta, we might need to handle it or just fail if it's too different.
+    # For now, let's be strict if they are present.
+    if stored_tdim is not None and stored_tdim != TEXT_EMBED_DIM:
         raise RuntimeError(
-            f"Embedding dimension mismatch: schema was initialised with dim={stored_dim} "
-            f"but OLLAMA_EMBED_DIM is currently {EMBED_DIM}. "
-            "Either reset the database or set OLLAMA_EMBED_DIM to match the stored value."
+            f"Text embedding dimension mismatch: schema has {stored_tdim} but config has {TEXT_EMBED_DIM}."
+        )
+    if stored_cdim is not None and stored_cdim != CODE_EMBED_DIM:
+        raise RuntimeError(
+            f"Code embedding dimension mismatch: schema has {stored_cdim} but config has {CODE_EMBED_DIM}."
         )
 
 
@@ -447,7 +461,11 @@ def _should_run_stmt(clean: str) -> bool:
 
 def _run_schema(conn: lb.Connection) -> None:
     raw = SCHEMA_PATH.read_text()
-    raw = raw.replace("FLOAT[1536]", f"FLOAT[{EMBED_DIM}]")
+    # Support two-tier embeddings via explicit placeholders
+    raw = raw.replace("FLOAT[TEXT_DIM]", f"FLOAT[{TEXT_EMBED_DIM}]")
+    raw = raw.replace("FLOAT[CODE_DIM]", f"FLOAT[{CODE_EMBED_DIM}]")
+    # Fallback: replace any remaining FLOAT[d+] with TEXT_EMBED_DIM
+    raw = re.sub(r"FLOAT\[\d+\]", f"FLOAT[{TEXT_EMBED_DIM}]", raw)
 
     for stmt in raw.split(";"):
         clean = _clean_stmt(stmt)
@@ -485,14 +503,14 @@ def _ensure_vector_indexes(conn: lb.Connection) -> None:
             and re.match(_IDENTIFIER_PATTERN, prop)
         ):
             continue
-        conn.execute(f"""  # nosemgrep
+        conn.execute(f"""
             CALL CREATE_VECTOR_INDEX(
                 '{table}',
                 '{index_name}',
                 '{prop}',
                 metric := 'cosine'
             );
-        """)
+        """)  # nosemgrep
 
 
 def _ensure_fts_indexes(conn: lb.Connection) -> None:

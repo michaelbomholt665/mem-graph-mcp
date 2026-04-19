@@ -1,14 +1,15 @@
-"""Internal server metadata and lazy tool discovery tools."""
+"""Internal server metadata and discovery helpers."""
 
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any, cast
+from typing import Annotated, Any
 
 from fastmcp import FastMCP
 from fastmcp.server.context import Context
 from pydantic import Field
 
+from ..app.registry import all_agents
 from .constants import (
     DEPRECATED_NAMESPACES,
     LAZY_NAMESPACES,
@@ -17,6 +18,7 @@ from .constants import (
     SERVER_VERSION,
     SERVER_WEBSITE,
 )
+from ..providers.skills.registry import all_skills, task_type_map
 
 logger = logging.getLogger(__name__)
 
@@ -35,26 +37,6 @@ def get_server_info() -> dict[str, str]:
     return server_info_payload()
 
 
-def score_tool(tool_def: Any, query: str) -> int:
-    tool_name = tool_def.name
-    if tool_name in ["tools_activate", "tools_search"]:
-        return 0
-    desc = (tool_def.description or "").lower()
-    name = tool_name.lower()
-    score = 0
-    if query in name:
-        score += 10
-    if query in desc:
-        score += 5
-    if score == 0:
-        query_words = set(query.split())
-        name_words = set(name.replace("_", " ").split())
-        desc_words = set(desc.split())
-        score += len(query_words.intersection(name_words)) * 3
-        score += len(query_words.intersection(desc_words))
-    return score
-
-
 def get_namespace(tool_def: Any) -> str:
     tags = getattr(tool_def, "tags", [])
     for tag in tags or []:
@@ -63,90 +45,130 @@ def get_namespace(tool_def: Any) -> str:
     return "core"
 
 
-def register_tools(mcp: FastMCP) -> None:
-    mcp.tool()(get_server_info)
+async def catalog_tools(mcp: FastMCP) -> list[Any]:
+    """Return the raw tool catalog across mounted providers."""
+    tools_by_name: dict[str, Any] = {}
+    for provider in mcp.providers:
+        if provider.__class__.__name__ == "SkillsDirectoryProvider":
+            continue
+        try:
+            for tool_def in await provider.list_tools():
+                tools_by_name[tool_def.name] = tool_def
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "catalog_tool_provider_failed provider=%s error=%s",
+                provider,
+                exc,
+            )
+    return [tools_by_name[name] for name in sorted(tools_by_name)]
 
-    @mcp.tool()
-    async def tools_search(
-        query: Annotated[
-            str, Field(description="Search for tools by functionality, goal, or name")
-        ],
-    ) -> dict[str, Any]:
-        query = query.lower()
-        results: list[dict[str, Any]] = []
-        all_tools = await mcp.list_tools()
-        for tool_def in all_tools:
-            score = score_tool(tool_def, query)
-            if score > 0:
-                results.append(
-                    {
-                        "tool": tool_def.name,
-                        "description": tool_def.description or "No description provided.",
-                        "namespace": get_namespace(tool_def),
-                        "score": score,
-                    }
-                )
 
-        results.sort(key=lambda item: cast(int, item["score"]), reverse=True)
-        top_results = results[:10]
-        if not top_results:
-            return {"message": f"No tools found matching {query!r}. Try broader keywords."}
+def list_agents() -> list[dict[str, object]]:
+    """List registered sub-agents with their categories and task types."""
+    return [agent.to_dict() for agent in all_agents()]
 
+
+def list_task_types() -> dict[str, list[str]]:
+    """List public task categories and task types for sub-agent dispatch."""
+    return task_type_map()
+
+
+async def system_inspect(
+    ctx: Context = None,  # type: ignore[assignment]
+) -> dict[str, Any]:
+    """Summarize tools, prompts, resources, agents, and task types in one call."""
+    if ctx is None:
+        return {"error": "Context is required for system inspection."}
+
+    tools = await catalog_tools(ctx.fastmcp)
+    prompts = await ctx.fastmcp.list_prompts()
+    resources = await ctx.fastmcp.list_resources()
+    templates = await ctx.fastmcp.list_resource_templates()
+    agents = all_agents()
+    task_types = task_type_map()
+    skills = all_skills()
+
+    return {
+        "orientation": (
+            "Start with search_tools(query='...') to find capabilities, then "
+            "use call_tool or direct tool calls as needed."
+        ),
+        "tools": {
+            "count": len(tools),
+            "examples": [tool.name for tool in tools[:5]],
+        },
+        "prompts": {
+            "count": len(prompts),
+            "examples": [prompt.name for prompt in prompts[:5]],
+        },
+        "resources": {
+            "count": len(resources) + len(templates),
+            "examples": [str(resource.uri) for resource in resources[:3]]
+            + [template.uri_template for template in templates[:2]],
+        },
+        "agents": {
+            "count": len(agents),
+            "examples": [agent.name for agent in agents[:5]],
+        },
+        "task_types": {
+            "status": (
+                "pending — skill workflow under construction"
+                if not task_types
+                else "available"
+            ),
+            "categories": task_types,
+        },
+        "skills": {
+            "count": len(skills),
+            "status": "registry scaffolded; no skills registered yet"
+            if not skills
+            else "registered",
+        },
+        "lazy_namespaces": sorted(LAZY_NAMESPACES),
+    }
+
+
+async def tools_activate(
+    namespace: Annotated[
+        str,
+        Field(
+            description=(
+                "Namespace to activate for this session: memory, work, notes, "
+                "audit, filesystem, background, graph, integrations, or code."
+            )
+        ),
+    ],
+    ctx: Context,
+) -> dict[str, Any]:
+    """Enable a lazy namespace for the current session."""
+    if namespace in DEPRECATED_NAMESPACES:
+        canonical = DEPRECATED_NAMESPACES[namespace]
+        await ctx.enable_components(tags={f"namespace:{canonical}"}, components={"tool"})
         return {
-            "results": [
-                {
-                    "tool": result["tool"],
-                    "purpose": result["description"],
-                    "how_to_activate": (
-                        f"Call tools_activate(namespace='{result['namespace']}')"
-                        if result["namespace"] != "core"
-                        else "Already active (core tool)."
-                    ),
-                }
-                for result in top_results
-            ],
-            "suggestion": (
-                "Review the list above and call tools_activate(namespace='...') "
-                "for the desired group."
+            "activated": canonical,
+            "status": "ok",
+            "deprecation_notice": (
+                f"Namespace '{namespace}' has been consolidated into '{canonical}'. "
+                f"Please use tools_activate(namespace='{canonical}') in future."
             ),
         }
 
-    @mcp.tool()
-    async def tools_activate(
-        namespace: Annotated[
-            str,
-            Field(
-                description=(
-                    "Namespace to activate for this session. "
-                    "One of: memory, work, notes, audit, filesystem, background, graph, integrations."
-                )
-            ),
-        ],
-        ctx: Context,
-    ) -> dict[str, Any]:
-        if namespace in DEPRECATED_NAMESPACES:
-            canonical = DEPRECATED_NAMESPACES[namespace]
-            await ctx.enable_components(
-                tags={f"namespace:{canonical}"}, components={"tool"}
+    if namespace not in LAZY_NAMESPACES:
+        return {
+            "error": (
+                f"Unknown namespace {namespace!r}. "
+                f"Choose from: {sorted(LAZY_NAMESPACES)}"
             )
-            return {
-                "activated": canonical,
-                "status": "ok",
-                "deprecation_notice": (
-                    f"Namespace '{namespace}' has been consolidated into '{canonical}'. "
-                    f"Please use tools_activate(namespace='{canonical}') in future."
-                ),
-            }
+        }
+    await ctx.enable_components(tags={f"namespace:{namespace}"}, components={"tool"})
+    await ctx.info(f"Activated namespace '{namespace}' for session.")
+    logger.info("Activated namespace '%s' for session.", namespace)
+    return {"activated": namespace, "status": "ok"}
 
-        if namespace not in LAZY_NAMESPACES:
-            return {
-                "error": (
-                    f"Unknown namespace {namespace!r}. "
-                    f"Choose from: {sorted(LAZY_NAMESPACES)}"
-                )
-            }
-        await ctx.enable_components(tags={f"namespace:{namespace}"}, components={"tool"})
-        await ctx.info(f"Activated namespace '{namespace}' for session.")
-        logger.info("Activated namespace '%s' for session.", namespace)
-        return {"activated": namespace, "status": "ok"}
 
+def register_tools(mcp: FastMCP) -> None:
+    mcp.tool()(get_server_info)
+    mcp.tool()(list_agents)
+    mcp.tool()(list_task_types)
+    mcp.tool()(system_inspect)
+    mcp.tool()(tools_activate)

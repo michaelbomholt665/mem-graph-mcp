@@ -49,12 +49,7 @@ async def violation_record(
         Field(description="Optional backend ID to associate the violation with"),
     ] = None,
 ) -> dict:
-    """
-    Log and record a code quality or policy violation found during an audit run.
-
-    Provide the project, audit ID, rule identifier, severity, file location, and
-    description. Returns a violation_id for tracking and linking to tasks.
-    """
+    """Record an audit violation for a project."""
     conn = db_get_connection()
     violation_id = _new_id()
     text = f"{rule} {severity} {file_path}\n{description}"
@@ -112,12 +107,7 @@ async def violation_record(
 async def violation_resolve(
     violation_id: Annotated[str, Field(description="Violation ID to mark as resolved")],
 ) -> dict:
-    """
-    Mark and close a violation as fixed and resolved.
-
-    Provide the violation ID to close it out. The resolved timestamp is recorded
-    so fix time can be tracked. Returns confirmation.
-    """
+    """Mark a violation as resolved."""
     conn = db_get_connection()
     ts = _now()
     conn.execute(
@@ -138,13 +128,7 @@ async def violation_recur(
     ],
     new_description: Annotated[str, Field(description="Description of the recurrence")],
 ) -> dict:
-    """
-    Record and track that a previously fixed violation has reappeared as a recurrence.
-
-    Provide the original violation ID and a description of where it recurred.
-    A new violation record is created and linked to the original for drift tracking.
-    Returns the new violation_id.
-    """
+    """Record a recurring violation linked to its original."""
     conn = db_get_connection()
 
     result = conn.execute(
@@ -225,7 +209,7 @@ async def violation_search(
     ] = None,
     limit: Annotated[int, Field(description="Maximum results", ge=1, le=20)] = 10,
 ) -> dict:
-    """Find and retrieve violations relevant to a pattern or file using semantic search. Optionally filter by project or status. Returns ranked violations."""
+    """Search violations by semantic similarity."""
     conn = db_get_connection()
     vec = await embeddings_generate(query)
     candidate_size = limit * 3
@@ -300,7 +284,7 @@ async def violation_list(
     project_id: Annotated[str | None, Field(description="Filter by project")] = None,
     status: Annotated[str | None, Field(description="Filter by status")] = None,
 ) -> dict:
-    """Browse and list all violations without ranking. Filter by project or status to review the open audit backlog."""
+    """List violations filtered by project or status."""
     conn = db_get_connection()
 
     if project_id:

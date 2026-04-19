@@ -8,6 +8,7 @@ enum, export, import, variable, arrow function, call, and anonymous symbols.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from ..safety import SafetyContext
@@ -31,6 +32,11 @@ from .base import (
 )
 
 logger = logging.getLogger(__name__)
+
+_TS_EXTENDS_RE = re.compile(r"\bextends\s+([A-Za-z_$][\w$]*)")
+_TS_IMPLEMENTS_RE = re.compile(r"\bimplements\s+([^{]+)")
+_TS_NAMED_IMPORT_RE = re.compile(r"\bimport(?:\s+type)?\s*\{([^}]+)\}")
+_TS_TYPE_NAME_RE = re.compile(r"[A-Za-z_$][\w$]*")
 
 
 class TypeScriptExtractor(BaseExtractor):
@@ -335,6 +341,7 @@ class TypeScriptExtractor(BaseExtractor):
         sid = make_symbol_id(
             self._lang_key, file_path, NodeKind.CLASS.value, qname, ls, le
         )
+        class_text = node_text(node, source)
         sym = ExtractedNode(
             symbol_id=sid,
             name=name,
@@ -346,6 +353,7 @@ class TypeScriptExtractor(BaseExtractor):
             line_end=le,
             parent_id=parent_id,
             is_exported=not name.startswith("_"),
+            extra=self._class_hierarchy(class_text),
         )
         if not ctx.inc_symbols():
             return
@@ -374,6 +382,17 @@ class TypeScriptExtractor(BaseExtractor):
                         edges,
                         ctx,
                     )
+
+    def _class_hierarchy(self, class_text: str) -> dict[str, list[str]]:
+        extra: dict[str, list[str]] = {}
+        extends_match = _TS_EXTENDS_RE.search(class_text)
+        if extends_match:
+            extra["extends"] = [extends_match.group(1)]
+
+        implements_match = _TS_IMPLEMENTS_RE.search(class_text)
+        if implements_match:
+            extra["implements"] = _TS_TYPE_NAME_RE.findall(implements_match.group(1))
+        return extra
 
     def _handle_method(
         self,
@@ -479,26 +498,39 @@ class TypeScriptExtractor(BaseExtractor):
         text = node_text(node, source)
         ls = node_line_start(node)
         le = node_line_end(node)
-        qname = f"import::{text[:80]}"
-        sid = make_symbol_id(
-            self._lang_key, file_path, NodeKind.IMPORT.value, qname, ls, le
-        )
-        sym = ExtractedNode(
-            symbol_id=sid,
-            name=text[:80],
-            qualified_name=qname,
-            kind=NodeKind.IMPORT,
-            file_path=file_path,
-            language=self._lang_key,
-            line_start=ls,
-            line_end=le,
-            parent_id=parent_id,
-        )
-        if not ctx.inc_symbols():
-            return
-        nodes.append(sym)
-        edges.append(make_contains_edge(parent_id, sid))
-        ctx.inc_edges()
+        imported_names = self._import_names(text) or [text[:80]]
+        for name in imported_names:
+            qname = f"import::{name}"
+            sid = make_symbol_id(
+                self._lang_key, file_path, NodeKind.IMPORT.value, qname, ls, le
+            )
+            sym = ExtractedNode(
+                symbol_id=sid,
+                name=name,
+                qualified_name=qname,
+                kind=NodeKind.IMPORT,
+                file_path=file_path,
+                language=self._lang_key,
+                line_start=ls,
+                line_end=le,
+                parent_id=parent_id,
+            )
+            if not ctx.inc_symbols():
+                return
+            nodes.append(sym)
+            edges.append(make_contains_edge(parent_id, sid))
+            ctx.inc_edges()
+
+    def _import_names(self, import_text: str) -> list[str]:
+        match = _TS_NAMED_IMPORT_RE.search(import_text)
+        if match is None:
+            return []
+        names: list[str] = []
+        for part in match.group(1).split(","):
+            name = part.strip().split(" as ", 1)[0].strip()
+            if name:
+                names.append(name)
+        return names
 
     def _handle_export(
         self,

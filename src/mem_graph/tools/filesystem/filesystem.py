@@ -22,9 +22,6 @@ import re
 from pathlib import Path
 from typing import Annotated
 
-import anyio
-import anyio.to_thread
-
 from fastmcp import FastMCP
 
 from pydantic import Field
@@ -49,12 +46,7 @@ async def file_read(
     start_line: Annotated[int, Field(description="First line to return (1-indexed). Defaults to 1.", ge=1)] = 1,
     end_line: Annotated[int | None, Field(description="Last line to return (inclusive). Omit for full file.")] = None,
 ) -> dict:
-    """
-    Read and return the contents of a source file, optionally limited to a line range.
-
-    Provide an absolute path and optional start/end lines to read a specific block.
-    Returns the file content and total line count. Use for code inspection during audits.
-    """
+    """Read a file or selected line range."""
     if not os.path.isfile(path):
         return {"error": f"File not found: {path}"}
 
@@ -91,12 +83,7 @@ async def file_search(
     pattern: Annotated[str, Field(description="Filename glob pattern, e.g. '*.py' or 'main.go'.")],
     max_results: Annotated[int, Field(description="Maximum number of file paths to return.", ge=1, le=500)] = 100,
 ) -> dict:
-    """
-    Search and list files matching a glob pattern within a directory tree.
-
-    Provide a root directory and a filename pattern to locate source files, config files,
-    or any file type. Returns matched paths sorted alphabetically. Useful before file_read.
-    """
+    """Find files by glob within a directory tree."""
     if not os.path.isdir(directory):
         return {"error": f"Directory not found: {directory}"}
 
@@ -128,12 +115,7 @@ async def file_grep(
     is_regex: Annotated[bool, Field(description="Treat pattern as a regex. Defaults to False (literal match).")] = False,
     max_results: Annotated[int, Field(description="Maximum number of match lines to return.", ge=1, le=1000)] = 200,
 ) -> dict:
-    """
-    Search and find text or regex patterns across source files in a directory tree.
-
-    Provide a root directory, a search pattern, and an optional file glob filter.
-    Returns matching lines with file path and line number. Use for code discovery and audits.
-    """
+    """Search file contents across a directory tree."""
     if not os.path.isdir(directory):
         return {"error": f"Directory not found: {directory}"}
 
@@ -147,7 +129,7 @@ async def file_grep(
             if not fnmatch.fnmatch(name, file_glob):
                 continue
             file_path = os.path.join(root, name)
-            found = await _grep_file(file_path, compiled, max_results - len(results))
+            found = _grep_file(file_path, compiled, max_results - len(results))
             results.extend(found)
             if len(results) >= max_results:
                 break
@@ -166,12 +148,10 @@ def _compile_pattern(pattern: str, is_regex: bool) -> re.Pattern[str] | None:
     return re.compile(re.escape(pattern))
 
 
-async def _grep_file(path: str, compiled: re.Pattern[str], limit: int) -> list[dict]:
+def _grep_file(path: str, compiled: re.Pattern[str], limit: int) -> list[dict]:
     results: list[dict] = []
     try:
-        content = await anyio.to_thread.run_sync(
-            lambda: Path(path).read_text(encoding="utf-8", errors="replace")
-        )
+        content = Path(path).read_text(encoding="utf-8", errors="replace")
         lines = content.splitlines()
         for lineno, line in enumerate(lines, start=1):
             if compiled.search(line):
@@ -195,13 +175,7 @@ async def file_write(
     path: Annotated[str, Field(description="Absolute path to the file to create or overwrite.")],
     content: Annotated[str, Field(description="Full file content to write.")],
 ) -> dict:
-    """
-    Create or overwrite a file with the given content.
-
-    Provide the absolute path and the complete content string. Parent directories
-    must already exist. Overwrites existing files without confirmation — use carefully.
-    Returns confirmation with byte count written.
-    """
+    """Create or overwrite a file."""
     if not os.path.isdir(os.path.dirname(path) or "."):
         return {"error": f"Parent directory does not exist for: {path}"}
 
@@ -226,13 +200,7 @@ async def file_edit(
     old_text: Annotated[str, Field(description="Exact text block to replace. Must appear exactly once in the file.")],
     new_text: Annotated[str, Field(description="Replacement text block.")],
 ) -> dict:
-    """
-    Surgically replace one exact block of text inside a file.
-
-    Provide the file path, the exact text to find, and the replacement. The old_text
-    must appear exactly once in the file or the edit is rejected. Use file_read first
-    to capture the exact text before calling this tool.
-    """
+    """Replace one exact text block in a file."""
     if not os.path.isfile(path):
         return {"error": f"File not found: {path}"}
 
@@ -268,12 +236,7 @@ async def file_edit(
 async def file_delete(
     path: Annotated[str, Field(description="Absolute path to the file to delete.")],
 ) -> dict:
-    """
-    Delete a file from the filesystem.
-
-    Provide the absolute path. Only files are accepted — directory removal is not
-    supported. Returns an error if the path does not exist or is a directory.
-    """
+    """Delete a file."""
     if not os.path.exists(path):
         return {"error": f"Path not found: {path}"}
     if os.path.isdir(path):

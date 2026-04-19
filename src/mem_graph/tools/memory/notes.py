@@ -38,12 +38,7 @@ async def note_create(
     ] = None,
     conn: Any = Depends(db_get_connection),
 ) -> dict:
-    """
-    Write down and store an observation, finding, warning, or lesson learned as a note.
-
-    Provide the content and categorise by kind (general, finding, warning, lesson, audit).
-    Optionally attach to a project and tag for retrieval. Returns a note_id.
-    """
+    """Create a note for a project or global context."""
     if not hasattr(conn, "execute"):
         conn = db_get_connection()
 
@@ -103,12 +98,7 @@ async def note_search(
     limit: Annotated[int, Field(description="Maximum results", ge=1, le=20)] = 10,
     conn: Any = Depends(db_get_connection),
 ) -> dict:
-    """
-    Find and retrieve notes relevant to a topic using semantic similarity search.
-
-    Provide a query and optionally filter by kind or project. Returns ranked notes
-    most semantically similar to your query. Use to recall past observations and findings.
-    """
+    """Search notes by semantic similarity."""
     vec = await embeddings_generate(query)
     candidate_size = limit * 3
 
@@ -181,12 +171,7 @@ async def note_list(
     kind: Annotated[str | None, Field(description="Filter by note kind")] = None,
     conn: Any = Depends(db_get_connection),
 ) -> dict:
-    """
-    Browse and list all saved notes without semantic ranking.
-
-    Optionally filter by project or kind. Useful for reviewing all notes about a topic.
-    Returns notes ordered by creation date descending.
-    """
+    """List notes filtered by project or kind."""
     if not hasattr(conn, "execute"):
         conn = db_get_connection()
 

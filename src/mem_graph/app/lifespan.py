@@ -27,6 +27,7 @@ from .constants import (
     TRANSPORT,
 )
 from ..config import CODE_EMBED_MODEL, TEXT_EMBED_MODEL
+from .tools import catalog_tools
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ def build_lifespan(mcp: FastMCP):
             lakehouse_status = "Available" if os.getenv("LAKEHOUSE_URL") else "Unavailable"
 
             # 2. Extract counts and info
-            tool_count = len(await mcp.list_tools())
+            tool_count = len(await catalog_tools(mcp))
             prompt_count = len(await mcp.list_prompts())
             # Skills are providers in FastMCP 
             skills_count = len(mcp.providers) 
@@ -71,12 +72,15 @@ def build_lifespan(mcp: FastMCP):
                 f"  | Embedding code model: {code_model}".ljust(91) + "|",
                 "  | ".ljust(91) + "|",
                 f"  | Tools: {tool_count} | Prompts: {prompt_count} | Skills: {skills_count} | Version: {SERVER_VERSION}".ljust(91) + "|",
-                f"  | CodeMode: ENABLED | Transport: {TRANSPORT.upper()}".ljust(91) + "|",
+                f"  | Discovery: BM25 search | Transport: {TRANSPORT.upper()}".ljust(91) + "|",
             ]
 
             print(BANNER_LOGO, file=sys.stderr)
             print(BANNER_BOX_TEMPLATE.format(lines="\n".join(status_lines)), file=sys.stderr)
-            print(f"  Version: {SERVER_VERSION} | CodeMode: ENABLED | Host: {HOST}:{PORT}\n", file=sys.stderr)
+            print(
+                f"  Version: {SERVER_VERSION} | Discovery: BM25 search | Host: {HOST}:{PORT}\n",
+                file=sys.stderr,
+            )
 
         await to_thread.run_sync(db_init_engine)
         start_worker()
@@ -113,4 +117,3 @@ async def _load_openapi_providers(mcp: FastMCP) -> None:
             logger.info("openapi_provider_loaded spec=%s", spec_url)
         except Exception as exc:  # noqa: BLE001
             logger.warning("openapi_provider_failed spec=%s error=%s", spec_url, exc)
-

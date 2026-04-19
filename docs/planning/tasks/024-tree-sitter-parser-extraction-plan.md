@@ -1,8 +1,8 @@
 # Task 024: Thread-Safe Universal Tree-sitter Parser, Extractor, Resolver, and Ladybug Persistence
 
-**Status:** Planning  
-**Priority:** High  
-**Blocked by:** Tree-sitter Python runtime dependency, Ladybug schema migration, and DB ingest boundary decision  
+**Status:** Planning
+**Priority:** High
+**Blocked by:** Tree-sitter Python runtime dependency, Ladybug schema migration, and DB ingest boundary decision
 **Blocks:** Code symbol graph indexing, code impact analysis, query lineage indexing, MCP parser tooling
 
 ## Problem Statement
@@ -856,29 +856,29 @@ DB verification:
 
 ## Initial Checklist
 
-- [ ] Add Tree-sitter runtime dependency.
-- [ ] Implement grammar asset discovery for `data/tree-sitter/grammar/{language}`.
-- [ ] Validate every `.so`, `manifest.json`, `node-types.json`, and `queries/{language}.scm`.
-- [ ] Implement runtime safety limits and cache policy.
-- [ ] Implement parser loader and parse-only smoke tests.
-- [ ] Implement universal SCM extractor.
-- [ ] Implement custom Python, Go, TypeScript, TSX, Cypher, and SQL extractors.
-- [ ] Implement anonymous-symbol extraction for Go, Python, and TypeScript.
-- [ ] Implement resolvers, including anonymous-symbol resolvers.
-- [ ] Add schema migration for `CodeSymbol` source spans.
-- [ ] Update `schema/agent_memory_schema.cypher` for required parser relationships.
-- [ ] Update `schema/agent_memory_schema.cypher` / DB init to install/load `vector`, `llm`, and `algo`.
-- [ ] **PRE-CONDITION for Phase 5**: Confirm active `OLLAMA_CODE_EMBED_MODEL` output dimension by querying the model; update `.env` with `OLLAMA_CODE_EMBED_DIM` if needed.
-- [ ] Reconcile code embedding dimensions in schema with `.env` and active Ollama model output (migrate `CodeFile.embedding` and `CodeSymbol.embedding` from `FLOAT[1536]` to correct dimension).
-- [ ] Add code graph relationship tables.
-- [ ] Implement `persist.py` as pure DTO -> Cypher statement/batch generation.
-- [ ] Implement `ingest.py` as the single Ladybug DB execution boundary.
-- [ ] Add explicit transaction, rollback, retry, stale cleanup, and structured `PersistenceResult` handling in `ingest.py`.
-- [ ] **BLOCKER**: Refactor `CodeEmbedService.upsert_code_file` so all parser-triggered `CodeFile` writes route through `ingest.py`. Do not proceed with Phase 5 until all code DB writes are consolidated.
-- [ ] Expose parser functionality as MCP tools.
-- [ ] Wire parser indexing into code indexing behind a feature flag.
-- [ ] Add dashboard/tool visibility.
-- [ ] Add leak, thread, process, and bounded-memory safety tests.
+- [x] Add Tree-sitter runtime dependency.
+- [x] Implement grammar asset discovery for `data/tree-sitter/grammar/{language}`.
+- [x] Validate every `.so`, `manifest.json`, `node-types.json`, and `queries/{language}.scm`.
+- [x] Implement runtime safety limits and cache policy.
+- [x] Implement parser loader and parse-only smoke tests.
+- [x] Implement universal SCM extractor.
+- [x] Implement custom Python, Go, TypeScript, TSX, Cypher, and SQL extractors.
+- [x] Implement anonymous-symbol extraction for Go, Python, and TypeScript.
+- [x] Implement resolvers, including anonymous-symbol resolvers.
+- [x] Add schema migration for `CodeSymbol` source spans.
+- [x] Update `schema/agent_memory_schema.cypher` for required parser relationships.
+- [x] Update `schema/agent_memory_schema.cypher` / DB init to install/load `vector`, `llm`, and `algo`.
+- [x] **PRE-CONDITION for Phase 5**: Confirm active `OLLAMA_CODE_EMBED_MODEL` output dimension by querying the model; update `.env` with `OLLAMA_CODE_EMBED_DIM` if needed.
+- [x] Reconcile code embedding dimensions in schema with `.env` and active Ollama model output (migrate `CodeFile.embedding` and `CodeSymbol.embedding` from `FLOAT[1536]` to correct dimension).
+- [x] Add code graph relationship tables.
+- [x] Implement `persist.py` as pure DTO -> Cypher statement/batch generation.
+- [x] Implement `ingest.py` as the single Ladybug DB execution boundary.
+- [x] Add explicit transaction, rollback, retry, stale cleanup, and structured `PersistenceResult` handling in `ingest.py`.
+- [x] **BLOCKER**: Refactor `CodeEmbedService.upsert_code_file` so all parser-triggered `CodeFile` writes route through `ingest.py`. Do not proceed with Phase 5 until all code DB writes are consolidated.
+- [x] Expose parser functionality as MCP tools.
+- [x] Wire parser indexing into code indexing behind a feature flag.
+- [x] Add dashboard/tool visibility.
+- [x] Add leak, thread, process, and bounded-memory safety tests.
 
 ## Reference Links
 

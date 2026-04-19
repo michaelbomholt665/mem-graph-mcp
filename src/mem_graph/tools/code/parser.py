@@ -41,12 +41,7 @@ mcp = FastMCP("code", instructions="Tree-sitter code parser and graph indexing t
 
 @mcp.tool(tags={"namespace:code"})
 def parser_health() -> dict[str, Any]:
-    """
-    Report grammar asset availability, cache sizes, and runtime limits.
-
-    Returns supported languages, per-language checksum/query status,
-    loaded cache sizes, and default parse/index limits.
-    """
+    """Report parser assets, caches, and default limits."""
     registry = get_registry()
     health = registry.health()
 
@@ -97,13 +92,7 @@ def parser_parse_file(
         ),
     ] = None,
 ) -> dict[str, Any]:
-    """
-    Parse one file with tree-sitter and return parse status.
-
-    Does not extract symbols or persist anything.
-    Returns: language_key, root_node_type, duration_ms, nodes_visited,
-    has_errors, error_node_count, limit_hit, warnings.
-    """
+    """Parse a file with tree-sitter."""
     result = pipeline_parse_file(path, language=language)
     return {
         "language_key": result.language_key,
@@ -141,12 +130,7 @@ def extract_code_symbols(
         ),
     ] = 500,
 ) -> dict[str, Any]:
-    """
-    Parse and extract code symbols from one file.
-
-    Returns a bounded list of extracted symbols and edge counts.
-    Does not persist to the database.
-    """
+    """Parse a file and extract its code symbols."""
     limits = ParseLimits(max_symbols=min(max_symbols, DEFAULT_LIMITS.max_symbols))
     parse_result, nodes, edges = extract_file(path, language=language, limits=limits)
 
@@ -193,15 +177,10 @@ def index_code_symbols(
         str, Field(description="Absolute path to the source file to index.")
     ],
 ) -> dict[str, Any]:
-    """
-    Parse, extract, resolve, and persist one file's code symbols into Ladybug.
-
-    Returns counts of files, symbols, and relationships written,
-    plus any errors or limit hits.
-    """
+    """Index one file's code symbols into Ladybug."""
     try:
         db_conn = db_get_connection()
-        db = db_conn._connection if hasattr(db_conn, "_connection") else db_conn
+        db = db_conn.database
     except RuntimeError as exc:
         return {"success": False, "errors": [str(exc)]}
 
@@ -248,17 +227,10 @@ def index_code_tree(
         ),
     ] = 200,
 ) -> dict[str, Any]:
-    """
-    Index a bounded file tree into Ladybug.
-
-    Walks the root directory, detects supported source files, and indexes
-    each one with parse → extract → resolve → persist.
-
-    Returns aggregate counts and per-file errors if any files failed.
-    """
+    """Index a bounded file tree into Ladybug."""
     try:
         db_conn = db_get_connection()
-        db = db_conn._connection if hasattr(db_conn, "_connection") else db_conn
+        db = db_conn.database
     except RuntimeError as exc:
         return {"success": False, "errors": [str(exc)]}
 

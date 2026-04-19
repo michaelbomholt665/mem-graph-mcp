@@ -13,6 +13,7 @@ import anyio
 from fastmcp import FastMCP
 from pydantic import Field
 
+from ...app.registry import AgentEntry, register_agent
 from ...agents.document.decision_agent import DecisionDependencies, decision_agent
 from ...db import db_get_connection
 from ...embeddings import embeddings_generate
@@ -22,6 +23,17 @@ from ...services.search import rrf_fuse
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP("decisions")
+
+register_agent(
+    AgentEntry(
+        name="Decision Agent",
+        tool_name="decision_review",
+        description="Audits architecture for drift against codebase.",
+        namespace="audit",
+        categories=["architecture", "audit"],
+        task_types=["decision_review", "drift_detection"],
+    )
+)
 
 
 def _now() -> datetime:
@@ -41,12 +53,7 @@ async def decision_record(
         Field(description="Impact level: low | medium | high | critical"),
     ] = "low",
 ) -> dict:
-    """
-    Permanently record and store an architectural or implementation decision for a project.
-
-    Provide the title, rationale, and any rejected alternatives so future sessions
-    can retrieve the reasoning. Returns a decision_id for linking to tasks.
-    """
+    """Record a project decision with rationale and impact."""
     conn = db_get_connection()
     decision_id = id_generate_v7()
     text = f"{title}\n{rationale}"
@@ -99,12 +106,7 @@ async def decision_supersede(
         str, Field(description="Why the old decision is being superseded")
     ],
 ) -> dict:
-    """
-    Record that an older decision has been replaced and superseded by a newer one.
-
-    Provide both decision IDs and explain why the old one is no longer valid.
-    The old decision is marked superseded and the lineage relationship is stored.
-    """
+    """Mark one decision as superseded by another."""
     conn = db_get_connection()
     ts = _now()
 
@@ -131,12 +133,7 @@ async def decision_supersede(
 async def decision_get(
     decision_id: Annotated[str, Field(description="Decision ID to retrieve")],
 ) -> dict:
-    """
-    Retrieve a decision and its full supersession lineage history.
-
-    Provide the decision ID. Returns the rationale, status, impact, and the chain
-    of decisions it supersedes or was superseded by.
-    """
+    """Retrieve a decision and its supersession lineage."""
     conn = db_get_connection()
 
     result = conn.execute(
@@ -202,12 +199,7 @@ async def decision_search(
     ] = None,
     limit: Annotated[int, Field(description="Maximum results", ge=1, le=20)] = 10,
 ) -> dict:
-    """
-    Find and retrieve decisions relevant to a topic or choice using semantic search.
-
-    Provide a plain-language query and optionally scope to a project.
-    Returns ranked decisions most relevant to your query.
-    """
+    """Search decisions by semantic similarity."""
     conn = db_get_connection()
     vec = await embeddings_generate(query)
     candidate_size = limit * 3
@@ -290,12 +282,7 @@ async def decision_review(
     project_id: Annotated[str, Field(description="Project ID")],
     package_path: Annotated[str, Field(description="Package path to review against")],
 ) -> dict:
-    """
-    Review and audit architectural decisions for drift against the codebase using an AI agent.
-
-    Reads decisions linked to the project and analyses the current source codebase
-    to see if they are still HONOURED or if they have DRIFTED.
-    """
+    """Audit active project decisions for code drift."""
     conn = db_get_connection()
     result = conn.execute(
         """

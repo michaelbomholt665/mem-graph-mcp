@@ -21,6 +21,7 @@ from fastmcp.server.context import Context
 from mcp.types import Icon
 from pydantic import Field
 
+from ...app.registry import AgentEntry, register_agent
 from ...agents.map.map_agent import MapDependencies, map_agent
 from ...observability import traced_tool
 from ...services.task_queue import task_queue
@@ -29,6 +30,17 @@ from ..background.task_status import build_task_submission
 
 mcp = FastMCP("map", instructions="Codebase cartography mapping tools.")
 logger = logging.getLogger(__name__)
+
+register_agent(
+    AgentEntry(
+        name="Map Agent",
+        tool_name="map_codebase",
+        description="Maps feature geography and codebase relationships.",
+        namespace="audit",
+        categories=["code", "architecture"],
+        task_types=["codebase_map", "feature_mapping", "relationship_mapping"],
+    )
+)
 
 _SKILLS_PATH = os.path.join(os.getcwd(), "skills", "map_agent", "SKILL.md")
 
@@ -64,12 +76,7 @@ async def map_codebase(
     ] = ".py",
     ctx: Context = None,  # type: ignore[assignment]
 ) -> dict:
-    """
-    Map and discover the feature geography, architecture, and knowledge relationships of a codebase.
-
-    Produces a summary of what features exist, where they are implemented natively,
-    and what files they depend on or are consumed by. Returns entry points and relationship counts.
-    """
+    """Map features and relationships across a codebase."""
     if ctx is not None and ctx.is_background_task:
         reporter = ContextProgressReporter(ctx)
         return await _map_codebase_worker(

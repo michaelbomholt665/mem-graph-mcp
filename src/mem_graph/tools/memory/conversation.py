@@ -171,13 +171,7 @@ async def memory_capture_session(
         Field(description="Optional extra context to attach to the session record"),
     ] = None,
 ) -> SessionCaptureResult:
-    """
-    Save and capture an entire conversation session to persistent memory at session end.
-
-    Provide the project ID, your agent name, and the full ordered message list.
-    Returns a session_id immediately — summarisation happens in the background
-    so this call never blocks on Ollama. One call captures the full session.
-    """
+    """Capture a conversation session for background summarization."""
     conn = db_get_connection()
 
     conv_id = _create_conversation(conn, project_id, agent_name, model)
@@ -233,14 +227,7 @@ async def memory_recall(
         Field(description="Candidate pool size before budget truncation", ge=5, le=50),
     ] = 20,
 ) -> MemoryRecallResult:
-    """
-    Search and retrieve stored memories, past decisions, violations, and session summaries by semantic similarity.
-
-    Describe what you need to remember as a plain-language query. Provide a
-    token budget to keep the result set prompt-friendly. Returns ranked memory
-    items — most semantically relevant first — trimmed to fit the budget.
-    Optionally scope to a project or search cross-scope.
-    """
+    """Recall relevant memories, decisions, violations, and session summaries."""
     conn = db_get_connection()
     vec = await embeddings_query(query)
     candidate_size = limit * 3
@@ -345,13 +332,7 @@ async def memory_annotate(
         Field(description="How important this is: low | normal | high | critical"),
     ] = "normal",
 ) -> AnnotateResult:
-    """
-    Tag and annotate something significant mid-session without closing the conversation.
-
-    Use this when you notice an important pattern, decision, or fact during
-    a session that should survive beyond this conversation. Provide the active
-    session ID and describe what to preserve. Returns the new memory ID.
-    """
+    """Save an in-session annotation as memory."""
     conn = db_get_connection()
     mem_id = id_generate_v7()
     vec = await embeddings_generate(note)

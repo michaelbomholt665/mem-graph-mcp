@@ -25,6 +25,7 @@ from fastmcp.server.context import Context
 from mcp.types import Icon
 from pydantic import Field
 
+from ...app.registry import AgentEntry, register_agent
 from ...agents.audit.audit_agent import DEFAULT_RULES, AuditDependencies, audit_agent
 from ...models.audit import AuditReport
 from ...observability import traced_tool
@@ -36,6 +37,22 @@ from ..background.task_status import build_task_submission
 
 mcp = FastMCP("audit", instructions="Perform package codebase audits.")
 logger = logging.getLogger(__name__)
+
+register_agent(
+    AgentEntry(
+        name="Audit Agent",
+        tool_name="audit_package",
+        description="Deep audit for bugs, security, and policy violations.",
+        namespace="audit",
+        categories=["audit", "code"],
+        task_types=[
+            "package_audit",
+            "bug_audit",
+            "security_audit",
+            "policy_audit",
+        ],
+    )
+)
 
 _SKILLS_PATH = os.path.join(os.getcwd(), "skills", "audit_agent", "SKILL.md")
 
@@ -77,17 +94,7 @@ async def audit_package(
     ] = False,
     ctx: Context = None,  # type: ignore[assignment]
 ) -> dict:
-    """
-    Audit and analyse a source code package directory for bugs, violations, security issues, and missing implementations.
-
-    Analyses all source files for bugs, goroutine leaks, silent errors, security
-    vulnerabilities, and missing implementations. Deduplicates findings against
-    existing open violations and marks recurrences. Returns a structured summary
-    with finding counts and severity breakdown.
-
-    Pass ``peer_review=True`` to have the findings reviewed by the client LLM
-    before they are returned.
-    """
+    """Audit a package for bugs, security issues, and policy violations."""
     if ctx is not None and ctx.is_background_task:
         reporter = ContextProgressReporter(ctx)
         return await _audit_package_worker(
@@ -232,7 +239,7 @@ async def _handle_violation_persistence(
         return _maybe_persist(report, project_id, persist_violations)
 
     try:
-        from fastmcp.server.context import AcceptedElicitation
+        from fastmcp.server.elicitation import AcceptedElicitation
 
         critical_desc = (
             f"Found {report.stats.blocker_count} blocker(s) and "

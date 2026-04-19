@@ -12,10 +12,22 @@ from typing import Annotated
 from fastmcp import FastMCP
 from pydantic import Field
 
+from ...app.registry import AgentEntry, register_agent
 from ...agents.map.diagram_agent import DiagramRequest, DiagramType, run_diagram_agent
 
 mcp = FastMCP("diagrams", instructions="Tools for generating diagrams via mermaid.")
 logger = logging.getLogger(__name__)
+
+register_agent(
+    AgentEntry(
+        name="Diagram Agent",
+        tool_name="generate_diagram",
+        description="Generates and validates Mermaid system diagrams.",
+        namespace="work",
+        categories=["architecture", "documentation"],
+        task_types=["diagramming", "visualization"],
+    )
+)
 
 
 @mcp.tool(tags={"namespace:work"})
@@ -25,12 +37,7 @@ async def generate_diagram(
     context: Annotated[str, Field(description="Additional domain context or architecture notes if applicable.")] = "",
     style_hints: Annotated[list[str], Field(description="Optional style preferences (e.g. 'left to right', 'colorful').")] = [],
 ) -> dict:
-    """
-    Generate and render a syntactically valid Mermaid diagram for a system, feature, flow, or relationship.
-
-    Provide a description of what to visualise, with optional diagram type and style hints.
-    Uses an autonomous agent workflow to generate and validate the diagram. Returns mermaid source.
-    """
+    """Generate a Mermaid diagram from a description."""
     dtype = None
     if diagram_type:
         try:

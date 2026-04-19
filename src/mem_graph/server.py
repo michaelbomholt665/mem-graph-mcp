@@ -25,13 +25,12 @@ if not os.getenv("OPENAI_API_KEY"):
 import anyio
 import uvicorn
 from fastmcp import FastMCP
-from fastmcp.experimental.transforms.code_mode import (
-    CodeMode,  # type: ignore[import-untyped]
-)
 from fastmcp.server.context import Context
 from fastmcp.server.providers.skills import (
     SkillsProvider,  # type: ignore[import-untyped]
 )
+from fastmcp.server.transforms import PromptsAsTools, ResourcesAsTools
+from fastmcp.server.transforms.search import BM25SearchTransform
 from mcp.types import Icon
 from starlette.responses import JSONResponse
 
@@ -53,7 +52,6 @@ from .app.tools import (
     get_namespace,
     get_server_info,
     register_tools,
-    score_tool,
     server_info_payload,
 )
 from .logging import logging_setup_engine
@@ -81,14 +79,14 @@ mcp = FastMCP(
         "Agent memory store for Syntx. "
         "Captures conversations, tasks, decisions, notes, violations "
         "and enables semantic recall across sessions.\n\n"
-        "TOOL DISCOVERY: Only core tools are visible at startup. "
-        "Call tools_activate(namespace=<name>) to unlock a group of "
-        "specialised tools for your current session. "
-        "Available namespaces: memory, work, notes, audit, filesystem, background, graph, integrations.\n"
-        "Call tools_search(query='...') if you're unsure which namespace to use."
+        "Start with system_inspect() for a full orientation, or search_tools(query='...') "
+        "to find capabilities by natural language. "
+        "Use list_task_types() to see public task categories for sub-agent dispatch, "
+        "list_agents() for registered sub-agents, and tools_activate(namespace=...) "
+        "to unlock lazy namespaces. "
+        "Use list_resources() and list_prompts() to browse resource and prompt catalogs."
     ),
     lifespan=_lifespan,
-    transforms=[CodeMode()],
     list_page_size=50,
     auth=_auth_provider,
     version=SERVER_VERSION,
@@ -130,6 +128,14 @@ mcp.add_provider(SkillsProvider("skills"))
 register_tools(mcp)
 register_resources(mcp)
 register_prompts(mcp)
+mcp.add_transform(ResourcesAsTools(mcp))
+mcp.add_transform(PromptsAsTools(mcp))
+mcp.add_transform(
+    BM25SearchTransform(
+        max_results=8,
+        always_visible=["system_inspect", "list_agents", "list_task_types"],
+    )
+)
 mcp.disable(tags={f"namespace:{namespace}" for namespace in LAZY_NAMESPACES})
 
 
@@ -144,7 +150,7 @@ def build_http_app(*, with_lifespan: bool = True):
 
 def run() -> None:
     if TRANSPORT == "stdio":
-        mcp.run(transport="stdio")
+        mcp.run(transport="stdio", show_banner=False)
     elif TRANSPORT in ("http", "mcp", "streamable-http"):
         _run_http()
     else:
@@ -154,6 +160,7 @@ def run() -> None:
             ),
             host=HOST,
             port=PORT,
+            show_banner=False,
         )
 
 
@@ -180,7 +187,6 @@ _dashboard_graph_telemetry = telemetry.dashboard_graph_telemetry
 _query_rows = telemetry.query_rows
 _safe_count = telemetry.safe_count
 _get_namespace = get_namespace
-_score_tool = score_tool
 _server_info_payload = server_info_payload
 
 _agents = web._agents

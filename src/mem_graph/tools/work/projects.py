@@ -29,12 +29,7 @@ async def project_create(
         str | None, Field(description="Path to the repository root")
     ] = None,
 ) -> dict:
-    """
-    Register and create a new project as the top-level context for work tracking.
-
-    Provide a name and description — the project will be indexed for semantic search.
-    Returns a project_id to use when creating tasks, decisions, and capturing sessions.
-    """
+    """Create a project record for work tracking."""
     conn = db_get_connection()
     project_id = id_generate_v7()
     vec = await embeddings_generate(f"{name}\n{description}")
@@ -69,7 +64,7 @@ async def project_create(
 async def project_get(
     project_id: Annotated[str, Field(description="Project ID to retrieve")],
 ) -> dict:
-    """Retrieve full details for a project by its ID. Returns name, description, status, and creation timestamps."""
+    """Retrieve a project by ID."""
     conn = db_get_connection()
     result = conn.execute(
         """
@@ -99,7 +94,7 @@ async def project_get(
 
 @mcp.tool(tags={"namespace:work"})
 async def project_list() -> dict:
-    """List and browse all registered projects. Returns names, statuses, and IDs — useful to find a project_id before doing more specific work."""
+    """List registered projects."""
     conn = db_get_connection()
     result = conn.execute(
         """
@@ -130,7 +125,7 @@ async def project_search(
     ],
     limit: Annotated[int, Field(description="Maximum results", ge=1, le=20)] = 5,
 ) -> dict:
-    """Find and retrieve projects semantically similar to a search query. Provide a description of the work you're doing and get back the most relevant project IDs."""
+    """Search projects by semantic similarity."""
     conn = db_get_connection()
     vec = await embeddings_generate(query)
 

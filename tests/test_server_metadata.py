@@ -27,7 +27,7 @@ async def test_get_server_info_matches_runtime_metadata():
     from mem_graph import __version__
     from mem_graph import server as server_mod
 
-    payload = await server_mod.get_server_info()
+    payload = server_mod.get_server_info()
 
     assert payload == {
         "name": server_mod.SERVER_NAME,
@@ -57,8 +57,8 @@ async def test_dashboard_metadata_routes_return_catalogs():
     from mem_graph import server as server_mod
 
     force_graph = server_mod._force_graph_js(_request("/force-graph.js"))
-    agents = await server_mod._dashboard_agents(_request("/dashboard/api/agents"))
-    workflows = await server_mod._dashboard_workflows(
+    agents = server_mod._dashboard_agents(_request("/dashboard/api/agents"))
+    workflows = server_mod._dashboard_workflows(
         _request("/dashboard/api/workflows")
     )
     tools = await server_mod._dashboard_tools(_request("/dashboard/api/tools"))

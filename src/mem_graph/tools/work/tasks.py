@@ -13,6 +13,7 @@ import anyio
 from fastmcp import FastMCP
 from pydantic import Field
 
+from ...app.registry import AgentEntry, register_agent
 from ...agents.document.task_agent import TaskDependencies, task_agent
 from ...db import db_get_connection
 from ...embeddings import embeddings_generate
@@ -22,6 +23,17 @@ from ...services.search import rrf_fuse
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP("tasks")
+
+register_agent(
+    AgentEntry(
+        name="Task Decomposer",
+        tool_name="task_decompose_feature",
+        description="Breaks complex features into sequenced tasks.",
+        namespace="work",
+        categories=["planning", "work"],
+        task_types=["feature_planning", "task_decomposition"],
+    )
+)
 
 
 def _now() -> datetime:
@@ -41,12 +53,7 @@ async def task_create(
         str | None, Field(description="Optional backend ID to associate the task with")
     ] = None,
 ) -> dict:
-    """
-    Track and create a new unit of work under a project.
-
-    Provide a title, description, and optional priority to create and index the task.
-    Returns a task_id you can update, block, and link to decisions or violations.
-    """
+    """Create a task under a project."""
     conn = db_get_connection()
     task_id = id_generate_v7()
     vec = await embeddings_generate(f"{title}\n{description}")
@@ -112,12 +119,7 @@ async def task_update(
         Field(description="New priority: low | normal | high | critical"),
     ] = None,
 ) -> dict:
-    """
-    Change and update the status, phase, or priority of an existing task.
-
-    Provide the task ID and only the fields you want to update.
-    Returns confirmation — set status='done' to mark the task complete.
-    """
+    """Update a task's status, phase, or priority."""
     conn = db_get_connection()
     ts = _now()
 
@@ -247,7 +249,7 @@ async def task_search(
     ] = None,
     limit: Annotated[int, Field(description="Maximum results", ge=1, le=20)] = 10,
 ) -> dict:
-    """Find and retrieve tasks relevant to a goal or topic using semantic search. Provide a natural language query and optionally scope to a project. Returns ranked tasks."""
+    """Search tasks by semantic similarity."""
     conn = db_get_connection()
     vec = await embeddings_generate(query)
     candidate_size = limit * 3
@@ -318,7 +320,7 @@ async def task_link_decision(
     task_id: Annotated[str, Field(description="Task ID")],
     decision_id: Annotated[str, Field(description="Decision ID to link")],
 ) -> dict:
-    """Record that a task is governed by a specific architectural decision. Provide both IDs and the relationship is created for traceability."""
+    """Link a task to an architectural decision."""
     conn = db_get_connection()
     conn.execute(
         """
@@ -335,7 +337,7 @@ async def task_link_violation(
     task_id: Annotated[str, Field(description="Task ID")],
     violation_id: Annotated[str, Field(description="Violation ID to link")],
 ) -> dict:
-    """Associate and link a task with a specific code violation to track remediation. Provide both IDs and the link is stored."""
+    """Link a task to a violation."""
     conn = db_get_connection()
     conn.execute(
         """
@@ -355,7 +357,7 @@ async def task_block(
     ],
     reason: Annotated[str, Field(description="Reason why the task is blocked")],
 ) -> dict:
-    """Mark and record one task as blocked by another and explain why. Provide both task IDs and a reason so blockers are visible in task retrieval."""
+    """Record that one task blocks another."""
     conn = db_get_connection()
     conn.execute(
         """
@@ -430,12 +432,7 @@ async def task_decompose_feature(
         str, Field(description="Detailed description of the feature to build")
     ],
 ) -> dict:
-    """
-    Decompose and break down a complex feature request into sequenced tasks using an AI agent.
-
-    Reads prior decisions, open violations, and codebase context to generate tasks.
-    Returns a structured list of tasks with complexity estimates and blockers identified.
-    """
+    """Decompose a feature request into sequenced tasks."""
     conn = db_get_connection()
     prior_decisions = _fetch_active_decisions(conn, project_id)
     open_violations = _fetch_open_violations(conn, project_id)

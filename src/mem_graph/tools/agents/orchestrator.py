@@ -19,6 +19,7 @@ from fastmcp.server.context import Context
 from mcp.types import Icon
 from pydantic import Field
 
+from ...app.registry import AgentEntry, register_agent
 from ...agents.orchestrator_agent import (
     BatchResult,
     OrchestratorDependencies,
@@ -33,6 +34,37 @@ from ..background.task_status import build_task_submission
 
 mcp = FastMCP("orchestrator", instructions="Batch orchestration and recursive autopilot workflows.")
 logger = logging.getLogger(__name__)
+
+register_agent(
+    AgentEntry(
+        name="Autopilot Remediation",
+        tool_name="autopilot_remediate",
+        description="Recursive Find, Fix, Style, Verify, and Sync.",
+        namespace="audit",
+        categories=["code", "remediation"],
+        task_types=["remediation", "refactoring", "bug_fix"],
+    )
+)
+register_agent(
+    AgentEntry(
+        name="Codebase Orchestrator",
+        tool_name="orchestrate_codebase",
+        description="Batched analysis orchestration across sub-agents.",
+        namespace="audit",
+        categories=["coordination", "code"],
+        task_types=["batched_audit", "batched_mapping", "batched_decision_review"],
+    )
+)
+register_agent(
+    AgentEntry(
+        name="Sub-agent Workflow",
+        tool_name="run_subagent_workflow",
+        description="Managed multi-stage routing workflow.",
+        namespace="audit",
+        categories=["coordination", "workflow"],
+        task_types=["subagent_workflow", "managed_workflow"],
+    )
+)
 
 _SKILLS_PATH = os.path.join(os.getcwd(), "skills", "orchestrator_agent", "SKILL.md")
 
@@ -61,13 +93,7 @@ async def autopilot_remediate(
     max_retries: Annotated[int, Field(description="Maximum refinement retry loops.", ge=1, le=5)] = 3,
     ctx: Context = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
-    """
-    Recursive Autopilot Remediation: Find, Fix, Style, Verify, and Sync.
-
-    Uses the Router to select a model tier, then launches a pydantic-graph
-    workflow that grounds itself in graph memory (Violations, Decisions)
-    before proposing and validating code changes.
-    """
+    """Run the recursive remediation workflow for selected files."""
     if ctx is not None:
         await ctx.info(f"Launching Autopilot Remediation for project {project_id} ({len(target_files)} files)")
         await ctx.report_progress(progress=0, total=3)
@@ -145,13 +171,7 @@ async def orchestrate_codebase(
     ] = None,
     ctx: Context = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
-    """
-    Orchestrate batched analysis of a codebase with the audit, map, or decision sub-agents.
-
-    The orchestrator reads files in bounded batches, injects pre-loaded file content
-    into the selected sub-agent, aggregates results incrementally, and returns the
-    merged output plus execution summary.
-    """
+    """Run batched sub-agent analysis over a codebase."""
     if ctx is not None and ctx.is_background_task:
         reporter = ContextProgressReporter(ctx)
         return await _orchestrate_codebase_worker(
@@ -204,12 +224,7 @@ async def run_subagent_workflow(
     ] = None,
     ctx: Context = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
-    """
-    Run the opt-in full router-driven sub-agent workflow.
-
-    Default router behavior remains route_only; this tool explicitly requests
-    subagent_workflow and then launches the managed pydantic_graph workflow.
-    """
+    """Run the managed router-driven sub-agent workflow."""
     if ctx is not None:
         await ctx.info(f"Routing managed workflow for project {project_id}")
         await ctx.report_progress(progress=0, total=3)

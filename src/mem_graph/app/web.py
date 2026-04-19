@@ -23,7 +23,7 @@ from ..tools.filesystem import status as filesystem_status
 from ..tools.filesystem import tree as filesystem_tree
 from .constants import SERVER_STARTED_AT, STATIC_DIR
 from .telemetry import dashboard_graph_telemetry, query_rows
-from .tools import get_namespace, server_info_payload
+from .tools import catalog_tools, get_namespace, server_info_payload
 
 logger = logging.getLogger(__name__)
 JS_MIME = "text/javascript"
@@ -157,18 +157,7 @@ def _jsonable_tool_schema(value: Any) -> Any:
 
 def dashboard_tools_handler(mcp: FastMCP):
     async def _dashboard_tools(request: Request) -> JSONResponse:  # noqa: ARG001
-        tool_defs: list[Any] = []
-        for provider in mcp.providers:
-            if provider.__class__.__name__ == "SkillsDirectoryProvider":
-                continue
-            try:
-                tool_defs.extend(await provider.list_tools())
-            except Exception as exc:  # noqa: BLE001
-                logger.debug(
-                    "dashboard_tool_provider_failed provider=%s error=%s",
-                    provider,
-                    exc,
-                )
+        tool_defs = await catalog_tools(mcp)
         groups: dict[str, list[dict[str, Any]]] = {}
         for tool_def in tool_defs:
             namespace = get_namespace(tool_def)

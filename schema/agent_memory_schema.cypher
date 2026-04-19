@@ -2,9 +2,11 @@
 // agent_memory_schema.cypher
 // Agent Memory Storage System — Ladybug Graph Database
 //
-// Embedding dim: 1536  (OpenAI text-embedding-3-small / change to suit model)
+// Embedding dims: 
+// - Text: 768  (Nomic / change to suit model)
+// - Code: 2048 (Jina v4 / change to suit model)
+//
 // UUIDv7 strings used as primary keys for temporal ordering.
-// All embeddable nodes carry a FLOAT[1536] embedding property for HNSW search.
 // =============================================================================
 
 // ---------------------------------------------------------------------------
@@ -21,7 +23,8 @@ INSTALL algo;   LOAD algo;
 // =============================================================================
 CREATE NODE TABLE IF NOT EXISTS SchemaMeta (
     version        STRING PRIMARY KEY,  -- semver string, e.g. "1.0"
-    embed_dim      INT64,               -- must match OLLAMA_EMBED_DIM at runtime
+    text_embed_dim INT64,               -- must match OLLAMA_TEXT_EMBED_DIM at runtime
+    code_embed_dim INT64,               -- must match OLLAMA_CODE_EMBED_DIM at runtime
     initialized_at TIMESTAMP DEFAULT current_timestamp()
 );
 
@@ -52,7 +55,7 @@ CREATE NODE TABLE IF NOT EXISTS Project (
     description STRING,
     status      STRING DEFAULT 'active',  -- active | paused | archived
     repo_path   STRING,
-    embedding   FLOAT[1536],
+    embedding   FLOAT[TEXT_DIM],
     created_at  TIMESTAMP DEFAULT current_timestamp(),
     updated_at  TIMESTAMP DEFAULT current_timestamp()
 );
@@ -67,7 +70,7 @@ CREATE NODE TABLE IF NOT EXISTS Backend (
     language    STRING,               -- go | python | typescript | rust | …
     root_path   STRING,
     description STRING,
-    embedding   FLOAT[1536],
+    embedding   FLOAT[TEXT_DIM],
     created_at  TIMESTAMP DEFAULT current_timestamp()
 );
 
@@ -82,7 +85,7 @@ CREATE NODE TABLE IF NOT EXISTS Task (
     priority     STRING DEFAULT 'normal', -- low | normal | high | critical
     audit_id     STRING,                  -- e.g. "002A" — matches violation lifecycle IDs
     phase        STRING,                  -- planning | red | green | refactor | audit
-    embedding    FLOAT[1536],
+    embedding    FLOAT[TEXT_DIM],
     created_at   TIMESTAMP DEFAULT current_timestamp(),
     updated_at   TIMESTAMP DEFAULT current_timestamp(),
     completed_at TIMESTAMP
@@ -98,7 +101,7 @@ CREATE NODE TABLE IF NOT EXISTS Decision (
     alternatives STRING,              -- rejected options, free text
     status       STRING DEFAULT 'active',  -- active | superseded | reverted
     impact       STRING DEFAULT 'low',     -- low | medium | high | critical
-    embedding    FLOAT[1536],
+    embedding    FLOAT[TEXT_DIM],
     created_at   TIMESTAMP DEFAULT current_timestamp()
 );
 
@@ -111,7 +114,7 @@ CREATE NODE TABLE IF NOT EXISTS Note (
     title      STRING,
     body       STRING,
     tags       STRING[],                  -- arbitrary tag list
-    embedding  FLOAT[1536],
+    embedding  FLOAT[TEXT_DIM],
     created_at TIMESTAMP DEFAULT current_timestamp()
 );
 
@@ -129,7 +132,7 @@ CREATE NODE TABLE IF NOT EXISTS Violation (
     description STRING,
     fingerprint STRING,               -- SHA-256 dedup key (first 16 hex chars)
     status      STRING DEFAULT 'open', -- open | recurrence | resolved | graduated
-    embedding   FLOAT[1536],
+    embedding   FLOAT[TEXT_DIM],
     detected_at TIMESTAMP DEFAULT current_timestamp(),
     last_seen_at TIMESTAMP,
     resolved_at TIMESTAMP
@@ -145,7 +148,7 @@ CREATE NODE TABLE IF NOT EXISTS Conversation (
     summary_status STRING,
     model       STRING,
     turn_count  INT64 DEFAULT 0,
-    embedding   FLOAT[1536],
+    embedding   FLOAT[TEXT_DIM],
     started_at  TIMESTAMP DEFAULT current_timestamp(),
     ended_at    TIMESTAMP
 );
@@ -159,7 +162,7 @@ CREATE NODE TABLE IF NOT EXISTS Message (
     content     STRING,
     tool_name   STRING,               -- populated when role=tool
     token_count INT64,
-    embedding   FLOAT[1536],
+    embedding   FLOAT[TEXT_DIM],
     created_at  TIMESTAMP DEFAULT current_timestamp()
 );
 
@@ -173,7 +176,7 @@ CREATE NODE TABLE IF NOT EXISTS Memory (
     scope      STRING DEFAULT 'global', -- global | project | backend | task
     content    STRING,
     confidence FLOAT DEFAULT 1.0,
-    embedding  FLOAT[1536],
+    embedding  FLOAT[TEXT_DIM],
     created_at TIMESTAMP DEFAULT current_timestamp(),
     updated_at TIMESTAMP DEFAULT current_timestamp(),
     expires_at TIMESTAMP              -- NULL = never expires
@@ -195,7 +198,7 @@ CREATE NODE TABLE IF NOT EXISTS CodeSymbol (
     line_end       INT64,
     is_exported    BOOLEAN DEFAULT false,
     is_async       BOOLEAN DEFAULT false,
-    embedding      FLOAT[1536],
+    embedding      FLOAT[CODE_DIM],
     indexed_at     TIMESTAMP DEFAULT current_timestamp()
 );
 
@@ -210,7 +213,7 @@ CREATE NODE TABLE IF NOT EXISTS CodeFile (
     size_bytes INT64,
     content_hash STRING,
     summary    STRING,
-    embedding  FLOAT[1536],
+    embedding  FLOAT[CODE_DIM],
     indexed_at TIMESTAMP DEFAULT current_timestamp(),
     updated_at TIMESTAMP DEFAULT current_timestamp()
 );
@@ -227,7 +230,7 @@ CREATE NODE TABLE IF NOT EXISTS JinaIssue (
     assignee    STRING,
     url         STRING,
     source_hash STRING,
-    embedding   FLOAT[1536],
+    embedding   FLOAT[TEXT_DIM],
     created_at  TIMESTAMP,
     synced_at   TIMESTAMP DEFAULT current_timestamp()
 );
@@ -400,71 +403,3 @@ CALL CREATE_FTS_INDEX('Violation',  'fts_violation_desc',  ['description']);
 CALL CREATE_FTS_INDEX('CodeSymbol', 'fts_symbol_name',     ['name', 'signature']);
 CALL CREATE_FTS_INDEX('CodeFile',   'fts_codefile_path',   ['path', 'name', 'summary']);
 CALL CREATE_FTS_INDEX('JinaIssue',  'fts_jina_issue_text', ['issue_key', 'title', 'description']);
-
-
-// =============================================================================
-// EXAMPLE QUERIES
-// =============================================================================
-
-// ---------------------------------------------------------------------------
-// 1. Semantic search across ALL memory kinds for a given query vector
-//    (replace $qvec with an actual FLOAT[1536] at call time)
-// ---------------------------------------------------------------------------
-//
-// CALL QUERY_VECTOR_INDEX('Memory', 'idx_memory_emb', $qvec, 10)
-// WITH node AS m, distance
-// OPTIONAL MATCH (m)<-[:PROJECT_MEMORY]-(p:Project)
-// OPTIONAL MATCH (m)<-[:BACKEND_MEMORY]-(b:Backend)
-// RETURN m.kind, m.scope, m.content, p.name AS project, b.name AS backend, distance
-// ORDER BY distance
-// LIMIT 10;
-
-// ---------------------------------------------------------------------------
-// 2. Find tasks semantically similar to a query, scoped to a specific project
-// ---------------------------------------------------------------------------
-//
-// CALL PROJECT_GRAPH_CYPHER(
-//     'proj_tasks',
-//     'MATCH (p:Project {id: $project_id})-[:HAS_TASK]->(t:Task) RETURN t'
-// );
-//
-// CALL QUERY_VECTOR_INDEX('proj_tasks', 'idx_task_emb', $qvec, 5)
-// RETURN node.title, node.status, node.priority, distance
-// ORDER BY distance;
-
-// ---------------------------------------------------------------------------
-// 3. Full conversation replay for a session
-// ---------------------------------------------------------------------------
-//
-// MATCH (c:Conversation {id: $conv_id})-[:CONVERSATION_MESSAGE]->(m:Message)
-// RETURN m.role, m.content, m.created_at
-// ORDER BY m.created_at;
-
-// ---------------------------------------------------------------------------
-// 4. Violation blast radius — which tasks and symbols are affected?
-// ---------------------------------------------------------------------------
-//
-// MATCH (v:Violation {audit_id: $audit_id})
-// OPTIONAL MATCH (v)<-[:TASK_VIOLATION]-(t:Task)
-// OPTIONAL MATCH (v)<-[:SYMBOL_VIOLATION]-(s:CodeSymbol)
-// RETURN v.rule, v.severity, v.status,
-//        collect(t.title)  AS affected_tasks,
-//        collect(s.name)   AS affected_symbols;
-
-// ---------------------------------------------------------------------------
-// 5. Decision lineage — follow supersession chain
-// ---------------------------------------------------------------------------
-//
-// MATCH path = (d:Decision {id: $decision_id})-[:SUPERSEDES*]->(old:Decision)
-// RETURN [n IN nodes(path) | n.title] AS lineage;
-
-// ---------------------------------------------------------------------------
-// 6. Cross-session memory recall: most relevant memories for a new message
-// ---------------------------------------------------------------------------
-//
-// CALL QUERY_VECTOR_INDEX('Memory', 'idx_memory_emb', $qvec, 20)
-// WITH node AS m, distance
-// WHERE m.expires_at IS NULL OR m.expires_at > current_timestamp()
-// RETURN m.kind, m.scope, m.content, m.confidence, distance
-// ORDER BY distance
-// LIMIT 10;

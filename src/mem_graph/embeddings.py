@@ -23,7 +23,8 @@ from pydantic_ai import Embedder
 from pydantic_ai.embeddings import EmbeddingSettings
 from .config import (
     EMBED_CACHE_SIZE as _CONFIG_EMBED_CACHE_SIZE,
-    EMBED_DIM as _CONFIG_EMBED_DIM,
+    TEXT_EMBED_DIM as _CONFIG_TEXT_DIM,
+    CODE_EMBED_DIM as _CONFIG_CODE_DIM,
     CODE_EMBED_MODEL as _CONFIG_CODE_MODEL,
     TEXT_EMBED_MODEL as _CONFIG_TEXT_MODEL,
 )
@@ -60,7 +61,9 @@ _TEXT_MODEL: str = _CONFIG_TEXT_MODEL
 _CODE_EMBEDDER = Embedder(_normalise_model_name(_CODE_MODEL), defer_model_check=True)
 _TEXT_EMBEDDER = Embedder(_normalise_model_name(_TEXT_MODEL), defer_model_check=True)
 
-EMBED_DIM: int = _CONFIG_EMBED_DIM
+TEXT_EMBED_DIM: int = _CONFIG_TEXT_DIM
+CODE_EMBED_DIM: int = _CONFIG_CODE_DIM
+EMBED_DIM: int = TEXT_EMBED_DIM  # Legacy alias
 _CACHE_MAXSIZE: int = _CONFIG_EMBED_CACHE_SIZE
 
 # Context Safety & Keep-Alive Settings:
@@ -84,7 +87,7 @@ _embed_override: Callable[[str], list[float]] | None = None
 async def embeddings_generate(text: str) -> list[float]:
     """Return a float embedding vector for the given text."""
     if _embed_override is not None:
-        return _validate(_embed_override(text), text)
+        return _validate(_embed_override(text), text, TEXT_EMBED_DIM)
 
     return await _cached_embed_async(text, "document")
 
@@ -92,7 +95,7 @@ async def embeddings_generate(text: str) -> list[float]:
 async def embeddings_code(text: str) -> list[float]:
     """Return a code-aware embedding vector for indexed source content."""
     if _embed_override is not None:
-        return _validate(_embed_override(text), text)
+        return _validate(_embed_override(text), text, CODE_EMBED_DIM)
 
     return await _cached_embed_async(text, "code")
 
@@ -100,7 +103,7 @@ async def embeddings_code(text: str) -> list[float]:
 async def embeddings_query(text: str) -> list[float]:
     """Return a search-optimised embedding for a query string."""
     if _embed_override is not None:
-        return _validate(_embed_override(text), text)
+        return _validate(_embed_override(text), text, TEXT_EMBED_DIM)
 
     return await _cached_embed_async(text, "query")
 
@@ -108,7 +111,7 @@ async def embeddings_query(text: str) -> list[float]:
 async def embeddings_code_query(text: str) -> list[float]:
     """Return a code-aware query embedding for text-to-code matching."""
     if _embed_override is not None:
-        return _validate(_embed_override(text), text)
+        return _validate(_embed_override(text), text, CODE_EMBED_DIM)
 
     return await _cached_embed_async(text, "code_query")
 
@@ -116,7 +119,7 @@ async def embeddings_code_query(text: str) -> list[float]:
 async def embeddings_documents(texts: list[str]) -> list[list[float]]:
     """Return index-optimised embeddings for a list of documents."""
     if _embed_override is not None:
-        return [_validate(_embed_override(t), t) for t in texts]
+        return [_validate(_embed_override(t), t, TEXT_EMBED_DIM) for t in texts]
 
     # Process individually to leverage the cache.
     return [await _cached_embed_async(t, "document") for t in texts]
@@ -125,7 +128,7 @@ async def embeddings_documents(texts: list[str]) -> list[list[float]]:
 def embeddings_generate_sync(text: str) -> list[float]:
     """Synchronous wrapper around embeddings_generate() for non-async callers."""
     if _embed_override is not None:
-        return _validate(_embed_override(text), text)
+        return _validate(_embed_override(text), text, TEXT_EMBED_DIM)
 
     try:
         # Pydantic AI's sync methods are safe to call if no loop is running
@@ -136,8 +139,8 @@ def embeddings_generate_sync(text: str) -> list[float]:
 
 
 def embed_dim() -> int:
-    """Return the configured embedding dimension."""
-    return EMBED_DIM
+    """Return the configured text embedding dimension."""
+    return TEXT_EMBED_DIM
 
 
 ################
@@ -150,6 +153,7 @@ async def _cached_embed_async(text: str, input_type: str) -> list[float]:
     # Use code embedder for audits/triage/mapping (document), text for others (query/doc)
     is_code = input_type in {"code", "code_query"}
     model_name = _CODE_MODEL if is_code else _TEXT_MODEL
+    expected_dim = CODE_EMBED_DIM if is_code else TEXT_EMBED_DIM
     key_type = input_type
     
     cached = _cache_get(text, model_name, key_type)
@@ -165,7 +169,7 @@ async def _cached_embed_async(text: str, input_type: str) -> list[float]:
         result = await embedder.embed(text, input_type="document", settings=settings)
 
     vec = [float(v) for v in result.embeddings[0]]
-    validated = _validate(vec, text)
+    validated = _validate(vec, text, expected_dim)
     _cache_set(text, model_name, key_type, validated)
     return validated
 
@@ -174,6 +178,7 @@ def _cached_embed_sync(text: str, input_type: str) -> list[float]:
     """Return a cached embedding for text or generate a new one via Pydantic AI sync."""
     is_code = input_type in {"code", "code_query"}
     model_name = _CODE_MODEL if is_code else _TEXT_MODEL
+    expected_dim = CODE_EMBED_DIM if is_code else TEXT_EMBED_DIM
     key_type = input_type
     
     cached = _cache_get(text, model_name, key_type)
@@ -189,7 +194,7 @@ def _cached_embed_sync(text: str, input_type: str) -> list[float]:
         result = embedder.embed_sync(text, input_type="document", settings=settings)
 
     vec = [float(v) for v in result.embeddings[0]]
-    validated = _validate(vec, text)
+    validated = _validate(vec, text, expected_dim)
     _cache_set(text, model_name, key_type, validated)
     return validated
 
@@ -240,12 +245,12 @@ def clear_cache() -> None:
 ################
 
 
-def _validate(vec: list[float], text: str) -> list[float]:
-    """Assert the vector matches the expected EMBED_DIM."""
-    if len(vec) != EMBED_DIM:
+def _validate(vec: list[float], text: str, expected_dim: int) -> list[float]:
+    """Assert the vector matches the expected dimension."""
+    if len(vec) != expected_dim:
         raise ValueError(
-            f"Embedding dim mismatch: got {len(vec)}, expected {EMBED_DIM}. "
-            f"Check MEM_GRAPH_EMBED_MODEL and OLLAMA_EMBED_DIM in .env. "
+            f"Embedding dim mismatch: got {len(vec)}, expected {expected_dim}. "
+            f"Check model configuration in .env. "
             f"Text snippet: {text[:60]!r}"
         )
     return vec

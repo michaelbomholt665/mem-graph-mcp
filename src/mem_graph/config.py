@@ -177,7 +177,9 @@ CODE_EMBED_MODEL: str = os.getenv(
 TEXT_EMBED_MODEL: str = os.getenv(
     "OLLAMA_TEXT_EMBED_MODEL", "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF:F16"
 )
-EMBED_DIM: int = int(os.getenv("OLLAMA_EMBED_DIM", "768"))
+TEXT_EMBED_DIM: int = int(os.getenv("OLLAMA_TEXT_EMBED_DIM", os.getenv("OLLAMA_EMBED_DIM", "768")))
+CODE_EMBED_DIM: int = int(os.getenv("OLLAMA_CODE_EMBED_DIM", "2048"))
+EMBED_DIM: int = TEXT_EMBED_DIM
 EMBED_CACHE_SIZE: int = int(os.getenv("MEM_GRAPH_EMBED_CACHE_SIZE", "512"))
 
 # Ollama-specific keep_alive durations (e.g. "20m" or "2m")
