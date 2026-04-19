@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from typing import Literal, cast
 
 from dotenv import load_dotenv
@@ -62,6 +63,13 @@ from .tools.code import parser as code_parser
 from .tools.filesystem import filesystem
 from .tools.memory import conversation, memory, notes
 from .tools.work import decisions, projects, tasks, violations
+
+# Force all standard logging to stderr
+logging.basicConfig(
+    stream=sys.stderr,
+    level=logging.INFO,
+    format="%(name)s - %(levelname)s - %(message)s",
+)
 
 logging_setup_engine(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)

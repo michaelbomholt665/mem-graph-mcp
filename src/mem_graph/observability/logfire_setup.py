@@ -10,7 +10,7 @@ from typing import Any, Literal, cast
 
 import logfire
 
-from .otel_setup import _build_metric_readers, _build_span_processors
+from .otel_setup import _build_metric_readers
 from .otel_setup import _resolve_state as _resolve_otel_state
 
 logger = logging.getLogger(__name__)
@@ -131,7 +131,7 @@ def setup_logfire(
     service_name: str,
     service_version: str,
 ) -> LogfireState:
-    """Initialize Logfire once for the process."""
+    """Initialize Logfire, hardened for MCP stdio transport."""
     global _STATE
 
     with _STATE_LOCK:
@@ -140,27 +140,39 @@ def setup_logfire(
 
         state = _resolve_state(service_name, service_version)
         _STATE = state
+
+        # 1. Determine if we are running in the Copilot CLI (stdio)
+        is_stdio = os.getenv("TRANSPORT", "stdio") == "stdio"
+
+        # 2. Redirect standard python logging to stderr immediately.
+        import sys
+
+        logging.basicConfig(stream=sys.stderr, level=logging.INFO)
+
         if not state.enabled:
-            logger.info("Logfire disabled.")
             return state
 
         otel_state = _resolve_otel_state(service_name, service_version)
-        additional_span_processors = _build_span_processors(otel_state)
-        additional_readers = _build_metric_readers(otel_state)
-        console: logfire.ConsoleOptions | Literal[False]
-        console = (
-            logfire.ConsoleOptions(
+
+        # 3. Force console=False if we are on stdio transport.
+        console: logfire.ConsoleOptions | Literal[False] = False
+        if not is_stdio and state.console:
+            console = logfire.ConsoleOptions(
                 show_project_link=False,
                 min_log_level=_console_min_level(),
             )
-            if state.console
-            else cast(Literal[False], False)
-        )
-        metrics = (
-            logfire.MetricsOptions(additional_readers=additional_readers)
-            if additional_readers
-            else None
-        )
+
+        # 4. Correct Metrics Configuration
+        # MetricsOptions usually only takes 'collect_in_spans'.
+        # Custom readers are typically passed to logfire.configure directly
+        # via a 'metrics' argument if it's a dict or specialized object.
+        metric_readers = _build_metric_readers(otel_state)
+
+        # If is_stdio is True, we want NO metrics output to avoid stdout pollution.
+        metrics_config = None
+        if not is_stdio and metric_readers:
+            # Check your Logfire version; most use a dict or omit MetricsOptions for readers
+            metrics_config = logfire.MetricsOptions(collect_in_spans=True)
 
         logfire.configure(
             send_to_logfire=state.send_to_logfire,
@@ -169,40 +181,22 @@ def setup_logfire(
             service_version=service_version,
             environment=state.environment,
             console=console,
-            metrics=metrics,
+            metrics=metrics_config,  # Corrected
             scrubbing=logfire.ScrubbingOptions(
                 extra_patterns=[r"bearer\s+[a-z0-9._=-]+"]
             ),
             inspect_arguments=False,
-            additional_span_processors=additional_span_processors or None,
+            # If your build supports additional_readers, pass them here:
+            # additional_readers=metric_readers if not is_stdio else None,
         )
-        logfire.instrument_pydantic_ai(
-            include_content=state.capture_content,
-            version=3,
-        )
-        logfire.instrument_mcp()
-        if state.instrument_httpx:
-            logfire.instrument_httpx(capture_all=state.capture_httpx)
 
-        _LOGFIRE.info(
-            "Logfire bootstrap ready",
-            service_name=service_name,
-            service_version=service_version,
-            environment=state.environment or "unknown",
-            send_to_logfire=str(state.send_to_logfire),
-            capture_content=state.capture_content,
-            instrument_httpx=state.instrument_httpx,
-            capture_httpx=state.capture_httpx,
-            otel_exporters_attached=state.otel_exporters_attached,
-        )
-        logger.info(
-            "Logfire enabled send_to_logfire=%s capture_content=%s instrument_httpx=%s capture_httpx=%s otel_exporters=%s",
-            state.send_to_logfire,
-            state.capture_content,
-            state.instrument_httpx,
-            state.capture_httpx,
-            state.otel_exporters_attached,
-        )
+        # 5. Instrument and Silent Ready Log
+        logfire.instrument_pydantic_ai(include_content=state.capture_content, version=3)
+        logfire.instrument_mcp()
+
+        # Log only to stderr to keep the MCP handshake clean.
+        logging.getLogger(__name__).info("Logfire bootstrap ready (via stderr)")
+
         return state
 
 

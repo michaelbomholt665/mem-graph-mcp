@@ -90,6 +90,7 @@ async def autopilot_remediate(
     project_id: Annotated[str, Field(description="Project ID to ground the remediation in.")],
     language: Annotated[Literal["go", "python", "typescript"], Field(description="Target language.")],
     target_files: Annotated[list[str], Field(description="Specific files to remediate.")],
+    task: Annotated[str | None, Field(description="Optional remediation task or objective.")] = None,
     max_retries: Annotated[int, Field(description="Maximum refinement retry loops.", ge=1, le=5)] = 3,
     ctx: Context = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
@@ -100,9 +101,15 @@ async def autopilot_remediate(
 
     # 1. Route and Tier Selection
     skills_content = await _load_skills()
+    
+    # Combine task into request
+    request_msg = f"Remediate violations in {len(target_files)} files: {', '.join(target_files)}"
+    if task:
+        request_msg = f"{task}\n\nScope: {request_msg}"
+
     router_deps = RouterDependencies(
         project_id=project_id,
-        request=f"Remediate violations in {len(target_files)} files: {', '.join(target_files)}",
+        request=request_msg,
         file_paths=target_files,
         skills_content=skills_content,
     )

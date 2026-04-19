@@ -128,6 +128,13 @@ async def system_inspect(
     }
 
 
+async def mcp_memory_system_inspect(
+    ctx: Context = None,  # type: ignore[assignment]
+) -> dict[str, Any]:
+    """Alias for system_inspect to support prefixed tool calls from some clients."""
+    return await system_inspect(ctx)
+
+
 async def tools_activate(
     namespace: Annotated[
         str,
@@ -171,4 +178,5 @@ def register_tools(mcp: FastMCP) -> None:
     mcp.tool()(list_agents)
     mcp.tool()(list_task_types)
     mcp.tool()(system_inspect)
+    mcp.tool()(mcp_memory_system_inspect)
     mcp.tool()(tools_activate)

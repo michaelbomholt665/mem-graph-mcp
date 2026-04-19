@@ -24,7 +24,6 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import anyio
-
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
@@ -233,7 +232,7 @@ async def process_batch(
         len(capped_paths),
     )
 
-    file_contents = _read_batch(capped_paths)
+    file_contents = await _read_batch(capped_paths)
     result = await _invoke_subagent(ctx, batch_index, file_contents)
 
     ctx.deps.batch_results.append(result)
@@ -321,7 +320,7 @@ async def run_orchestrator_batches(
             deps.subagent_name,
             len(batch_paths),
         )
-        file_contents = _read_batch(batch_paths)
+        file_contents = await _read_batch(batch_paths)
         result = await _invoke_subagent(deps, batch_index, file_contents)
         deps.batch_results.append(result)
         _merge_into_aggregate(deps.aggregate, result, deps.subagent_name)
@@ -646,18 +645,23 @@ def _merge_decision(aggregate: dict, output: Any) -> None:
 ################
 
 
-def _read_batch(paths: list[str]) -> list[BatchFileContent]:
+async def _read_batch(paths: list[str]) -> list[BatchFileContent]:
     """
-    Read a list of files.
+    Read a list of files concurrently using anyio task group.
 
     Returns BatchFileContent for each path, truncating oversized files.
     Files that cannot be read are included with an error message as content.
     """
-    results: list[BatchFileContent] = []
-    for path in paths:
-        results.append(_read_single(path))
+    results: list[BatchFileContent | None] = [None] * len(paths)
 
-    return results
+    async def read_one(index: int, path: str) -> None:
+        results[index] = _read_single(path)
+
+    async with anyio.create_task_group() as tg:
+        for i, path in enumerate(paths):
+            tg.start_soon(read_one, i, path)
+
+    return [r for r in results if r is not None]
 
 
 def _read_single(path: str) -> BatchFileContent:

@@ -13,9 +13,7 @@
 
 ## Summary
 
-The observability package is one of the cleanest in the codebase. It correctly implements a once-per-process singleton initialisation pattern using `threading.Lock`, handles the Logfire-vs-bare-OTel coexistence case well (provider detection guards), and scrubs bearer tokens from Logfire output. The instrumentation layer logs only argument *count*, not argument values, which is the right call for privacy.
-
-The issues found are all code-quality / maintenance concerns rather than security or correctness bugs. **No critical findings.**
+The observability package is one of the cleanest in the codebase. It correctly implements a once-per-process singleton initialisation pattern using `threading.Lock`, handles the Logfire-vs-bare-OTel coexistence case well, and scrubs bearer tokens from Logfire output. (Note: Shutdown error handling is now covered in 014-observability-review.md).
 
 ---
 
@@ -39,37 +37,7 @@ Identical four-line helper defined in both files. Same duplication risk as `_san
 
 ---
 
-### 3. `otel_setup._STATE` never populated when Logfire owns providers — LOW
-
-**Location:** `otel_setup.setup_observability` / `logfire_setup.setup_logfire`
-
-When `setup_logfire` is called, it internally calls `_resolve_otel_state` twice (once inside `_resolve_state`, once explicitly to build `additional_span_processors`). It does **not** call `setup_observability`, so `otel_setup._STATE` remains `None` for the lifetime of the process. Any code that later calls `setup_observability` will re-run the full setup path even though Logfire already owns the providers.
-
-In practice the `_provider_is_logfire` guard in `setup_observability` catches this and returns early, but `_STATE` is still set to a value that says `enabled=True/False` without the providers actually being configured standalone. The state is therefore misleading for any caller that inspects it.
-
-**Suggested fix:** After the early-return guard in `setup_observability`, still persist `_STATE = state` so `shutdown_observability` and any state-readers see a coherent value regardless of which bootstrap path was taken.
-
----
-
-### 4. Shutdown errors silently swallowed at DEBUG level — LOW
-
-**Location:** `otel_setup.shutdown_observability` lines ~207–230, `logfire_setup.shutdown_logfire` lines ~245–260
-
-All `except Exception` blocks inside both shutdown functions log at `logger.debug(...)`. If the OTLP exporter fails to flush (e.g. network timeout), the operator will never see a warning in production logs unless debug logging is explicitly enabled.
-
-```python
-# Current
-except Exception as exc:
-    logger.debug("Failed to flush tracer provider: %s", exc)
-
-# Suggested
-except Exception as exc:
-    logger.warning("Failed to flush tracer provider: %s", exc)
-```
-
----
-
-### 5. `ConsoleSpanExporter` writes to `stderr`, `ConsoleMetricExporter` writes to `stdout` — LOW
+### 3. `ConsoleSpanExporter` writes to `stderr`, `ConsoleMetricExporter` writes to `stdout` — LOW
 
 **Location:** `otel_setup._build_span_processors` / `_build_metric_readers`
 
@@ -81,7 +49,7 @@ while the metric exporter defaults to `stdout`. In a container environment with 
 
 ---
 
-### 6. Module-level `_LOGFIRE` created before `logfire.configure()` — INFO
+### 4. Module-level `_LOGFIRE` created before `logfire.configure()` — INFO
 
 **Location:** `logfire_setup.py` line ~18
 
@@ -95,7 +63,7 @@ This is assigned at import time, before `setup_logfire` is called. Logfire's laz
 
 ---
 
-### 7. `inspect.iscoroutinefunction` check in `traced_tool` will miss `functools.partial` wrapping — LOW
+### 5. `inspect.iscoroutinefunction` check in `traced_tool` will miss `functools.partial` wrapping — LOW
 
 **Location:** `instrumentation.py` in `traced_tool` decorator
 
@@ -130,8 +98,7 @@ if inspect.iscoroutinefunction(func):
 |---|----------|----------|---------|
 | 1 | Low | `logfire_setup.py`, `metrics.py` | `_sanitize_attributes` duplicated |
 | 2 | Low | `otel_setup.py`, `logfire_setup.py` | `_bool_env` duplicated |
-| 3 | Low | `otel_setup.setup_observability` | `_STATE` never set when Logfire owns providers |
-| 4 | Low | Both shutdown functions | Errors swallowed at DEBUG instead of WARNING |
-| 5 | Low | `otel_setup._build_*` | Span→stderr, metrics→stdout inconsistency |
-| 6 | Info | `logfire_setup.py:18` | `_LOGFIRE` created before `logfire.configure()` |
-| 7 | Low | `instrumentation.traced_tool` | `functools.partial` async functions use sync path |
+| 3 | Low | Both shutdown functions | Errors swallowed at DEBUG instead of WARNING |
+| 4 | Low | `otel_setup._build_*` | Span→stderr, metrics→stdout inconsistency |
+| 5 | Info | `logfire_setup.py:18` | `_LOGFIRE` created before `logfire.configure()` |
+| 6 | Low | `instrumentation.traced_tool` | `functools.partial` async functions use sync path |

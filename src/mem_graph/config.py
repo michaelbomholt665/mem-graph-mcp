@@ -102,9 +102,22 @@ def config_get_model_for_workflow_stage(
     Coding, audit, and debugging stages default to stronger models while
     context, documentation, and memory stages default to cheaper mini models.
     """
+    model = WORKFLOW_STAGE_MODEL_MAP[stage]
     if overrides and stage in overrides:
-        return overrides[stage]
-    return WORKFLOW_STAGE_MODEL_MAP[stage]
+        model = overrides[stage]
+    return _normalize_model_name(model)
+
+
+def _normalize_model_name(model: str) -> str:
+    """
+    Normalize model strings for Pydantic AI provider inference.
+
+    Maps common aliases or proxy prefixes (like 'x-ai/') to their
+    canonical Pydantic AI equivalents (like 'xai:').
+    """
+    if model.startswith("x-ai/"):
+        return model.replace("x-ai/", "xai:", 1)
+    return model
 
 # Concurrency scaling thresholds (file count → worker count)
 _SCALE_THRESHOLD_MED: int = 10   # ≥10 files → 2 workers
@@ -125,7 +138,10 @@ def config_get_model_for_tier(tier: str | ModelTier) -> str:
     Returns:
         The model identifier string for this tier.
     """
-    return MODEL_TIER_MAP.get(ModelTier(tier) if isinstance(tier, str) else tier, AGENT_MODEL)
+    model = MODEL_TIER_MAP.get(
+        ModelTier(tier) if isinstance(tier, str) else tier, AGENT_MODEL
+    )
+    return _normalize_model_name(model)
 
 
 def config_get_concurrency_for_files(file_count: int) -> int:
