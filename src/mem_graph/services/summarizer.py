@@ -70,12 +70,31 @@ async def stop_worker() -> None:
     if _worker_task is None:
         return
 
-    # Stop the worker by sending a sentinel and waiting for it to finish naturally.
-    # join() ensures all active jobs are processed first.
-    await _queue.join()
+    try:
+        # Drain the queue with a 30 s timeout, then signal sentinel.
+        await asyncio.wait_for(_queue.join(), timeout=30.0)
+    except asyncio.TimeoutError:
+        logger.warning("Summariser worker did not drain within 30 s; cancelling.")
+        if _worker_task is not None:
+            _worker_task.cancel()
+            try:
+                await _worker_task
+            except asyncio.CancelledError, Exception:
+                pass
+        _worker_task = None
+        return
+
     await _queue.put(None)
-    await _worker_task
-    
+    try:
+        await asyncio.wait_for(_worker_task, timeout=5.0)
+    except asyncio.TimeoutError:
+        logger.warning("Summariser worker did not stop cleanly; cancelling.")
+        _worker_task.cancel()
+        try:
+            await _worker_task
+        except asyncio.CancelledError, Exception:
+            pass
+
     _worker_task = None
     logger.info("Summariser worker stopped.")
 
@@ -183,5 +202,6 @@ async def _persist_summary(
             )
         except Exception:  # noqa: BLE001
             logger.exception(
-                "Failed to embeddings_generate summary for conversation %s", conversation_id
+                "Failed to embeddings_generate summary for conversation %s",
+                conversation_id,
             )

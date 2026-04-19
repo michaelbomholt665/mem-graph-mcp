@@ -66,9 +66,9 @@ function renderTools() {
             <td class="tool-name-cell">${escapeHtml(tool.name)}</td>
             <td class="tool-desc-cell">${escapeHtml(tool.description || '')}</td>
             <td>
-              <button class="secondary-button" type="button" aria-expanded="false" aria-controls="${rowId}"
-                style="padding: 2px 8px; font-size: 10px;"
-                onclick="const r=document.getElementById('${rowId}');const show=r.style.display==='none'||!r.style.display;r.style.display=show?'table-row':'none';this.textContent=show?'hide':'show';this.setAttribute('aria-expanded',show);">
+              <button class="secondary-button schema-toggle-btn" type="button" aria-expanded="false" aria-controls="${rowId}"
+                data-target="${rowId}"
+                style="padding: 2px 8px; font-size: 10px;">
                 show
               </button>
             </td>
@@ -89,6 +89,17 @@ function renderTools() {
     return;
   }
   tbody.innerHTML = rows.join('');
+  tbody.querySelectorAll('.schema-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetId = btn.dataset.target;
+      const r = document.getElementById(targetId);
+      if (!r) return;
+      const show = r.style.display === 'none' || !r.style.display;
+      r.style.display = show ? 'table-row' : 'none';
+      btn.textContent = show ? 'hide' : 'show';
+      btn.setAttribute('aria-expanded', String(show));
+    });
+  });
 }
 
 async function loadTools() {

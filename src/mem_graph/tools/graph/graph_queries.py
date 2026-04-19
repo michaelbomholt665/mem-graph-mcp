@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -92,6 +93,7 @@ _EDGE_DEFINITIONS: tuple[tuple[str, str, str], ...] = (
 )
 
 
+@functools.lru_cache(maxsize=1)
 def load_node_styles() -> dict[str, dict[str, Any]]:
     import json
 
@@ -112,11 +114,20 @@ def _normalize_node_types(node_types: list[str] | None) -> list[str]:
         return list(_NODE_LOADERS)
 
     normalized: list[str] = []
+    unknown: list[str] = []
     for node_type in node_types:
         canonical = supported.get(node_type.lower())
         if canonical is not None and canonical not in normalized:
             normalized.append(canonical)
-    return normalized or list(_NODE_LOADERS)
+        else:
+            unknown.append(node_type)
+
+    if unknown:
+        raise ValueError(
+            f"Unknown node type(s): {unknown!r}. "
+            f"Supported types: {sorted(_NODE_LOADERS)}"
+        )
+    return normalized
 
 
 def _project_scope_query(

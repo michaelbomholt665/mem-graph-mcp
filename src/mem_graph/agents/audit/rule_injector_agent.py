@@ -13,7 +13,6 @@ from __future__ import annotations
 ################
 #   IMPORTS
 ################
-
 import logging
 from dataclasses import dataclass, field
 
@@ -115,8 +114,8 @@ async def rule_injector_build_system_prompt(
 ## Your Task
 Select and assemble the most relevant AuditRules for an audit of:
 - Language: {ctx.deps.language}
-- File extensions: {', '.join(ctx.deps.file_extensions) or 'any'}
-- Scope tags: {', '.join(ctx.deps.scope_tags) or 'none'}
+- File extensions: {", ".join(ctx.deps.file_extensions) or "any"}
+- Scope tags: {", ".join(ctx.deps.scope_tags) or "none"}
 
 ## Selection Criteria
 1. Always include security rules (CWE-*, injection, secrets).
@@ -175,15 +174,19 @@ async def rule_injector_fetch_external_rules(
     if not ctx.deps.external_api_url:
         return "No external API configured — using local rules only."
 
+    # Always use the configured URL, ignoring the model-supplied endpoint argument,
+    # to prevent SSRF via prompt injection.
+    target_url = ctx.deps.external_api_url
+
     try:
         import httpx
 
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(endpoint)
+            response = await client.get(target_url)
             response.raise_for_status()
             return response.text
     except Exception as exc:
-        logger.warning("Failed to fetch external rules from %s: %s", endpoint, exc)
+        logger.warning("Failed to fetch external rules from %s: %s", target_url, exc)
         return f"External API unavailable: {exc}. Falling back to local rules."
 
 

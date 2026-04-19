@@ -129,9 +129,14 @@ async def memory_manage(
                         "reason": "User did not confirm.",
                     }
             except Exception as exc:
-                logger.debug(
-                    "Elicitation unavailable, proceeding without confirmation: %s", exc
+                logger.warning(
+                    "Elicitation unavailable; blocking destructive operation: %s", exc
                 )
+                return {
+                    "memory_id": memory_id,
+                    "status": "cancelled",
+                    "reason": "Confirmation unavailable; expiry blocked for safety.",
+                }
 
         service = MemoryService(conn)
         logger.info("Expired memory %s", memory_id)

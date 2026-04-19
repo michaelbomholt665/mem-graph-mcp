@@ -21,6 +21,7 @@ from ..models.evals import (
     EvalRunResult,
     EvalSuite,
     EvalSuiteResult,
+    ScorerName,
     SuiteBinding,
 )
 from .audit_evals import push_audit_dataset, run_audit_eval
@@ -33,6 +34,12 @@ from .validate_evals import push_validate_dataset, run_validate_eval
 InputsT = TypeVar("InputsT")
 OutputT = TypeVar("OutputT")
 MetadataT = TypeVar("MetadataT")
+
+# Default eval parameters — document why these values were chosen so they are
+# not silently cargo-culted in individual suite definitions.
+DEFAULT_PASS_THRESHOLD = 0.67  # Allows one miss in three runs for stochastic tolerance
+DEFAULT_RUNS = 3  # Minimum for meaningful stochastic variance measurement
+DEFAULT_CASE_TIMEOUT_S = 120  # Per-case timeout in seconds for live agent runs
 
 _HOSTED_PUSHERS = {
     "audit": push_audit_dataset,
@@ -69,6 +76,67 @@ def _resolve_mode(value: object) -> EvalMode:
 class Evaluator:
     """Run one or more eval suites and aggregate stochastic results."""
 
+    async def _execute_case_run(
+        self,
+        case: EvalCase,
+        runner,
+        run_index: int,
+        default_scorer: ScorerName,
+    ) -> tuple[EvalRunResult, EvalFailureDetail | None, ScorerName]:
+        started_at = _utc_now()
+        start = perf_counter()
+        output = ""
+        error: str | None = None
+        scorer_name: ScorerName = case.scorer or default_scorer
+
+        try:
+            output = await asyncio.wait_for(
+                runner(case), timeout=DEFAULT_CASE_TIMEOUT_S
+            )
+            scorer_name, score = score_case_output(
+                case,
+                output,
+                default_scorer=default_scorer,
+            )
+        except asyncio.TimeoutError:
+            score = 0.0
+            error = f"Eval case timed out after {DEFAULT_CASE_TIMEOUT_S}s"
+        except Exception as exc:  # noqa: BLE001
+            score = 0.0
+            error = str(exc)
+
+        duration_ms = (perf_counter() - start) * 1000
+        completed_at = _utc_now()
+        passed = error is None and score >= case.passing_score
+
+        run_result = EvalRunResult(
+            run_index=run_index,
+            score=score,
+            passed=passed,
+            duration_ms=duration_ms,
+            output=output,
+            error=error,
+            started_at=started_at,
+            completed_at=completed_at,
+        )
+
+        failure_detail = None
+        if not passed:
+            reason = (
+                error
+                if error is not None
+                else f"score {score:.2f} below threshold {case.passing_score:.2f}"
+            )
+            failure_detail = EvalFailureDetail(
+                run_index=run_index,
+                reason=reason,
+                score=score,
+                output_excerpt=_excerpt(output),
+                error=error,
+            )
+
+        return run_result, failure_detail, scorer_name
+
     async def run_case(
         self,
         suite: EvalSuite,
@@ -86,57 +154,16 @@ class Evaluator:
         scorer_name = case.scorer or suite.default_scorer
 
         for run_index in range(1, run_count + 1):
-            started_at = _utc_now()
-            start = perf_counter()
-            output = ""
-            error: str | None = None
-
-            try:
-                output = await runner(case)
-                scorer_name, score = score_case_output(
-                    case,
-                    output,
-                    default_scorer=suite.default_scorer,
-                )
-            except Exception as exc:  # noqa: BLE001
-                score = 0.0
-                error = str(exc)
-
-            duration_ms = (perf_counter() - start) * 1000
-            completed_at = _utc_now()
-            passed = error is None and score >= case.passing_score
-
-            run_results.append(
-                EvalRunResult(
-                    run_index=run_index,
-                    score=score,
-                    passed=passed,
-                    duration_ms=duration_ms,
-                    output=output,
-                    error=error,
-                    started_at=started_at,
-                    completed_at=completed_at,
-                )
+            run_result, failure_detail, last_scorer = await self._execute_case_run(
+                case, runner, run_index, suite.default_scorer
             )
+            scorer_name = last_scorer
+            run_results.append(run_result)
+            if failure_detail:
+                failure_details.append(failure_detail)
 
-            if not passed:
-                reason = (
-                    error
-                    if error is not None
-                    else f"score {score:.2f} below threshold {case.passing_score:.2f}"
-                )
-                failure_details.append(
-                    EvalFailureDetail(
-                        run_index=run_index,
-                        reason=reason,
-                        score=score,
-                        output_excerpt=_excerpt(output),
-                        error=error,
-                    )
-                )
-
-            total_score += score
-            total_duration_ms += duration_ms
+            total_score += run_result.score
+            total_duration_ms += run_result.duration_ms
 
         pass_count = sum(1 for run in run_results if run.passed)
         pass_rate = pass_count / run_count if run_count else 0.0
@@ -366,7 +393,9 @@ def _resolve_hosted_suites(selected_suites: Sequence[str] | None) -> list[str]:
     return suite_names
 
 
-def push_all_datasets(selected_suites: Sequence[str] | None = None) -> dict[str, object]:
+def push_all_datasets(
+    selected_suites: Sequence[str] | None = None,
+) -> dict[str, object]:
     """Push all golden sets to Logfire hosted storage. Safe to re-run."""
     suite_names = _resolve_hosted_suites(selected_suites)
     return {name: _HOSTED_PUSHERS[name]() for name in suite_names}

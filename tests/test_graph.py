@@ -101,7 +101,7 @@ async def test_dashboard_routes_respond(db):
     )
 
     dashboard = server_mod._dashboard(_request("/dashboard"))
-    system = await server_mod._dashboard_system(_request("/dashboard/api/system"))
+    system = server_mod._dashboard_system(_request("/dashboard/api/system"))
     styles = server_mod._dashboard_styles(_request("/dashboard/api/styles"))
     graph = await server_mod._dashboard_graph(
         _request("/dashboard/api/graph", f"project_id={project['project_id']}")

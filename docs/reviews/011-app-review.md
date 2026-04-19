@@ -1,6 +1,8 @@
 # Code Review — `src/mem_graph/app/`
 
-**Reviewer:** GitHub Copilot  
+**Reviewer:** GitHub Copilot
+**Resolved:** 2026-04-19
+**Status:** ✅ COMPLETE — all issues fixed
 **Package:** `src/mem_graph/app/`
 **Files reviewed:** 41 Python files under `src/mem_graph/app/`, including the top-level FastMCP app wiring plus `parsers/`, `parsers/extractors/`, and `parsers/resolvers/`.
 

@@ -79,9 +79,13 @@ export async function initProjectDropdown(elementId, callback) {
 
   try {
     const projects = await fetchJson('/dashboard/api/projects');
-    element.innerHTML = projects.map(p =>
-      `<option value="${p.id}">${p.name}</option>`
-    ).join('');
+    element.innerHTML = '';
+    for (const p of projects) {
+      const option = document.createElement('option');
+      option.value = p.id;
+      option.textContent = p.name;
+      element.appendChild(option);
+    }
 
     const params = new URLSearchParams(globalThis.location.search);
     const saved = params.get('project_id') || localStorage.getItem(`memgraph-project-${elementId}`);

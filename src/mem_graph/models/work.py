@@ -13,13 +13,12 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-
 ################
 #   ENUMS
 ################
 
 
-class TaskStatus(str, Enum):
+class WorkTaskStatus(str, Enum):
     """
     Lifecycle status for a Task node.
 
@@ -34,6 +33,10 @@ class TaskStatus(str, Enum):
     AUDIT = "audit"
     DONE = "done"
     BLOCKED = "blocked"
+
+
+# Backwards-compatible alias.
+TaskStatus = WorkTaskStatus
 
 
 class TaskPriority(str, Enum):
@@ -83,8 +86,8 @@ class TaskModel(BaseModel):
         default=None,
         description="Full description including acceptance criteria.",
     )
-    status: TaskStatus = Field(
-        default=TaskStatus.PLANNING,
+    status: WorkTaskStatus = Field(
+        default=WorkTaskStatus.PLANNING,
         description="Current phase in the TDD lifecycle.",
     )
     priority: TaskPriority = Field(
@@ -109,7 +112,9 @@ class DecisionModel(BaseModel):
     id: str = Field(description="UUIDv7 node identifier.")
     project_id: str = Field(description="Parent Project node ID.")
     title: str = Field(description="Short decision title.")
-    context: str = Field(description="What problem or situation prompted this decision.")
+    context: str = Field(
+        description="What problem or situation prompted this decision."
+    )
     rationale: str = Field(description="Why this option was chosen over alternatives.")
     alternatives: list[str] = Field(
         default_factory=list,

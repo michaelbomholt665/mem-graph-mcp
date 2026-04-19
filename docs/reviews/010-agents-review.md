@@ -1,6 +1,8 @@
 # Code Review — `src/mem_graph/agents/`
 
-**Reviewer:** GitHub Copilot  
+**Reviewer:** GitHub Copilot
+**Resolved:** 2026-04-19
+**Status:** ✅ COMPLETE — all issues fixed
 **Package:** `src/mem_graph/agents/`
 **Files reviewed:**
 - `__init__.py`
@@ -61,14 +63,14 @@ That means a prompt-injected or misaligned model can fetch arbitrary internal or
 
 ### 2. Multiple agents persist run state on private `RunContext` attributes — MEDIUM
 
-**Location:**  
-- `fix/fixer_agent.py:198-235`  
-- `validate/sentry_agent.py:127-157`  
-- `validate/validation_agent.py:214-243`  
-- `document/scribe_agent.py:188-197`  
-- `document/decision_agent.py:319-323`  
-- `document/task_agent.py:314-316`  
-- `document/triage_agent.py:318-320`  
+**Location:**
+- `fix/fixer_agent.py:198-235`
+- `validate/sentry_agent.py:127-157`
+- `validate/validation_agent.py:214-243`
+- `document/scribe_agent.py:188-197`
+- `document/decision_agent.py:319-323`
+- `document/task_agent.py:314-316`
+- `document/triage_agent.py:318-320`
 - `map/map_agent.py:317-326`
 
 Several agents stash accumulated output on ad-hoc `ctx._...` attributes and suppress typing with `# type: ignore[attr-defined]`. This creates hidden mutable state with no declared schema and couples behavior to the undocumented lifetime of the Pydantic AI `RunContext`.
@@ -93,10 +95,10 @@ This is especially misleading because the rest of the package often uses `anyio.
 
 ### 4. File discovery trusts raw `package_path` / extension input without boundary checks — MEDIUM
 
-**Location:**  
-- `orchestrator_agent.py:700-705`  
-- `audit/audit_agent.py:210-221`  
-- `map/map_agent.py:227-238`  
+**Location:**
+- `orchestrator_agent.py:700-705`
+- `audit/audit_agent.py:210-221`
+- `map/map_agent.py:227-238`
 - `document/decision_agent.py:230-244`
 
 The various `list_files()` helpers build recursive glob patterns directly from dependency values. There is no normalization or check that `package_path` stays within the repository root, and `decision_agent.list_files()` even exposes the extension as a tool argument.
@@ -121,9 +123,9 @@ This is not a thread leak, but it is unnecessary shared-state coupling in code t
 
 ### 6. Broad exception swallowing hides operational bugs and silently drops context — LOW
 
-**Location:**  
-- `workflow_graph.py:107,133,187,213`  
-- `orchestrator_graph.py:651-739, 767-785, 895`  
+**Location:**
+- `workflow_graph.py:107,133,187,213`
+- `orchestrator_graph.py:651-739, 767-785, 895`
 - `orchestrator_agent.py:367-437`
 
 Several paths catch broad exceptions and convert them into empty context, failed batches, or warning logs. In particular, the `_state_query_*()` helpers in `orchestrator_graph.py` silently return empty results on any failure, which can make the graph run look valid while losing decision/violation grounding.

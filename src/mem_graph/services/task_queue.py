@@ -5,6 +5,7 @@ The tools still advertise ``task=True`` so FastMCP task-aware clients can run
 them through Docket, but ordinary callers get an immediate task identifier and
 can poll via ``get_task_status``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -51,7 +52,9 @@ class _QueueProgressReporter:
         current_step: str,
         status_text: str,
     ) -> None:
-        self._queue.update_progress(self._task_id, current, total, current_step, status_text)
+        self._queue.update_progress(
+            self._task_id, current, total, current_step, status_text
+        )
         await asyncio.sleep(0)
 
 
@@ -96,6 +99,7 @@ class TaskQueue:
                         "Task cancelled during server shutdown.",
                     ),
                 )
+                self._runners.pop(task_id, None)
                 self._remember_completed(task_id)
 
             for handle in running_handles:
@@ -116,7 +120,9 @@ class TaskQueue:
         arguments: dict[str, Any] | None = None,
         session_id: str | None = None,
     ) -> Task:
-        task = Task(tool_name=tool_name, arguments=arguments or {}, session_id=session_id)
+        task = Task(
+            tool_name=tool_name, arguments=arguments or {}, session_id=session_id
+        )
         self._tasks[task.task_id] = task
         self._runners[task.task_id] = runner
 

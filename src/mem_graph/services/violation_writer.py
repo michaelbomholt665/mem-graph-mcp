@@ -14,7 +14,6 @@ from __future__ import annotations
 ################
 #   IMPORTS
 ################
-
 import logging
 
 from ..db import db_get_connection
@@ -95,7 +94,9 @@ def write_violations(
 ################
 
 
-def _violation_find_by_fingerprint(conn, fingerprint: str, project_id: str) -> str | None:
+def _violation_find_by_fingerprint(
+    conn, fingerprint: str, project_id: str
+) -> str | None:
     """
     Query for an existing violation matching the given fingerprint.
 
@@ -125,8 +126,9 @@ def _violation_find_by_fingerprint(conn, fingerprint: str, project_id: str) -> s
         )
         rows = result.get_all()
         return rows[0][0] if rows else None
-    except Exception:
+    except AttributeError:
         # fingerprint column not present in this schema version — treat as new
+        logger.debug("Fingerprint column missing from schema; treating finding as new.")
         return None
 
 

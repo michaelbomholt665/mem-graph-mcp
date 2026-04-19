@@ -63,7 +63,7 @@ class TextEmbedService:
 
     def default_jql(self) -> str:
         if bool_has_value(self.project_key):
-            return f"project = {self.project_key} ORDER BY updated DESC"
+            return f'project = "{self.project_key}" ORDER BY updated DESC'
         return "updated >= -30d ORDER BY updated DESC"
 
     async def fetch_issues(
@@ -122,8 +122,13 @@ class TextEmbedService:
         return issues
 
     async def fetch_issue(self, issue_key: str) -> JinaIssue | None:
+        import re
+
+        clean = issue_key.strip().upper()
+        if not re.match(r"^[A-Z][A-Z0-9]{1,9}-\d{1,6}$", clean):
+            raise ValueError(f"Invalid issue key: {issue_key!r}")
         issues = await self.fetch_issues(
-            jql=f"key = {issue_key.strip().upper()}",
+            jql=f'key = "{clean}"',
             limit=1,
         )
         return issues[0] if issues else None
@@ -194,6 +199,8 @@ class TextEmbedService:
         resolved_path = Path(file_path)
         if not resolved_path.is_absolute():
             resolved_path = (root / file_path).resolve()
+        if not resolved_path.is_relative_to(root):
+            raise ValueError(f"File path escapes the project root: {file_path!r}")
         if not resolved_path.exists() or not resolved_path.is_file():
             raise FileNotFoundError(f"File not found: {resolved_path}")
 

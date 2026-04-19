@@ -48,11 +48,22 @@ def keyword_score(output: str, expected_keywords: list[str]) -> float:
     return matches / len(expected_keywords)
 
 
+@lru_cache(maxsize=256)
+def _compile_pattern(pattern: str) -> re.Pattern[str]:
+    """Compile a regex pattern once, failing fast on invalid patterns."""
+    return re.compile(pattern, re.IGNORECASE | re.MULTILINE)
+
+
 def regex_score(output: str, pattern: str) -> float:
     """Return 1.0 if the output matches the expected regex pattern."""
     if not pattern:
         return 0.0
-    return 1.0 if re.search(pattern, output, re.IGNORECASE | re.MULTILINE) else 0.0
+    try:
+        compiled = _compile_pattern(pattern)
+    except re.error as exc:
+        logger.warning("Invalid regex pattern %r: %s", pattern, exc)
+        return 0.0
+    return 1.0 if compiled.search(output) else 0.0
 
 
 def _semantic_token_overlap(output: str, expected: str) -> float:

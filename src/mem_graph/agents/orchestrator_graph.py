@@ -22,7 +22,6 @@ from __future__ import annotations
 ################
 #   IMPORTS
 ################
-
 import asyncio
 import logging
 import sys
@@ -140,15 +139,13 @@ class ContextGatherNode(BaseNode[AutopilotState, None, AutopilotState]):
                 len(ctx.state.target_files),
             )
 
-            ctx.state.context_violations = _state_query_violations(
-                ctx.state.project_id
-            )
-            ctx.state.context_decisions = _state_query_decisions(
-                ctx.state.project_id
-            )
+            ctx.state.context_violations = _state_query_violations(ctx.state.project_id)
+            ctx.state.context_decisions = _state_query_decisions(ctx.state.project_id)
             ctx.state.context_map = _state_query_map(ctx.state.project_id)
             ctx.state.manifest_context = await _state_read_manifests()
-            ctx.state.file_contents = await _state_read_target_files(ctx.state.target_files)
+            ctx.state.file_contents = await _state_read_target_files(
+                ctx.state.target_files
+            )
 
             logger.info(
                 "[CONTEXT] %d violations, %d decisions loaded.",
@@ -259,7 +256,11 @@ class LogicDraftNode(BaseNode[AutopilotState, None, AutopilotState]):
             "orchestrator.logic_draft",
             attributes=_graph_span_attributes(ctx.state, "LogicDraftNode"),
         ) as span:
-            prefix = f"[RETRY {ctx.state.retry_count}]" if ctx.state.retry_count else "[LOGIC]"
+            prefix = (
+                f"[RETRY {ctx.state.retry_count}]"
+                if ctx.state.retry_count
+                else "[LOGIC]"
+            )
             file_count = len(ctx.state.target_files)
             is_solo = config_is_solo_mode(
                 file_count,
@@ -283,7 +284,8 @@ class LogicDraftNode(BaseNode[AutopilotState, None, AutopilotState]):
                 f"  - {test}" for test in ctx.state.sentry_tests
             )
             batches = _split_into_batches(ctx.state.target_files, concurrency)
-            all_patches = {}
+            all_patches: dict[str, str] = {}
+            patches_lock = asyncio.Lock()
 
             import anyio
 
@@ -304,8 +306,11 @@ class LogicDraftNode(BaseNode[AutopilotState, None, AutopilotState]):
                     "Return your FixerReport."
                 )
                 res = await fixer_agent.run(prompt, deps=deps)
-                for p in res.output.patches:
-                    all_patches[p.file_path] = p.proposed_snippet
+                worker_patches = {
+                    p.file_path: p.proposed_snippet for p in res.output.patches
+                }
+                async with patches_lock:
+                    all_patches.update(worker_patches)
 
             async with anyio.create_task_group() as tg:
                 for batch in batches:
@@ -354,8 +359,8 @@ class StyleDraftNode(BaseNode[AutopilotState, None, AutopilotState]):
             GuardNode to run the quality gate next.
         """
         from ..config import config_get_concurrency_for_files
-        from .document.scribe_agent import ScribeDependencies, scribe_agent
         from ..resources.architecture import ARCHITECTURE_GUARDRAILS
+        from .document.scribe_agent import ScribeDependencies, scribe_agent
 
         with traced_span(
             "orchestrator.style_draft",
@@ -408,7 +413,9 @@ class StyleDraftNode(BaseNode[AutopilotState, None, AutopilotState]):
                 len(all_styled),
                 len(batches),
             )
-            span.set_attribute("orchestrator.styled_file_count", len(ctx.state.styled_patches))
+            span.set_attribute(
+                "orchestrator.styled_file_count", len(ctx.state.styled_patches)
+            )
             span.set_attribute("orchestrator.worker_count", len(batches))
             next_node = GuardNode()
             span.set_attribute(_NEXT_NODE_ATTR, type(next_node).__name__)
@@ -529,11 +536,8 @@ class MemorySyncNode(BaseNode[AutopilotState, None, AutopilotState]):
             )
 
             if ctx.state.validation_violations:
-                note_content += (
-                    "\nOpen issues:\n"
-                    + "\n".join(
-                        f"  - {v}" for v in ctx.state.validation_violations[:10]
-                    )
+                note_content += "\nOpen issues:\n" + "\n".join(
+                    f"  - {v}" for v in ctx.state.validation_violations[:10]
                 )
 
             ctx.state.final_notes = note_content
@@ -761,7 +765,9 @@ async def _state_read_target_files(file_paths: list[str]) -> dict[str, str]:
         try:
             raw = await anyio.Path(path).read_bytes()
             if len(raw) > _MAX_BYTES:
-                contents[path] = raw[:_MAX_BYTES].decode("utf-8", errors="replace") + "\n[TRUNCATED]"
+                contents[path] = (
+                    raw[:_MAX_BYTES].decode("utf-8", errors="replace") + "\n[TRUNCATED]"
+                )
             else:
                 contents[path] = raw.decode("utf-8", errors="replace")
         except Exception as exc:
@@ -894,6 +900,7 @@ def _state_write_note(project_id: str, content: str) -> None:
         logger.debug("Autopilot note %s written to graph.", note_id)
     except Exception as exc:
         logger.warning("Could not write autopilot note: %s", exc)
+
 
 def _split_into_batches(items: list[str], concurrency: int) -> list[list[str]]:
     """

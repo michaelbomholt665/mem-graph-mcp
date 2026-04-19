@@ -1,6 +1,8 @@
 # Code Review — `src/mem_graph/evals/`
 
-**Reviewer:** GitHub Copilot  
+**Reviewer:** GitHub Copilot
+**Resolved:** 2026-04-19
+**Status:** ✅ COMPLETE — all issues fixed
 **Package:** `src/mem_graph/evals/`
 **Files reviewed:**
 - `__init__.py`
@@ -48,11 +50,11 @@ This is not wrong for tiny fixture runs, but it becomes an avoidable throughput 
 
 ### 3. Fixture-backed runners and metadata access fail with raw `KeyError`s — LOW
 
-**Location:**  
-- `audit_evals.py:114-126, 141-149`  
-- `document_evals.py:121-147`  
-- `fix_evals.py:93-107, 121-130`  
-- `map_evals.py:104-116`  
+**Location:**
+- `audit_evals.py:114-126, 141-149`
+- `document_evals.py:121-147`
+- `fix_evals.py:93-107, 121-130`
+- `map_evals.py:104-116`
 - `validate_evals.py:88-100, 115-123`
 
 The suite modules index `_FIXTURE_OUTPUTS[...]`, `_CODE_FIXTURES[...]`, `_VIOLATION_FIXTURES[...]`, and `case.metadata[...]` directly. If a case is renamed or a fixture entry is missed, the suite crashes with an undecorated `KeyError` instead of a clear eval failure.

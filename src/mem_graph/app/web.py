@@ -11,12 +11,14 @@ from typing import Any
 import httpx
 from fastmcp import FastMCP
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from ..agents.discovery import discover_agent_modules, workflow_definitions
+from ..auth import AUTH_ENABLED, auth_api_middleware
 from ..db import db_get_connection
 from ..tools import graph
 from ..tools.filesystem import status as filesystem_status
@@ -43,7 +45,8 @@ async def _health(request: Request) -> JSONResponse:  # noqa: ARG001
         conn.execute("MATCH (s:SchemaMeta) RETURN s LIMIT 1")
         status["db"] = "connected"
     except Exception as exc:  # noqa: BLE001
-        status["db"] = f"error: {exc}"
+        logger.error("Health check DB error: %s", exc)
+        status["db"] = "error: database unavailable"
         http_status = 503
 
     import os
@@ -55,10 +58,11 @@ async def _health(request: Request) -> JSONResponse:  # noqa: ARG001
             if resp.status_code < 500:
                 status["ollama"] = "available"
             else:
-                status["ollama"] = f"error: {resp.status_code}"
+                status["ollama"] = "error: service unavailable"
                 http_status = 503
     except Exception as exc:  # noqa: BLE001
-        status["ollama"] = f"error: {exc}"
+        logger.error("Health check Ollama error: %s", exc)
+        status["ollama"] = "error: service unavailable"
         http_status = 503
 
     overall = "ok" if http_status == 200 else "degraded"
@@ -120,7 +124,8 @@ def _dashboard_system(request: Request) -> JSONResponse:  # noqa: ARG001
         query_rows("MATCH (s:SchemaMeta) RETURN s LIMIT 1")
         telemetry = dashboard_graph_telemetry()
     except Exception as exc:  # noqa: BLE001
-        db_status = f"error: {exc}"
+        logger.error("Dashboard system query error: %s", exc)
+        db_status = "error: database unavailable"
 
     status = "ok" if db_status == "connected" else "degraded"
     return JSONResponse(
@@ -133,6 +138,9 @@ def _dashboard_system(request: Request) -> JSONResponse:  # noqa: ARG001
         },
         status_code=200 if status == "ok" else 503,
     )
+
+
+INTERNAL_FAILURE_MSG = "internal failure"
 
 
 def _dashboard_agents(request: Request) -> JSONResponse:  # noqa: ARG001
@@ -193,7 +201,7 @@ def dashboard_tools_handler(mcp: FastMCP):
 
 def _dashboard_evals(request: Request) -> JSONResponse:
     project_id = request.query_params.get("project_id")
-    limit = min(max(int(request.query_params.get("limit", 20)), 1), 100)
+    limit = _parse_int(request.query_params.get("limit"), 20, min_val=1, max_val=100)
     if project_id:
         query = f"""
             MATCH (p:Project {{id: $project_id}})-[:HAS_EVAL_RUN]->(e:EvalRun)
@@ -263,8 +271,10 @@ async def _dashboard_graph(request: Request) -> JSONResponse:
     snapshot = await graph.graph_queries.get_graph_snapshot(
         project_id=request.query_params.get("project_id"),
         node_types=node_types,
-        depth=int(request.query_params.get("depth", 2)),
-        max_nodes=int(request.query_params.get("max_nodes", 240)),
+        depth=_parse_int(request.query_params.get("depth"), 2, min_val=1, max_val=10),
+        max_nodes=_parse_int(
+            request.query_params.get("max_nodes"), 240, min_val=1, max_val=1000
+        ),
     )
     return JSONResponse(snapshot.model_dump())
 
@@ -279,7 +289,7 @@ async def _dashboard_node(request: Request) -> JSONResponse:
         return JSONResponse(details, status_code=404 if "error" in details else 200)
     except Exception as exc:
         logger.error("Failed to load node details: %s", exc)
-        return JSONResponse({"error": str(exc)}, status_code=500)
+        return JSONResponse({"error": INTERNAL_FAILURE_MSG}, status_code=500)
 
 
 async def _dashboard_search(request: Request) -> JSONResponse:
@@ -294,12 +304,14 @@ async def _dashboard_search(request: Request) -> JSONResponse:
             query=request.query_params.get("query", ""),
             project_id=request.query_params.get("project_id"),
             node_types=node_types,
-            limit=int(request.query_params.get("limit", 20)),
+            limit=_parse_int(
+                request.query_params.get("limit"), 20, min_val=1, max_val=100
+            ),
         )
         return JSONResponse([result.model_dump() for result in results])
     except Exception as exc:
         logger.error("Failed to search graph: %s", exc)
-        return JSONResponse({"error": str(exc)}, status_code=500)
+        return JSONResponse({"error": INTERNAL_FAILURE_MSG}, status_code=500)
 
 
 def _dashboard_styles(request: Request) -> JSONResponse:  # noqa: ARG001
@@ -308,6 +320,16 @@ def _dashboard_styles(request: Request) -> JSONResponse:  # noqa: ARG001
 
 def _file_tree(request: Request) -> FileResponse:  # noqa: ARG001
     return _static_page("file-tree.html")
+
+
+def _parse_int(value: str | None, default: int, *, min_val: int, max_val: int) -> int:
+    """Parse and clamp an integer query parameter, returning default on bad input."""
+    if value is None:
+        return default
+    try:
+        return max(min_val, min(int(value), max_val))
+    except ValueError, TypeError:
+        return default
 
 
 def _query_flag(value: str | None, default: bool) -> bool:
@@ -328,7 +350,9 @@ async def _file_tree_data(request: Request) -> JSONResponse:
                 request.query_params.get("include_graph_metadata"),
                 True,
             ),
-            max_depth=int(request.query_params.get("max_depth", 8)),
+            max_depth=_parse_int(
+                request.query_params.get("max_depth"), 8, min_val=1, max_val=20
+            ),
         )
         if isinstance(payload, dict):
             status_code = 400 if "error" in payload else 200
@@ -336,7 +360,7 @@ async def _file_tree_data(request: Request) -> JSONResponse:
         return JSONResponse(payload.model_dump(), status_code=200)
     except Exception as exc:
         logger.error("File tree data error: %s", exc)
-        return JSONResponse({"error": str(exc)}, status_code=500)
+        return JSONResponse({"error": INTERNAL_FAILURE_MSG}, status_code=500)
 
 
 async def _file_tree_violations(request: Request) -> JSONResponse:
@@ -411,4 +435,5 @@ def build_http_app(
         if app_http is None or app_sse is None
         else web_routes + app_http.router.routes + app_sse.router.routes,
         lifespan=combined_lifespan if with_lifespan else None,
+        middleware=[Middleware(auth_api_middleware)] if AUTH_ENABLED else [],
     )

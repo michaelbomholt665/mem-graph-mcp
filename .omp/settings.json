@@ -1,0 +1,11 @@
+{
+   "project_name": "Mem_Graph",
+   "rules_files": ["AGENTS.md", "docs/context/context_map.md"],
+   "forbidden_commands": ["rm -rf", "git push --force"],
+   "preferred_tools": ["python_repl", "filesystem_tree"],
+   "memory": {
+       "enabled": true,
+       "provider": "ladybug",
+       "namespace": "memory"
+   }
+}

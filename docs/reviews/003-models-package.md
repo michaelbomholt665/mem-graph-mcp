@@ -1,6 +1,8 @@
 # Code Review: `src/mem_graph/models/`
 
 **Reviewed:** 2026-04-14
+**Resolved:** 2026-04-19
+**Status:** ✅ COMPLETE — all issues fixed
 **Scope:** `audit.py`, `code.py`, `conversation.py`, `evals.py`, `memory.py`, `project.py`, `task.py`, `work.py`
 
 ---

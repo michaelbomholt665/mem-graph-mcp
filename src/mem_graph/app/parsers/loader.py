@@ -127,11 +127,21 @@ def load_query_from_manifest(manifest: GrammarManifest, language: Any) -> Any | 
         return None
     try:
         source = manifest.query_path.read_text(encoding="utf-8")
-    except OSError:
+    except OSError as exc:
+        logger.warning(
+            "Failed to read tree-sitter query file %s: %s",
+            manifest.query_path,
+            exc,
+        )
         return None
     try:
         return load_query(manifest.language_key, source, language)
-    except RuntimeError:
+    except RuntimeError as exc:
+        logger.warning(
+            "Failed to compile tree-sitter query for %s: %s",
+            manifest.language_key,
+            exc,
+        )
         return None
 
 

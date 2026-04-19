@@ -20,7 +20,6 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import anyio
@@ -160,7 +159,7 @@ orchestrator_agent = Agent(
 
 
 @orchestrator_agent.system_prompt
-async def build_system_prompt(ctx: RunContext[OrchestratorDependencies]) -> str:
+def build_system_prompt(ctx: RunContext[OrchestratorDependencies]) -> str:
     """
     Build the orchestrator system prompt.
 
@@ -199,7 +198,7 @@ by processing files in small batches and aggregating results incrementally.
 
 
 @orchestrator_agent.tool
-async def list_files(ctx: RunContext[OrchestratorDependencies]) -> list[str]:
+def list_files(ctx: RunContext[OrchestratorDependencies]) -> list[str]:
     """
     List all source files in the package directory.
 
@@ -253,7 +252,7 @@ async def process_batch(
 
 
 @orchestrator_agent.tool
-async def finalize(
+def finalize(
     ctx: RunContext[OrchestratorDependencies],
     summary: str,
 ) -> OrchestratorReport:
@@ -655,7 +654,7 @@ async def _read_batch(paths: list[str]) -> list[BatchFileContent]:
     results: list[BatchFileContent | None] = [None] * len(paths)
 
     async def read_one(index: int, path: str) -> None:
-        results[index] = _read_single(path)
+        results[index] = await _read_single(path)
 
     async with anyio.create_task_group() as tg:
         for i, path in enumerate(paths):
@@ -664,7 +663,7 @@ async def _read_batch(paths: list[str]) -> list[BatchFileContent]:
     return [r for r in results if r is not None]
 
 
-def _read_single(path: str) -> BatchFileContent:
+async def _read_single(path: str) -> BatchFileContent:
     """
     Read a single file and return a BatchFileContent.
 
@@ -677,7 +676,7 @@ def _read_single(path: str) -> BatchFileContent:
         )
 
     try:
-        raw = Path(path).read_bytes()
+        raw = await anyio.Path(path).read_bytes()
     except Exception as exc:
         return BatchFileContent(path=path, content=f"ERROR: {exc}", truncated=False)
 

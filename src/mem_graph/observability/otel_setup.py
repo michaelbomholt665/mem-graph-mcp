@@ -157,14 +157,15 @@ def setup_observability(
             return _STATE
 
         state = _resolve_state(service_name, service_version)
-        _STATE = state
         if not state.enabled:
             logger.info("OpenTelemetry disabled.")
+            _STATE = state
             return state
 
         current_tracer_provider = trace.get_tracer_provider()
         if _provider_is_logfire(current_tracer_provider):
             logger.info("OpenTelemetry exporter setup delegated to Logfire bootstrap.")
+            _STATE = state
             return state
 
         if not _default_proxy_provider(
@@ -174,6 +175,7 @@ def setup_observability(
                 "OpenTelemetry provider already configured by %s; leaving it in place.",
                 current_tracer_provider.__class__.__module__,
             )
+            _STATE = state
             return state
 
         resource = _build_resource(state.service_name, state.service_version)
@@ -195,11 +197,13 @@ def setup_observability(
             state.console_exporter,
             state.otlp_configured,
         )
+        _STATE = state
         return state
 
 
 def shutdown_observability() -> None:
     """Flush telemetry exporters during graceful shutdown."""
+    global _STATE
     state = _STATE
     if state is None or not state.enabled:
         return
@@ -209,6 +213,7 @@ def shutdown_observability() -> None:
         logger.debug(
             "Skipping standalone OpenTelemetry shutdown because Logfire owns the providers."
         )
+        _STATE = None
         return
     meter_provider = metrics.get_meter_provider()
 
@@ -217,18 +222,20 @@ def shutdown_observability() -> None:
         if callable(force_flush):
             force_flush()
     except Exception as exc:  # noqa: BLE001
-        logger.debug("Failed to flush tracer provider: %s", exc)
+        logger.warning("Failed to flush tracer provider: %s", exc)
 
     try:
         shutdown = getattr(tracer_provider, "shutdown", None)
         if callable(shutdown):
             shutdown()
     except Exception as exc:  # noqa: BLE001
-        logger.debug("Failed to shut down tracer provider: %s", exc)
+        logger.warning("Failed to shut down tracer provider: %s", exc)
 
     try:
         shutdown = getattr(meter_provider, "shutdown", None)
         if callable(shutdown):
             shutdown()
     except Exception as exc:  # noqa: BLE001
-        logger.debug("Failed to shut down meter provider: %s", exc)
+        logger.warning("Failed to shut down meter provider: %s", exc)
+
+    _STATE = None

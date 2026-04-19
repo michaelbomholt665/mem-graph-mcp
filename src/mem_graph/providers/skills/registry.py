@@ -26,7 +26,9 @@ _SKILLS: list[SkillEntry] = []
 
 
 def register_skill(skill: SkillEntry) -> None:
-    """Register an internal skill candidate."""
+    """Register an internal skill candidate, ignoring duplicates by name."""
+    if any(s.name == skill.name for s in _SKILLS):
+        return
     _SKILLS.append(skill)
 
 

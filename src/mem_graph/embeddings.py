@@ -16,16 +16,26 @@ Features:
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 from typing import Callable
 
 from dotenv import load_dotenv
 from pydantic_ai import Embedder
 from pydantic_ai.embeddings import EmbeddingSettings
+
+from .config import (
+    CODE_EMBED_DIM as _CONFIG_CODE_DIM,
+)
+from .config import (
+    CODE_EMBED_MODEL as _CONFIG_CODE_MODEL,
+)
 from .config import (
     EMBED_CACHE_SIZE as _CONFIG_EMBED_CACHE_SIZE,
+)
+from .config import (
     TEXT_EMBED_DIM as _CONFIG_TEXT_DIM,
-    CODE_EMBED_DIM as _CONFIG_CODE_DIM,
-    CODE_EMBED_MODEL as _CONFIG_CODE_MODEL,
+)
+from .config import (
     TEXT_EMBED_MODEL as _CONFIG_TEXT_MODEL,
 )
 
@@ -121,8 +131,8 @@ async def embeddings_documents(texts: list[str]) -> list[list[float]]:
     if _embed_override is not None:
         return [_validate(_embed_override(t), t, TEXT_EMBED_DIM) for t in texts]
 
-    # Process individually to leverage the cache.
-    return [await _cached_embed_async(t, "document") for t in texts]
+    # Process in parallel to leverage the cache and avoid sequential latency.
+    return await asyncio.gather(*[_cached_embed_async(t, "document") for t in texts])
 
 
 def embeddings_generate_sync(text: str) -> list[float]:
@@ -155,7 +165,7 @@ async def _cached_embed_async(text: str, input_type: str) -> list[float]:
     model_name = _CODE_MODEL if is_code else _TEXT_MODEL
     expected_dim = CODE_EMBED_DIM if is_code else TEXT_EMBED_DIM
     key_type = input_type
-    
+
     cached = _cache_get(text, model_name, key_type)
     if cached is not None:
         return cached
@@ -180,7 +190,7 @@ def _cached_embed_sync(text: str, input_type: str) -> list[float]:
     model_name = _CODE_MODEL if is_code else _TEXT_MODEL
     expected_dim = CODE_EMBED_DIM if is_code else TEXT_EMBED_DIM
     key_type = input_type
-    
+
     cached = _cache_get(text, model_name, key_type)
     if cached is not None:
         return cached
@@ -203,9 +213,8 @@ def _cached_embed_sync(text: str, input_type: str) -> list[float]:
 #   CACHE STORE
 ################
 
-# Manual dict-based cache keyed on (text, model, type)
-_cache: dict[tuple[str, str, str], list[float]] = {}
-_cache_keys: list[tuple[str, str, str]] = []
+# OrderedDict-based LRU cache keyed on (text, model, type) — O(1) operations
+_cache: OrderedDict[tuple[str, str, str], list[float]] = OrderedDict()
 
 
 def _cache_get(text: str, model: str, input_type: str) -> list[float] | None:
@@ -214,10 +223,8 @@ def _cache_get(text: str, model: str, input_type: str) -> list[float] | None:
     cached = _cache.get(key)
     if cached is None:
         return None
-
-    if key in _cache_keys:
-        _cache_keys.remove(key)
-        _cache_keys.append(key)
+    # Move to end (most recently used)
+    _cache.move_to_end(key)
     return cached
 
 
@@ -225,19 +232,16 @@ def _cache_set(text: str, model: str, input_type: str, vec: list[float]) -> None
     """Store vector in cache, evicting the least recently used entry when full."""
     key = (text, model, input_type)
     if key in _cache:
-        _cache_keys.remove(key)
-    elif len(_cache) >= _CACHE_MAXSIZE:
-        oldest = _cache_keys.pop(0)
-        _cache.pop(oldest, None)
-
-    _cache[key] = vec
-    _cache_keys.append(key)
+        _cache.move_to_end(key)
+    else:
+        if len(_cache) >= _CACHE_MAXSIZE:
+            _cache.popitem(last=False)
+        _cache[key] = vec
 
 
 def clear_cache() -> None:
     """Clear the embedding cache entirely."""
     _cache.clear()
-    _cache_keys.clear()
 
 
 ################

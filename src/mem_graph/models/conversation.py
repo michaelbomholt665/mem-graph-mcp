@@ -10,13 +10,17 @@ hints without parsing raw dictionaries.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
 class ConversationMessage(BaseModel):
     """A single message turn submitted to ``memory_capture_session``."""
 
-    role: str = Field(description="Message role: user | assistant | system | tool")
+    role: Literal["user", "assistant", "system", "tool"] = Field(
+        description="Message role: user | assistant | system | tool"
+    )
     content: str = Field(description="Message text content")
     tool_name: str | None = Field(
         default=None,

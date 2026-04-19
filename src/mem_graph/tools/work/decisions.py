@@ -13,8 +13,8 @@ import anyio
 from fastmcp import FastMCP
 from pydantic import Field
 
-from ...app.registry import AgentEntry, register_agent
 from ...agents.document.decision_agent import DecisionDependencies, decision_agent
+from ...app.registry import AgentEntry, register_agent
 from ...db import db_get_connection
 from ...embeddings import embeddings_generate
 from ...ids import id_generate_v7
@@ -253,8 +253,9 @@ async def decision_search(
             {
                 "id": r[0],
                 "title": r[1],
-                "status": r[2],
-                "impact": r[3],
+                "rationale": r[2],
+                "status": r[3],
+                "impact": r[4],
                 "project_id": r[5],
                 "distance": 1.0 - ranks[node_id],
             }

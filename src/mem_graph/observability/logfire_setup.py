@@ -139,10 +139,11 @@ def setup_logfire(
             return _STATE
 
         state = _resolve_state(service_name, service_version)
-        _STATE = state
 
         # 1. Determine if we are running in the Copilot CLI (stdio)
-        is_stdio = os.getenv("TRANSPORT", "stdio") == "stdio"
+        is_stdio = (
+            os.getenv("MCP_TRANSPORT", os.getenv("TRANSPORT", "stdio")) == "stdio"
+        )
 
         # 2. Redirect standard python logging to stderr immediately.
         import sys
@@ -150,6 +151,7 @@ def setup_logfire(
         logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
         if not state.enabled:
+            _STATE = state
             return state
 
         otel_state = _resolve_otel_state(service_name, service_version)
@@ -197,6 +199,7 @@ def setup_logfire(
         # Log only to stderr to keep the MCP handshake clean.
         logging.getLogger(__name__).info("Logfire bootstrap ready (via stderr)")
 
+        _STATE = state
         return state
 
 
@@ -244,6 +247,7 @@ def logfire_exception(msg_template: str, /, **attributes: object) -> None:
 
 def shutdown_logfire() -> None:
     """Flush Logfire telemetry during graceful shutdown."""
+    global _STATE
     state = _STATE
     if state is None or not state.enabled:
         return
@@ -251,9 +255,11 @@ def shutdown_logfire() -> None:
     try:
         logfire.force_flush(3000)
     except Exception as exc:  # noqa: BLE001
-        logger.debug("Failed to flush Logfire: %s", exc)
+        logger.warning("Failed to flush Logfire: %s", exc)
 
     try:
         logfire.shutdown()
     except Exception as exc:  # noqa: BLE001
-        logger.debug("Failed to shut down Logfire: %s", exc)
+        logger.warning("Failed to shut down Logfire: %s", exc)
+
+    _STATE = None

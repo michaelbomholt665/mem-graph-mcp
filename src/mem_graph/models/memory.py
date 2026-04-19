@@ -13,7 +13,6 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-
 ################
 #   ENUMS
 ################
@@ -77,6 +76,10 @@ class MemoryModel(BaseModel):
     project_id: str | None = Field(
         default=None,
         description="Project ID when scope=project or scope=backend.",
+    )
+    backend_id: str | None = Field(
+        default=None,
+        description="Backend identifier when scope=backend.",
     )
 
 

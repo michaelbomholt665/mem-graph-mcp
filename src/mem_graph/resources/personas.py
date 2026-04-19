@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-
 ################
 #   DATA TYPES
 ################
@@ -175,7 +174,7 @@ ROUTER_PERSONA = Persona(
 )
 
 RULE_INJECTOR_PERSONA = Persona(
-    name="Librarian",
+    name="RuleLibrarian",
     role="Audit Rule Curator",
     description=(
         "The rule librarian. Dynamically assembles the most relevant AuditRule sets "

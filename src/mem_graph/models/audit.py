@@ -14,12 +14,10 @@ from __future__ import annotations
 ################
 #   IMPORTS
 ################
-
 from enum import Enum
 from typing import Annotated
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, Field, model_validator
 
 ################
 #   ENUMS
@@ -75,15 +73,11 @@ class AuditRule(BaseModel):
     rule_id: str = Field(
         description="Stable rule identifier, e.g. 'CWE-252' or 'lakehouse:frozen-schema'."
     )
-    category: FindingCategory = Field(
-        description="Category this rule belongs to."
-    )
+    category: FindingCategory = Field(description="Category this rule belongs to.")
     description: str = Field(
         description="What this rule checks for. Written for LLM consumption — be specific."
     )
-    severity: Severity = Field(
-        description="Default severity when this rule fires."
-    )
+    severity: Severity = Field(description="Default severity when this rule fires.")
     examples: list[str] = Field(
         default_factory=list,
         description="Short code snippets illustrating violations of this rule.",
@@ -113,21 +107,33 @@ class AuditFinding(BaseModel):
         description="Absolute or repo-relative path to the file containing this finding."
     )
     line_start: int = Field(
-        description="First line of the problematic code block (1-indexed)."
+        ge=1, description="First line of the problematic code block (1-indexed)."
     )
     line_end: int = Field(
-        description="Last line of the problematic code block (1-indexed)."
+        ge=1, description="Last line of the problematic code block (1-indexed)."
     )
+
+    @model_validator(mode="after")
+    def _check_line_range(self) -> "AuditFinding":
+        if self.line_end < self.line_start:
+            raise ValueError(
+                f"line_end ({self.line_end}) must be >= line_start ({self.line_start})"
+            )
+        return self
+
     description: str = Field(
         description="Clear explanation of what is wrong and why it matters."
     )
     suggested_fix: str = Field(
         description="Concrete suggestion for how to resolve the finding."
     )
-    code_snippet: Annotated[str | None, Field(
-        description="The offending code lines for inline report display.",
-        default=None,
-    )]
+    code_snippet: Annotated[
+        str | None,
+        Field(
+            description="The offending code lines for inline report display.",
+            default=None,
+        ),
+    ]
     fingerprint: str | None = Field(
         default=None,
         description=(
