@@ -1,4 +1,10 @@
-"""Dashboard-safe agent and workflow discovery helpers."""
+"""Dashboard-safe agent and workflow discovery helpers.
+
+Workflow metadata is now registry-driven via
+``mem_graph.resources.workflows.visualization``. The ``workflow_definitions``
+function returns metadata from the live Python registry instead of the
+previously duplicated static declarations.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +12,6 @@ import ast
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
 
 _AGENTS_DIR = Path(__file__).resolve().parent
 
@@ -57,7 +62,6 @@ def discover_agent_modules(base_dir: Path | None = None) -> list[dict[str, Any]]
         module_name = _module_name(relative)
         modules.append(_build_module_info(module_name, str(relative), doc, tree))
     return modules
-
 
 
 def _build_module_info(
@@ -117,100 +121,30 @@ def _check_assignment(
         models.append(target_id)
 
 
-
 def workflow_definitions() -> list[dict[str, Any]]:
-    """Return workflow metadata with Mermaid graph definitions."""
-    return [definition.__dict__ for definition in _known_workflows()]
+    """Return registry-driven workflow metadata with Mermaid graph definitions.
 
+    Metadata is sourced from the Python workflow registry in
+    ``mem_graph.resources.workflows.visualization`` — no duplicated static
+    workflow declarations.
+    """
+    from ..resources.workflows.visualization import all_workflow_metadata
 
-def _known_workflows() -> list[WorkflowDefinition]:
-    autopilot_nodes = [
-        "ContextGatherNode",
-        "SentryNode",
-        "LogicDraftNode",
-        "StyleDraftNode",
-        "GuardNode",
-        "RefineNode",
-        "MemorySyncNode",
-    ]
-    autopilot_edges = [
-        {"source": "ContextGatherNode", "target": "SentryNode", "label": "context"},
-        {"source": "SentryNode", "target": "LogicDraftNode", "label": "test plan"},
-        {"source": "LogicDraftNode", "target": "StyleDraftNode", "label": "patches"},
-        {"source": "StyleDraftNode", "target": "GuardNode", "label": "styled patches"},
-        {"source": "GuardNode", "target": "RefineNode", "label": "retry on reject"},
-        {"source": "RefineNode", "target": "LogicDraftNode", "label": "refine"},
-        {"source": "GuardNode", "target": "MemorySyncNode", "label": "approved"},
-    ]
-
-    managed_nodes = [
-        "ContextGatherNode",
-        "PlanWorkflowNode",
-        "ImplementationNode",
-        "AuditNode",
-        "DebugOrValidationNode",
-        "DocumentationNode",
-        "ContextMapUpdateNode",
-        "MemoryBankSyncNode",
-        "FinalReportNode",
-    ]
-    managed_edges = [
-        {"source": "ContextGatherNode", "target": "PlanWorkflowNode", "label": "files"},
-        {"source": "PlanWorkflowNode", "target": "ImplementationNode", "label": "plan"},
-        {"source": "ImplementationNode", "target": "AuditNode", "label": "changes"},
-        {"source": "AuditNode", "target": "DebugOrValidationNode", "label": "findings"},
-        {
-            "source": "DebugOrValidationNode",
-            "target": "ImplementationNode",
-            "label": "retry blockers",
-        },
-        {
-            "source": "DebugOrValidationNode",
-            "target": "DocumentationNode",
-            "label": "ready",
-        },
-        {"source": "DocumentationNode", "target": "ContextMapUpdateNode", "label": "docs"},
-        {
-            "source": "ContextMapUpdateNode",
-            "target": "MemoryBankSyncNode",
-            "label": "map",
-        },
-        {"source": "MemoryBankSyncNode", "target": "FinalReportNode", "label": "sync"},
-    ]
-
-    return [
-        WorkflowDefinition(
-            key="autopilot_graph",
-            display_name="Autopilot Remediation Graph",
-            source_file="agents/orchestrator_graph.py",
-            nodes=autopilot_nodes,
-            edges=autopilot_edges,
-            mermaid=_to_mermaid(autopilot_edges),
-            description="Recursive remediation workflow with guard-driven retry.",
-        ),
-        WorkflowDefinition(
-            key="managed_workflow_graph",
-            display_name="Managed Sub-Agent Workflow",
-            source_file="agents/workflow_graph.py",
-            nodes=managed_nodes,
-            edges=managed_edges,
-            mermaid=_to_mermaid(managed_edges),
-            description="Router-selected workflow with audit and validation retry control.",
-        ),
-    ]
-
-
-def _to_mermaid(edges: list[dict[str, str]]) -> str:
-    lines = ["graph TD"]
-    for edge in edges:
-        source = edge["source"]
-        target = edge["target"]
-        label = edge.get("label", "")
-        if label:
-            lines.append(f"  {source} -->|{label}| {target}")
-        else:
-            lines.append(f"  {source} --> {target}")
-    return "\n".join(lines)
+    raw = all_workflow_metadata()
+    results: list[dict[str, Any]] = []
+    for item in raw:
+        results.append(
+            {
+                "key": item["key"],
+                "display_name": item["display_name"],
+                "source_file": item.get("source_module", ""),
+                "nodes": item["nodes"],
+                "edges": item["edges"],
+                "mermaid": item["mermaid"],
+                "description": item["description"],
+            }
+        )
+    return results
 
 
 def _module_name(relative: Path) -> str:

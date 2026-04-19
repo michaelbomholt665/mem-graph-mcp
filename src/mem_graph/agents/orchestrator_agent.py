@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import anyio
@@ -654,7 +655,8 @@ async def _read_batch(paths: list[str]) -> list[BatchFileContent]:
     results: list[BatchFileContent | None] = [None] * len(paths)
 
     async def read_one(index: int, path: str) -> None:
-        results[index] = await _read_single(path)
+        await anyio.sleep(0)
+        results[index] = _read_single(path)
 
     async with anyio.create_task_group() as tg:
         for i, path in enumerate(paths):
@@ -663,7 +665,7 @@ async def _read_batch(paths: list[str]) -> list[BatchFileContent]:
     return [r for r in results if r is not None]
 
 
-async def _read_single(path: str) -> BatchFileContent:
+def _read_single(path: str) -> BatchFileContent:
     """
     Read a single file and return a BatchFileContent.
 
@@ -676,7 +678,7 @@ async def _read_single(path: str) -> BatchFileContent:
         )
 
     try:
-        raw = await anyio.Path(path).read_bytes()
+        raw = Path(path).read_bytes()
     except Exception as exc:
         return BatchFileContent(path=path, content=f"ERROR: {exc}", truncated=False)
 

@@ -1546,6 +1546,7 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "pydantic" },
     { name = "pydantic-ai" },
+    { name = "pydantic-ai-harness" },
     { name = "pydantic-ai-skills" },
     { name = "pydantic-ai-slim", extra = ["ag-ui", "google", "openai"] },
     { name = "pydantic-deep", extra = ["cli"] },
@@ -1582,6 +1583,7 @@ requires-dist = [
     { name = "opentelemetry-sdk", specifier = ">=1.20.0" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pydantic-ai", specifier = ">=1.80.0" },
+    { name = "pydantic-ai-harness", specifier = ">=0.1.1" },
     { name = "pydantic-ai-skills", specifier = ">=0.7.0" },
     { name = "pydantic-ai-slim", extras = ["ag-ui", "google", "openai"], specifier = ">=1.80.0" },
     { name = "pydantic-deep", extras = ["cli"], specifier = ">=0.3.13" },
@@ -2398,6 +2400,18 @@ wheels = [
 [package.optional-dependencies]
 console = [
     { name = "pydantic-ai-slim" },
+]
+
+[[package]]
+name = "pydantic-ai-harness"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic-ai-slim" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a7/65/601dc2306c373251d53894c2b285441fe60508db12515b6a42a9ca429a0a/pydantic_ai_harness-0.1.1.tar.gz", hash = "sha256:32a5e5859fa211bef1d53fa298c45f4be0a137f99266bc1fc81674298592e021", size = 139551, upload-time = "2026-04-13T20:48:29.596Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/57/9f/783912423a097e795b61b24ab8bd3357a4dc4803ca03119bc832163c3310/pydantic_ai_harness-0.1.1-py3-none-any.whl", hash = "sha256:6b2e827f28233b378cf3b49cd3979c15a515ba66a9e20b419c7f7c2c105358fe", size = 21801, upload-time = "2026-04-13T20:48:27.977Z" },
 ]
 
 [[package]]

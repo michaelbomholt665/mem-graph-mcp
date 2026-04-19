@@ -8,6 +8,7 @@ import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+import anyio
 from anyio import to_thread
 from fastmcp import FastMCP
 
@@ -16,6 +17,8 @@ from ..db import db_close_engine, db_init_engine
 from ..observability.logfire_setup import shutdown_logfire
 from ..observability.otel_setup import shutdown_observability
 from ..providers.openapi import build_openapi_provider
+from ..sandbox.cleanup import run_periodic_cleanup
+from ..services.sandbox_sessions import sandbox_manager
 from ..services.summarizer import start_worker, stop_worker
 from ..services.task_queue import task_queue
 from .constants import (
@@ -32,76 +35,85 @@ from .tools import catalog_tools
 logger = logging.getLogger(__name__)
 
 
+async def _print_startup_banner(mcp: FastMCP) -> None:
+    if not sys.stderr.isatty():
+        return
+    # 1. Status detection
+    try:
+        import tree_sitter  # noqa: F401
+
+        ts_status = "Ready"
+    except ImportError:
+        ts_status = "Unavailable"
+
+    ag_ui_status = "Ready"
+    try:
+        sandbox_status = "Ready" if sandbox_manager().enabled else "Disabled"
+    except Exception:  # noqa: BLE001
+        sandbox_status = "Unavailable"
+    lakehouse_status = (
+        "Available" if os.getenv("LAKEHOUSE_URL") else "Unavailable"
+    )
+
+    # 2. Extract counts and info
+    tool_count = len(await catalog_tools(mcp))
+    prompt_count = len(await mcp.list_prompts())
+    # Skills are providers in FastMCP
+    skills_count = len(mcp.providers)
+
+    # Clean model names for display
+    text_model = (
+        TEXT_EMBED_MODEL.split("/")[-1] if TEXT_EMBED_MODEL else "Default"
+    )
+    code_model = (
+        CODE_EMBED_MODEL.split("/")[-1] if CODE_EMBED_MODEL else "Default"
+    )
+
+    # 3. Format lines for the banner box
+    status_lines = [
+        f"  | Dashboard:  http://{HOST}:{PORT}/dashboard".ljust(91) + "|",
+        "  | Logfire:    https://logfire-eu.pydantic.dev/michaelbomholt/memgraph".ljust(
+            91
+        )
+        + "|",
+        f"  | Link:       http://{HOST}:{PORT}/mcp".ljust(91) + "|",
+        "  | ".ljust(91) + "|",
+        f"  | Tree-sitter parsers {ts_status}".ljust(91) + "|",
+        f"  | AG-UI {ag_ui_status}".ljust(91) + "|",
+        f"  | Sandbox {sandbox_status}".ljust(91) + "|",
+        f"  | Lakehouse {lakehouse_status}".ljust(91) + "|",
+        "  | ".ljust(91) + "|",
+        f"  | Embedding text model: {text_model}".ljust(91) + "|",
+        f"  | Embedding code model: {code_model}".ljust(91) + "|",
+        "  | ".ljust(91) + "|",
+        f"  | Tools: {tool_count} | Prompts: {prompt_count} | Skills: {skills_count} | Version: {SERVER_VERSION}".ljust(
+            91
+        )
+        + "|",
+        f"  | Discovery: BM25 search | Transport: {TRANSPORT.upper()}".ljust(91)
+        + "|",
+    ]
+
+    print(BANNER_LOGO, file=sys.stderr)
+    print(
+        BANNER_BOX_TEMPLATE.format(lines="\n".join(status_lines)),
+        file=sys.stderr,
+    )
+    print(
+        f"  Version: {SERVER_VERSION} | Discovery: BM25 search | Host: {HOST}:{PORT}\n",
+        file=sys.stderr,
+    )
+
 def build_lifespan(mcp: FastMCP):
     @asynccontextmanager
     async def lifespan(server: FastMCP) -> AsyncGenerator[None, None]:  # noqa: ARG001
-        if sys.stderr.isatty():
-            # 1. Status detection
-            try:
-                import tree_sitter  # noqa: F401
-
-                ts_status = "Ready"
-            except ImportError:
-                ts_status = "Unavailable"
-
-            ag_ui_status = "Ready"
-            sandbox_status = "Unavailable (Coming soon)"
-            lakehouse_status = (
-                "Available" if os.getenv("LAKEHOUSE_URL") else "Unavailable"
-            )
-
-            # 2. Extract counts and info
-            tool_count = len(await catalog_tools(mcp))
-            prompt_count = len(await mcp.list_prompts())
-            # Skills are providers in FastMCP
-            skills_count = len(mcp.providers)
-
-            # Clean model names for display
-            text_model = (
-                TEXT_EMBED_MODEL.split("/")[-1] if TEXT_EMBED_MODEL else "Default"
-            )
-            code_model = (
-                CODE_EMBED_MODEL.split("/")[-1] if CODE_EMBED_MODEL else "Default"
-            )
-
-            # 3. Format lines for the banner box
-            status_lines = [
-                f"  | Dashboard:  http://{HOST}:{PORT}/dashboard".ljust(91) + "|",
-                "  | Logfire:    https://logfire-eu.pydantic.dev/michaelbomholt/memgraph".ljust(
-                    91
-                )
-                + "|",
-                f"  | Link:       http://{HOST}:{PORT}/mcp".ljust(91) + "|",
-                "  | ".ljust(91) + "|",
-                f"  | Tree-sitter parsers {ts_status}".ljust(91) + "|",
-                f"  | AG-UI {ag_ui_status}".ljust(91) + "|",
-                f"  | Sandbox {sandbox_status}".ljust(91) + "|",
-                f"  | Lakehouse {lakehouse_status}".ljust(91) + "|",
-                "  | ".ljust(91) + "|",
-                f"  | Embedding text model: {text_model}".ljust(91) + "|",
-                f"  | Embedding code model: {code_model}".ljust(91) + "|",
-                "  | ".ljust(91) + "|",
-                f"  | Tools: {tool_count} | Prompts: {prompt_count} | Skills: {skills_count} | Version: {SERVER_VERSION}".ljust(
-                    91
-                )
-                + "|",
-                f"  | Discovery: BM25 search | Transport: {TRANSPORT.upper()}".ljust(91)
-                + "|",
-            ]
-
-            print(BANNER_LOGO, file=sys.stderr)
-            print(
-                BANNER_BOX_TEMPLATE.format(lines="\n".join(status_lines)),
-                file=sys.stderr,
-            )
-            print(
-                f"  Version: {SERVER_VERSION} | Discovery: BM25 search | Host: {HOST}:{PORT}\n",
-                file=sys.stderr,
-            )
+        await _print_startup_banner(mcp)
 
         await to_thread.run_sync(db_init_engine)
         start_worker()
         await task_queue.startup()
+        sandbox_mgr = sandbox_manager()
+        await sandbox_mgr.startup()
         await _load_openapi_providers(mcp)
 
         # Minimised summary log exactly as requested to be below logo
@@ -112,8 +124,19 @@ def build_lifespan(mcp: FastMCP):
             PORT,
         )
         try:
-            yield
+            async with anyio.create_task_group() as sandbox_cleanup_group:
+                if sandbox_mgr.enabled:
+                    sandbox_cleanup_group.start_soon(run_periodic_cleanup, sandbox_mgr)
+                try:
+                    yield
+                finally:
+                    sandbox_cleanup_group.cancel_scope.cancel()
         finally:
+            try:
+                await sandbox_mgr.cleanup_stale()
+                await sandbox_mgr.shutdown()
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Error shutting down sandbox manager: %s", exc)
             try:
                 pending = await task_queue.shutdown()
                 if pending["queued_cancelled"] or pending["running_cancelled"]:

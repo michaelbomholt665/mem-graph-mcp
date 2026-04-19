@@ -244,17 +244,17 @@ Tie workflow stage capability needs to internal skill selection.
 
 ## Implementation Checklist
 
-- [ ] Add workflow resource models and validation.
-- [ ] Create typed workflow profiles (`small`, `medium`, `large`) in Python.
-- [ ] Create typed reasoning policies (`react_challenge`, optional bounded ToT) in Python.
-- [ ] Build workflow registry and selector.
-- [ ] Generate workflow visualization metadata from the Python workflow registry.
-- [ ] Move runtime execution out of current agent workflow modules.
-- [ ] Add compatibility wrappers and update imports/callers.
-- [ ] Integrate profile selection into router/orchestrator entrypoints.
-- [ ] Implement package audit loop with 4-5 file batching.
-- [ ] Implement incremental report update/edit strategy across packages.
-- [ ] Make workflow discovery metadata registry-driven.
-- [ ] Integrate skill-resolution hooks + eval-score-aware dispatch policy.
-- [ ] Add/extend tests for profiles, reasoning policy, orchestration, and audit loop.
-- [ ] Update documentation and follow-up deprecation notes.
+- [x] Add workflow resource models and validation.
+- [x] Create typed workflow profiles (`small`, `medium`, `large`) in Python.
+- [x] Create typed reasoning policies (`react_challenge`, optional bounded ToT) in Python.
+- [x] Build workflow registry and selector.
+- [x] Generate workflow visualization metadata from the Python workflow registry.
+- [x] Move runtime execution out of current agent workflow modules.
+- [x] Add compatibility wrappers and update imports/callers.
+- [x] Integrate profile selection into router/orchestrator entrypoints.
+- [x] Implement package audit loop with 4-5 file batching.
+- [x] Implement incremental report update/edit strategy across packages.
+- [x] Make workflow discovery metadata registry-driven.
+- [x] Integrate skill-resolution hooks + eval-score-aware dispatch policy.
+- [x] Add/extend tests for profiles, reasoning policy, orchestration, and audit loop.
+- [x] Update documentation and follow-up deprecation notes.

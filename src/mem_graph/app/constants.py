@@ -38,6 +38,7 @@ LAZY_NAMESPACES: frozenset[str] = frozenset(
         "graph",
         "integrations",
         "code",
+        "sandbox",
     }
 )
 

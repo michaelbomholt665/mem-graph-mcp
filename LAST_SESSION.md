@@ -1,103 +1,57 @@
 # Last Session Summary
 
-**Date:** 2026-04-19
-**Task:** 025 — Improve Tool / Agent / Prompt / Skill Visibility
+**Date:** 2026-04-19  
+**Task:** 028 — Podman-Backed Per-Session Sandboxing
 
-## What was implemented
+## What Changed
 
-### Discovery model overhaul
+Implemented the first end-to-end sandbox layer for workflow and CodeMode paths:
 
-- Reworked server discovery in `src/mem_graph/server.py` to use FastMCP native transforms:
-  - `ResourcesAsTools(mcp)`
-  - `PromptsAsTools(mcp)`
-  - `BM25SearchTransform(max_results=8, always_visible=["system_inspect", "list_agents", "list_task_types"])`
-- Removed the conflicting `CodeMode()` transform so the runtime now exposes the intended pinned discovery surface:
-  - `list_agents`
-  - `list_task_types`
-  - `system_inspect`
-  - `search_tools`
-  - `call_tool`
-- Updated the server instructions to orient new clients toward `system_inspect`, `search_tools`, prompt/resource browsing, and lazy namespace activation.
+- Added `src/mem_graph/sandbox/` with typed settings, models, errors, snapshot/workspace management, Podman compose argv construction, a Podman adapter, session lifecycle manager, cleanup helpers, and a FastMCP CodeMode provider.
+- Added `docker-compose.sandbox.yml` for one rootless, non-privileged, no-network-by-default sandbox container per session.
+- Added per-session layout under `data/sandbox/sessions/{session_id}/` with read-only repo snapshots, writable workspaces, and metadata persistence.
+- Added lazy container provisioning on first execution, per-session locking, structured execution results, timeout/output-cap plumbing, crash/OOM state handling, idempotent destroy, stale cleanup, and metadata recovery.
+- Added merge-back support that compares workspace changes against the original snapshot, excludes runtime/secrets/cache/database files, and blocks host conflicts.
+- Added `WorkflowSandboxPolicy` to workflow resources and propagated selected sandbox policy through `WorkflowSelection`.
+- Added profile defaults for small, medium, and large workflow sandbox policies.
+- Added workflow runtime helpers in `workflow_sandbox.py` for create/finalize/abort lifecycle handling.
+- Integrated sandbox creation/finalization into autopilot and managed workflow runtimes, with optional session artifacts added to runtime state.
+- Made package audit sandbox behavior explicit: read-only dry-run audits stay unsandboxed; `execute_agents=True` can create a sandbox but never merges back.
+- Added sandbox admin MCP tools for status, list, and destroy under the lazy `sandbox` namespace.
+- Wired the sandbox manager into server startup/shutdown and enabled a session-aware CodeMode transform when `MEM_GRAPH_SANDBOX_ENABLED=true`.
+- Documented settings, Podman 5.4.2/rootless assumptions, lifecycle, security defaults, merge-back, and test commands in `docs/documentation/sandbox.md`.
 
-### New registries
+## Tests Added
 
-- Added `src/mem_graph/app/registry.py`
-  - `AgentEntry`
-  - `register_agent()`
-  - `all_agents()`
-- Added `src/mem_graph/providers/skills/registry.py`
-  - `SkillEntry`
-  - `register_skill()`
-  - `all_skills()`
-  - `resolve_skill()`
-  - `task_type_map()`
-- Added `src/mem_graph/providers/skills/__init__.py` exports.
+- `tests/test_sandbox_config.py`
+- `tests/test_sandbox_podman.py`
+- `tests/test_sandbox_snapshots.py`
+- `tests/test_sandbox_manager.py`
+- `tests/test_sandbox_provider.py`
+- `tests/test_workflow_sandbox_sessions.py`
+- `tests/test_workflow_sandbox_merge_back.py`
+- Additional sandbox policy assertions in `tests/test_agent_workflows.py`
 
-### Registry-driven discovery tools
+## Verification
 
-- Refactored `src/mem_graph/app/tools.py`:
-  - `list_agents()` now reads from the public agent registry instead of a hardcoded list.
-  - `list_task_types()` now exposes the public category → task-type map from the skill registry.
-  - `system_inspect()` now returns a one-call orientation snapshot with counts/examples for tools, prompts, resources, agents, skills, and task types.
-  - `tools_activate()` kept lazy namespace activation but refreshed its parameter description.
-  - Added `catalog_tools()` to inspect the full raw tool catalog across mounted providers.
-- Updated:
-  - `src/mem_graph/app/web.py` to reuse `catalog_tools()` for dashboard tool inventory.
-  - `src/mem_graph/app/lifespan.py` to show raw tool counts and the new BM25 discovery mode in the startup banner.
+- `MEM_GRAPH_LOGFIRE_SEND_TO_LOGFIRE=if-token-present MEM_GRAPH_LOGFIRE_ENABLED=false OTEL_SDK_DISABLED=true .venv/bin/pytest tests/test_sandbox_config.py tests/test_sandbox_podman.py tests/test_sandbox_snapshots.py tests/test_sandbox_manager.py tests/test_sandbox_provider.py tests/test_agent_workflows.py tests/test_workflow_sandbox_sessions.py tests/test_workflow_sandbox_merge_back.py -q`  
+  Result: **56 passed**
+- `MEM_GRAPH_LOGFIRE_SEND_TO_LOGFIRE=if-token-present MEM_GRAPH_LOGFIRE_ENABLED=false OTEL_SDK_DISABLED=true .venv/bin/pytest tests/test_sandbox_config.py tests/test_sandbox_podman.py tests/test_sandbox_snapshots.py tests/test_sandbox_manager.py tests/test_sandbox_provider.py tests/test_agent_workflows.py tests/test_workflow_sandbox_sessions.py tests/test_workflow_sandbox_merge_back.py tests/test_agent_update.py -q`  
+  Result: **64 passed**
+- `MEM_GRAPH_LOGFIRE_SEND_TO_LOGFIRE=if-token-present MEM_GRAPH_LOGFIRE_ENABLED=false OTEL_SDK_DISABLED=true .venv/bin/pytest tests/test_audit.py tests/test_db.py tests/test_decision_agent.py tests/test_diagram_agent.py tests/test_evals.py tests/test_jina_embedder.py tests/test_logfire_setup.py tests/test_map_agent.py tests/test_parsers.py tests/test_server_metadata.py tests/test_task_agent.py tests/test_triage_agent.py -q`  
+  Result: **30 passed, 1 failed** (`tests/test_logfire_setup.py::test_logfire_setup_uses_safe_defaults`, pre-existing Logfire HTTPX instrumentation expectation)
+- `MEM_GRAPH_LOGFIRE_SEND_TO_LOGFIRE=if-token-present MEM_GRAPH_LOGFIRE_ENABLED=false OTEL_SDK_DISABLED=true .venv/bin/pytest tests/test_filesystem_tools.py tests/test_filesystem_tree.py tests/test_task_queue.py tests/test_tools.py -vv`  
+  Result: **38 passed**
+- `MEM_GRAPH_LOGFIRE_SEND_TO_LOGFIRE=if-token-present MEM_GRAPH_LOGFIRE_ENABLED=false OTEL_SDK_DISABLED=true .venv/bin/pytest tests/test_document_evals.py tests/test_fix_evals.py tests/test_graph.py tests/test_jina.py tests/test_map_evals.py tests/test_openapi_provider.py tests/test_report_writer.py tests/test_scorers.py tests/test_validate_evals.py tests/test_violation_writer.py tests/test_visibility_discovery.py -q`  
+  Result: **25 passed**
+- `.venv/bin/ruff check src tests`  
+  Result: **clean**
+- `.venv/bin/mypy src`  
+  Result: **clean** (`184 source files`)
 
-### Agent self-registration
+## Notes
 
-- Public agent metadata is now registered at import time from the tool modules themselves:
-  - `src/mem_graph/tools/agents/audit.py`
-  - `src/mem_graph/tools/agents/map.py`
-  - `src/mem_graph/tools/agents/triage.py`
-  - `src/mem_graph/tools/agents/diagrams.py`
-  - `src/mem_graph/tools/agents/orchestrator.py`
-  - `src/mem_graph/tools/work/decisions.py`
-  - `src/mem_graph/tools/work/tasks.py`
-- Registered public agents:
-  - Audit Agent
-  - Map Agent
-  - Triage Agent
-  - Diagram Agent
-  - Autopilot Remediation
-  - Codebase Orchestrator
-  - Sub-agent Workflow
-  - Decision Agent
-  - Task Decomposer
-
-### Tool description audit
-
-- Rewrote MCP tool docstrings across `src/mem_graph/tools/` to one tight sentence each.
-- Files updated:
-  - `src/mem_graph/tools/agents/audit.py`
-  - `src/mem_graph/tools/agents/map.py`
-  - `src/mem_graph/tools/agents/triage.py`
-  - `src/mem_graph/tools/agents/diagrams.py`
-  - `src/mem_graph/tools/agents/orchestrator.py`
-  - `src/mem_graph/tools/code/parser.py`
-  - `src/mem_graph/tools/filesystem/filesystem.py`
-  - `src/mem_graph/tools/memory/conversation.py`
-  - `src/mem_graph/tools/memory/memory.py`
-  - `src/mem_graph/tools/memory/notes.py`
-  - `src/mem_graph/tools/work/projects.py`
-  - `src/mem_graph/tools/work/tasks.py`
-  - `src/mem_graph/tools/work/decisions.py`
-  - `src/mem_graph/tools/work/violations.py`
-
-### Tests and docs
-
-- Added `tests/test_visibility_discovery.py` covering:
-  - pinned discovery tool surface
-  - registry-driven agent listing
-  - honest empty skill registry behavior
-  - `system_inspect()` summary output
-- Updated discovery docs:
-  - `mcp_guide.md`
-  - `docs/context/context_map.md`
-
-## Final verification
-
-- `PYTHONPATH=src uv run pytest -q` → **102 passed**
-- `PYTHONPATH=src uv run ruff check .` → **clean**
-- `PYTHONPATH=src uv run mypy .` → **clean**
+- The implementation uses the Podman CLI and `podman compose` as the supported local/dev compose runner.
+- The FastMCP sandbox provider interface in the installed version is `run(code, inputs=None, external_functions=None)`. The project now uses a `SessionCodeMode` wrapper so `ctx.session_id` is forwarded into the provider.
+- No raw code payloads, prompts, secrets, or raw execution parameters are logged by the sandbox lifecycle path.
+- Full `pytest -q` was attempted, but one run without a timeout hung in the pre-existing async file-read path before fixes and a later timeout run expired. The covered batches above exercise the task-plan files plus the remaining repository tests except for the known Logfire assertion.

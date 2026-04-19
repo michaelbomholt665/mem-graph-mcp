@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 # src/mem_graph/agents/workflow_graph.py
-"""Opt-in managed sub-agent workflow graph."""
+"""Opt-in managed sub-agent workflow graph.
+
+Deprecation note:
+  Primary workflow ownership has moved to
+  ``mem_graph.workflows.runtime.managed_workflow_runtime``.
+  This module retains the graph/node definitions and ``run_managed_workflow``
+  for backward compatibility. New callers should import from
+  ``mem_graph.workflows.runtime.managed_workflow_runtime`` and use
+  ``run_managed_workflow_with_selection`` for profile-aware execution.
+"""
 
 from __future__ import annotations
 
@@ -46,6 +55,9 @@ class ManagedWorkflowState(BaseModel):
     validation_output: dict[str, Any] = Field(default_factory=dict)
     documentation_output: dict[str, Any] = Field(default_factory=dict)
     context_map_output: dict[str, Any] = Field(default_factory=dict)
+    sandbox_session_id: str = ""
+    sandbox_workspace_path: str = ""
+    sandbox_artifact: dict[str, Any] = Field(default_factory=dict)
     stage_results: list[WorkflowStageResult] = Field(default_factory=list)
     blockers: list[str] = Field(default_factory=list)
     final_report: str = ""

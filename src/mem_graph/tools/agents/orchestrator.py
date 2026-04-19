@@ -19,20 +19,26 @@ from fastmcp.server.context import Context
 from mcp.types import Icon
 from pydantic import Field
 
-from ...app.registry import AgentEntry, register_agent
 from ...agents.orchestrator_agent import (
     BatchResult,
     OrchestratorDependencies,
     run_orchestrator_batches,
 )
-from ...agents.orchestrator_graph import autopilot_graph_run
 from ...agents.router_agent import RouterDependencies, WorkflowPlan, router_agent
-from ...agents.workflow_graph import run_managed_workflow
+from ...app.registry import AgentEntry, register_agent
+from ...resources.workflows.selector import select_all
 from ...services.task_queue import task_queue
+from ...workflows.runtime.managed_workflow_runtime import (
+    run_managed_workflow_with_selection,
+)
+from ...workflows.runtime.orchestrator_runtime import autopilot_graph_run_with_selection
 from ..background.progress import ContextProgressReporter, ProgressReporter, report_step
 from ..background.task_status import build_task_submission
 
-mcp = FastMCP("orchestrator", instructions="Batch orchestration and recursive autopilot workflows.")
+mcp = FastMCP(
+    "orchestrator",
+    instructions="Batch orchestration and recursive autopilot workflows.",
+)
 logger = logging.getLogger(__name__)
 
 register_agent(
@@ -83,27 +89,46 @@ async def _load_skills() -> str:
 
 @mcp.tool(
     tags={"namespace:audit"},
-    icons=[Icon(src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBmaWxsPSIjMTYzYTVmIiBkPSJNMyAxOWgxOHYySDN6bTItM2gxNHYtMmgtMTR6bTQtM2gxMHYtMkg5em0yLTNoOHYtMkgxMXptMi0zaDZWNWgtNnoiLz48L3N2Zz4=", mimeType="image/svg+xml")],
+    icons=[
+        Icon(
+            src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBmaWxsPSIjMTYzYTVmIiBkPSJNMyAxOWgxOHYySDN6bTItM2gxNHYtMmgtMTR6bTQtM2gxMHYtMkg5em0yLTNoOHYtMkgxMXptMi0zaDZWNWgtNnoiLz48L3N2Zz4=",
+            mimeType="image/svg+xml",
+        )
+    ],
     task=True,
 )
 async def autopilot_remediate(
-    project_id: Annotated[str, Field(description="Project ID to ground the remediation in.")],
-    language: Annotated[Literal["go", "python", "typescript"], Field(description="Target language.")],
-    target_files: Annotated[list[str], Field(description="Specific files to remediate.")],
-    task: Annotated[str | None, Field(description="Optional remediation task or objective.")] = None,
-    max_retries: Annotated[int, Field(description="Maximum refinement retry loops.", ge=1, le=5)] = 3,
+    project_id: Annotated[
+        str, Field(description="Project ID to ground the remediation in.")
+    ],
+    language: Annotated[
+        Literal["go", "python", "typescript"], Field(description="Target language.")
+    ],
+    target_files: Annotated[
+        list[str], Field(description="Specific files to remediate.")
+    ],
+    task: Annotated[
+        str | None, Field(description="Optional remediation task or objective.")
+    ] = None,
+    max_retries: Annotated[
+        int, Field(description="Maximum refinement retry loops.", ge=1, le=5)
+    ] = 3,
     ctx: Context = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
     """Run the recursive remediation workflow for selected files."""
     if ctx is not None:
-        await ctx.info(f"Launching Autopilot Remediation for project {project_id} ({len(target_files)} files)")
+        await ctx.info(
+            f"Launching Autopilot Remediation for project {project_id} ({len(target_files)} files)"
+        )
         await ctx.report_progress(progress=0, total=3)
 
     # 1. Route and Tier Selection
     skills_content = await _load_skills()
-    
+
     # Combine task into request
-    request_msg = f"Remediate violations in {len(target_files)} files: {', '.join(target_files)}"
+    request_msg = (
+        f"Remediate violations in {len(target_files)} files: {', '.join(target_files)}"
+    )
     if task:
         request_msg = f"{task}\n\nScope: {request_msg}"
 
@@ -117,7 +142,9 @@ async def autopilot_remediate(
     if ctx is not None:
         await ctx.info("Routing request and selecting model tier…")
 
-    router_result = await router_agent.run("Classify intent and select tier.", deps=router_deps)
+    router_result = await router_agent.run(
+        "Classify intent and select tier.", deps=router_deps
+    )
     decision = router_result.output
 
     if ctx is not None:
@@ -127,17 +154,37 @@ async def autopilot_remediate(
         )
         await ctx.report_progress(progress=1, total=3)
 
-    # 2. Launch Recursive Graph
+    # 2. Select workflow profile and launch recursive graph
+    task_type = (
+        decision.intent
+        if decision.intent in ("remediation", "refactoring", "bug_fix")
+        else "remediation"
+    )
+    selection = select_all(
+        task_type,
+        file_count=len(target_files),
+        risk_level="high",
+    )
     if ctx is not None:
+        await ctx.info(
+            f"Workflow profile: {selection.effective_size.value} "
+            f"| Reasoning: {selection.reasoning_policy.mode.value}"
+        )
+        await ctx.info(
+            "Sandbox policy: "
+            f"{'enabled' if selection.sandbox_policy.enabled else 'disabled'} "
+            f"| network={selection.sandbox_policy.network}"
+        )
         await ctx.info(f"Starting {decision.tier.value} workflow…")
 
     try:
-        state = await autopilot_graph_run(
+        state = await autopilot_graph_run_with_selection(
             language=language,
             target_files=target_files,
             project_id=project_id,
             tier=decision.tier.value,
             max_retries=max_retries,
+            selection=selection,
         )
     except Exception as exc:
         logger.error("Autopilot graph failed: %s", exc)
@@ -155,26 +202,42 @@ async def autopilot_remediate(
         "retries": state.retry_count,
         "summary": state.final_notes,
         "outcome": state.validation_status,
+        "sandbox": state.sandbox_artifact,
     }
 
 
 @mcp.tool(tags={"namespace:audit"}, task=True)
 async def orchestrate_codebase(
-    package_path: Annotated[str, Field(description="Absolute path to the package directory to analyse in batches.")],
-    project_id: Annotated[str, Field(description="Project ID used by downstream sub-agents.")],
+    package_path: Annotated[
+        str,
+        Field(
+            description="Absolute path to the package directory to analyse in batches."
+        ),
+    ],
+    project_id: Annotated[
+        str, Field(description="Project ID used by downstream sub-agents.")
+    ],
     subagent_name: Annotated[
-        Literal["audit", "security_audit", "bug_audit", "smell_audit", "map", "decision"],
+        Literal[
+            "audit", "security_audit", "bug_audit", "smell_audit", "map", "decision"
+        ],
         Field(description="Which sub-agent to run for each batch."),
     ] = "audit",
-    batch_size: Annotated[int, Field(description="Maximum files to analyse per batch.", ge=1, le=20)] = 5,
-    file_extension: Annotated[str, Field(description="Source file extension to analyse. Defaults to '.py'.")] = ".py",
+    batch_size: Annotated[
+        int, Field(description="Maximum files to analyse per batch.", ge=1, le=20)
+    ] = 5,
+    file_extension: Annotated[
+        str, Field(description="Source file extension to analyse. Defaults to '.py'.")
+    ] = ".py",
     batch_timeout_seconds: Annotated[
         float,
         Field(description="Per-batch timeout in seconds.", gt=0.0, le=600.0),
     ] = 120.0,
     extra_context: Annotated[
         dict[str, Any] | None,
-        Field(description="Optional sub-agent-specific context, such as decision records or known features."),
+        Field(
+            description="Optional sub-agent-specific context, such as decision records or known features."
+        ),
     ] = None,
     ctx: Context = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
@@ -220,14 +283,24 @@ async def orchestrate_codebase(
 
 @mcp.tool(tags={"namespace:audit"}, task=True)
 async def run_subagent_workflow(
-    objective: Annotated[str, Field(description="One starting prompt/objective for the full workflow.")],
-    project_id: Annotated[str, Field(description="Project ID to ground the workflow in.")],
+    objective: Annotated[
+        str, Field(description="One starting prompt/objective for the full workflow.")
+    ],
+    project_id: Annotated[
+        str, Field(description="Project ID to ground the workflow in.")
+    ],
     target_files: Annotated[list[str], Field(description="Files initially in scope.")],
-    project_root: Annotated[str, Field(description="Project root for helper-agent lookup.")] = "",
-    max_retries: Annotated[int, Field(description="Maximum validation/debug retries.", ge=0, le=10)] = 3,
+    project_root: Annotated[
+        str, Field(description="Project root for helper-agent lookup.")
+    ] = "",
+    max_retries: Annotated[
+        int, Field(description="Maximum validation/debug retries.", ge=0, le=10)
+    ] = 3,
     model_overrides: Annotated[
         dict[str, str] | None,
-        Field(description="Optional per-stage model overrides keyed by workflow stage."),
+        Field(
+            description="Optional per-stage model overrides keyed by workflow stage."
+        ),
     ] = None,
     ctx: Context = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
@@ -259,10 +332,30 @@ async def run_subagent_workflow(
     )
 
     if ctx is not None:
-        await ctx.info("Starting managed workflow graph")
+        selection = select_all(
+            "subagent_workflow",
+            file_count=len(target_files),
+            risk_level="medium",
+        )
+        await ctx.info(
+            "Starting managed workflow graph "
+            f"(sandbox={'enabled' if selection.sandbox_policy.enabled else 'disabled'})"
+        )
         await ctx.report_progress(progress=1, total=3)
+    else:
+        selection = select_all(
+            "subagent_workflow",
+            file_count=len(target_files),
+            risk_level="medium",
+        )
 
-    state = await run_managed_workflow(plan, execute_agents=True)
+    state = await run_managed_workflow_with_selection(
+        plan,
+        execute_agents=True,
+        selection=selection,
+        task_type="subagent_workflow",
+        risk_level="medium",
+    )
 
     if ctx is not None:
         await ctx.report_progress(progress=3, total=3)
@@ -275,6 +368,7 @@ async def run_subagent_workflow(
         "stages": [result.model_dump(mode="json") for result in state.stage_results],
         "blockers": state.blockers,
         "summary": state.final_report,
+        "sandbox": state.sandbox_artifact,
     }
 
 
@@ -331,6 +425,7 @@ async def _orchestrate_codebase_worker(
     )
 
     try:
+
         async def on_batch(
             batch_number: int,
             total_batches: int,

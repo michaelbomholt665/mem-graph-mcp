@@ -1,0 +1,27 @@
+services:
+  sandbox:
+    image: ${MEM_GRAPH_SANDBOX_IMAGE:-python:3.14-slim}
+    command: ["sleep", "infinity"]
+    working_dir: /workspace
+    network_mode: ${MEM_GRAPH_SANDBOX_NETWORK:-none}
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: ${MEM_GRAPH_SANDBOX_MEMORY:-1g}
+    cpus: ${MEM_GRAPH_SANDBOX_CPUS:-2}
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m
+    volumes:
+      - ${MEM_GRAPH_SANDBOX_REPO:?repo snapshot required}:/repo:ro
+      - ${MEM_GRAPH_SANDBOX_WORKSPACE:?workspace required}:/workspace:rw
+    environment:
+      MEM_GRAPH_SANDBOX_SESSION_ID: ${MEM_GRAPH_SANDBOX_SESSION_ID:?session id required}
+      HOME: /workspace
+      PYTHONDONTWRITEBYTECODE: "1"
+    labels:
+      mem_graph.sandbox: "true"
+      mem_graph.session_id: ${MEM_GRAPH_SANDBOX_SESSION_ID:?session id required}
+      mem_graph.cleanup: "ttl"

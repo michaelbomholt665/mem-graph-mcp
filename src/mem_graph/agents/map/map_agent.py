@@ -16,11 +16,11 @@ from __future__ import annotations
 #   IMPORTS
 ################
 
+from dataclasses import dataclass, field
 import logging
 import os
-from dataclasses import dataclass, field
+from pathlib import Path
 
-import anyio
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
@@ -258,7 +258,7 @@ async def process_batch(
 
     results = []
     for path in file_paths[:5]:  # hard cap
-        content = await _read_file_internal(path)
+        content = _read_file_internal(path)
         results.append(f"### {path}\n{content}")
 
     if not results:
@@ -267,13 +267,13 @@ async def process_batch(
     return "\n\n".join(results)
 
 
-async def _read_file_internal(file_path: str) -> str:
+def _read_file_internal(file_path: str) -> str:
     """Internal helper to read file content robustly."""
     if not os.path.exists(file_path):
         return f"ERROR:NOT_FOUND:{file_path}"
 
     try:
-        raw = await anyio.Path(file_path).read_bytes()
+        raw = Path(file_path).read_bytes()
     except Exception as exc:
         return f"ERROR:READ_FAILED:{exc}"
 

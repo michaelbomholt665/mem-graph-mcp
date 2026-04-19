@@ -15,6 +15,14 @@ Workflow:
                                 MemorySync ← Refine (retry)
                                     ↓
                                     End
+
+Deprecation note:
+  Primary workflow ownership has moved to
+  ``mem_graph.workflows.runtime.orchestrator_runtime``.
+  This module retains the graph/node definitions and ``autopilot_graph_run``
+  for backward compatibility. New callers should import from
+  ``mem_graph.workflows.runtime.orchestrator_runtime`` and use
+  ``autopilot_graph_run_with_selection`` for profile-aware execution.
 """
 
 from __future__ import annotations
@@ -97,6 +105,9 @@ class AutopilotState(BaseModel):
     # Control flow
     retry_count: int = 0
     max_retries: int = 3
+    sandbox_session_id: str = ""
+    sandbox_workspace_path: str = ""
+    sandbox_artifact: dict[str, Any] = Field(default_factory=dict)
     final_notes: str = ""
     success: bool = False
 
@@ -142,8 +153,8 @@ class ContextGatherNode(BaseNode[AutopilotState, None, AutopilotState]):
             ctx.state.context_violations = _state_query_violations(ctx.state.project_id)
             ctx.state.context_decisions = _state_query_decisions(ctx.state.project_id)
             ctx.state.context_map = _state_query_map(ctx.state.project_id)
-            ctx.state.manifest_context = await _state_read_manifests()
-            ctx.state.file_contents = await _state_read_target_files(
+            ctx.state.manifest_context = _state_read_manifests()
+            ctx.state.file_contents = _state_read_target_files(
                 ctx.state.target_files
             )
 
@@ -743,7 +754,7 @@ def _state_query_map(project_id: str) -> str:
         return ""
 
 
-async def _state_read_target_files(file_paths: list[str]) -> dict[str, str]:
+def _state_read_target_files(file_paths: list[str]) -> dict[str, str]:
     """
     Read a list of target files into an in-memory dict.
 
@@ -756,14 +767,12 @@ async def _state_read_target_files(file_paths: list[str]) -> dict[str, str]:
     Returns:
         Dict mapping file_path to content string.
     """
-    import anyio
-
     contents: dict[str, str] = {}
     _MAX_BYTES = 64_000
 
     for path in file_paths:
         try:
-            raw = await anyio.Path(path).read_bytes()
+            raw = Path(path).read_bytes()
             if len(raw) > _MAX_BYTES:
                 contents[path] = (
                     raw[:_MAX_BYTES].decode("utf-8", errors="replace") + "\n[TRUNCATED]"
@@ -776,18 +785,16 @@ async def _state_read_target_files(file_paths: list[str]) -> dict[str, str]:
     return contents
 
 
-async def _state_read_manifests() -> dict[str, str]:
+def _state_read_manifests() -> dict[str, str]:
     """Read repository manifests used by the manifest guard."""
-    import anyio
-
     manifests: dict[str, str] = {}
     root = _workspace_root()
 
     for relative_path in ("pyproject.toml", "go.mod", "package.json"):
-        path = anyio.Path(root / relative_path)
+        path = root / relative_path
         try:
-            if await path.exists():
-                manifests[relative_path] = await path.read_text()
+            if path.exists():
+                manifests[relative_path] = path.read_text(encoding="utf-8", errors="replace")
         except Exception as exc:
             manifests[relative_path] = f"ERROR: {exc}"
 

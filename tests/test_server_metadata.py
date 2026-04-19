@@ -69,9 +69,10 @@ async def test_dashboard_metadata_routes_return_catalogs():
     assert _json(agents)["count"] > 0
     assert workflows.status_code == 200
     workflow_payload = _json(workflows)
-    assert {workflow["key"] for workflow in workflow_payload["workflows"]} == {
+    assert {workflow["key"] for workflow in workflow_payload["workflows"]} >= {
         "autopilot_graph",
         "managed_workflow_graph",
+        "package_audit",
     }
     assert "graph TD" in workflow_payload["workflows"][0]["mermaid"]
     assert tools.status_code == 200

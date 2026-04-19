@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Literal, cast
 
 from dotenv import load_dotenv
@@ -56,12 +57,15 @@ from .app.tools import (
     server_info_payload,
 )
 from .logging import logging_setup_engine
+from .sandbox.provider import build_session_code_mode
+from .services.sandbox_sessions import configure_sandbox_manager, sandbox_manager
 from .tools import background, graph, integrations
 from .tools.agents import audit, diagrams, orchestrator, triage
 from .tools.agents import map as map_tool
 from .tools.code import parser as code_parser
 from .tools.filesystem import filesystem
 from .tools.memory import conversation, memory, notes
+from .tools.sandbox import session as sandbox_session
 from .tools.work import decisions, projects, tasks, violations
 
 # Force all standard logging to stderr
@@ -129,6 +133,7 @@ for sub_mcp in (
     graph.mcp,
     integrations.mcp,
     code_parser.mcp,
+    sandbox_session.mcp,
 ):
     mcp.mount(sub_mcp)
 
@@ -136,6 +141,9 @@ mcp.add_provider(SkillsProvider("skills"))
 register_tools(mcp)
 register_resources(mcp)
 register_prompts(mcp)
+_sandbox_manager = configure_sandbox_manager(repo_root=Path.cwd())
+if _sandbox_manager.enabled:
+    mcp.add_transform(build_session_code_mode(sandbox_manager()))
 mcp.add_transform(ResourcesAsTools(mcp))
 mcp.add_transform(PromptsAsTools(mcp))
 mcp.add_transform(

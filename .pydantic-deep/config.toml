@@ -1,0 +1,7 @@
+model = "anthropic:claude-opus-4-6"
+show_cost = true
+show_tokens = true
+
+# Tools that require user approval before execution
+# Use /config set approve_tools "execute,write_file" to change
+approve_tools = ["execute"]

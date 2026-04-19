@@ -2,7 +2,7 @@
 
 **Date:** April 13, 2026  
 **Status:** Design Phase Complete  
-**Total Features:** 15 (13 Base + 2 Critical Quality)  
+**Total Features:** 16 (13 Base + 2 Critical Quality + 1 Operations)  
 
 This directory contains comprehensive design documents for implementing the "2026 Pydantic AI God Stack" upgrade and completing FastMCP 3.0.
 
@@ -32,6 +32,7 @@ This directory contains comprehensive design documents for implementing the "202
 ### Polish & Infrastructure
 14. [**012-otel.md**](012-otel.md) — OpenTelemetry tracing, metrics, structured logging
 15. [**013-versioning.md**](013-versioning.md) — Semantic versioning and website URL
+16. [**16-commands-codemode.md**](16-commands-codemode.md) — CLI commands that trigger the existing CodeMode `execute` tool
 
 ---
 
