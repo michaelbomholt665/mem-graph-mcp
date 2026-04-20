@@ -9,7 +9,7 @@ from pathlib import Path
 
 import httpx
 
-from ..config import (
+from ...config import (
     JINA_EMBEDDER_TTL_SECONDS,
     JINA_MATCH_THRESHOLD,
     JINA_MAX_RESULTS,
@@ -18,9 +18,9 @@ from ..config import (
     JINA_URL,
     JINA_USERNAME,
 )
-from ..embeddings import embeddings_code, embeddings_code_query
+from ...embeddings import embeddings_code, embeddings_code_query
 from .code_embed_service import CodeEmbedService
-from .embed_client import EmbedClientBase
+from ..embed_client import EmbedClientBase
 from .jina_common import (
     CodeMatch,
     IndexedCodeFile,
@@ -102,10 +102,15 @@ class JinaCodeEmbedder(EmbedClientBase):
         return self._text_service.default_jql()
 
     def release_idle_resources(self, *, now: datetime | None = None) -> bool:
-        if not self._code_service.indexed_files or self._code_service.last_used_at is None:
+        if (
+            not self._code_service.indexed_files
+            or self._code_service.last_used_at is None
+        ):
             return False
         current = now or now_utc()
-        if current - self._code_service.last_used_at < timedelta(seconds=self.ttl_seconds):
+        if current - self._code_service.last_used_at < timedelta(
+            seconds=self.ttl_seconds
+        ):
             return False
         logger.info(
             "jina_embedder_unloaded root=%s files=%s",

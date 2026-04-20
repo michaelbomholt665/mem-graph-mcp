@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# src/mem_graph/services/fingerprint.py
+# src/mem_graph/services/audit/fingerprint.py
 """
 Deterministic deduplication service for audit findings.
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 import re
 
-from ..models.audit import AuditFinding
+from ...models.audit import AuditFinding
 
 ################
 #   CONSTANTS

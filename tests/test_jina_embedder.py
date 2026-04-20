@@ -36,7 +36,7 @@ async def _fake_embeddings_code_query(text: str) -> list[float]:
 
 @pytest.mark.asyncio
 async def test_fetch_issues_shapes_atlassian_documents(monkeypatch):
-    from mem_graph.services.jina_embedder import JinaCodeEmbedder
+    from mem_graph.services.jina.jina_embedder import JinaCodeEmbedder
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/rest/api/3/search"
@@ -54,7 +54,10 @@ async def test_fetch_issues_shapes_atlassian_documents(monkeypatch):
                                     {
                                         "type": "paragraph",
                                         "content": [
-                                            {"type": "text", "text": "Tighten login token refresh logic."}
+                                            {
+                                                "type": "text",
+                                                "text": "Tighten login token refresh logic.",
+                                            }
                                         ],
                                     }
                                 ],
@@ -85,22 +88,28 @@ async def test_fetch_issues_shapes_atlassian_documents(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_find_code_for_issue_ranks_matches_and_unloads(monkeypatch, db, tmp_path):
-    from mem_graph.services import jina_embedder as jina_mod
-    from mem_graph.services.jina_embedder import JinaCodeEmbedder, JinaIssue
+    from mem_graph.services.jina import jina_embedder as jina_mod
+    from mem_graph.services.jina.jina_embedder import JinaCodeEmbedder, JinaIssue
     from mem_graph.tools.work.projects import project_create
 
     monkeypatch.setattr(jina_mod, "embeddings_code", _fake_embeddings_code)
     monkeypatch.setattr(jina_mod, "embeddings_code_query", _fake_embeddings_code_query)
 
-    project = await project_create(name="Atlas", description="Jina linking test", repo_path=str(tmp_path))
+    project = await project_create(
+        name="Atlas", description="Jina linking test", repo_path=str(tmp_path)
+    )
     project_id = project["project_id"]
 
     src_dir = tmp_path / "src"
     src_dir.mkdir()
-    (src_dir / "auth.py").write_text("def refresh_auth_token():\n    return 'login token auth'\n")
+    (src_dir / "auth.py").write_text(
+        "def refresh_auth_token():\n    return 'login token auth'\n"
+    )
     (src_dir / "cache.py").write_text("def warm_cache():\n    return 'cache redis'\n")
 
-    embedder = JinaCodeEmbedder(jina_url="https://jina.example.com", jina_token="token", ttl_seconds=60)
+    embedder = JinaCodeEmbedder(
+        jina_url="https://jina.example.com", jina_token="token", ttl_seconds=60
+    )
     issue = JinaIssue(
         key="MEM-7",
         title="Improve auth login token handling",
@@ -122,7 +131,9 @@ async def test_find_code_for_issue_ranks_matches_and_unloads(monkeypatch, db, tm
     assert embedder.index_loaded is True
     assert embedder.indexed_file_count == 2
 
-    jina_rows = db.execute("MATCH (j:JinaIssue {id: $id}) RETURN j.issue_key", {"id": issue.issue_id()})
+    jina_rows = db.execute(
+        "MATCH (j:JinaIssue {id: $id}) RETURN j.issue_key", {"id": issue.issue_id()}
+    )
     assert jina_rows.get_all()[0][0] == "MEM-7"
 
     link_rows = db.execute(
@@ -134,6 +145,8 @@ async def test_find_code_for_issue_ranks_matches_and_unloads(monkeypatch, db, tm
     )
     assert link_rows.get_all()[0][0] == "src/auth.py"
 
-    released = embedder.release_idle_resources(now=datetime.now(timezone.utc) + timedelta(seconds=61))
+    released = embedder.release_idle_resources(
+        now=datetime.now(timezone.utc) + timedelta(seconds=61)
+    )
     assert released is True
     assert not embedder.index_loaded

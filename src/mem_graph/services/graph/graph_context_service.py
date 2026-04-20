@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# src/mem_graph/services/graph_context_service.py
+# src/mem_graph/services/graph/graph_context_service.py
 """
 GraphContextService — High-level read-only graph operations.
 
@@ -14,8 +14,8 @@ import asyncio
 import logging
 from typing import Any
 
-from ..db import db_get_connection
-from ..models.work import DecisionModel, ViolationModel
+from ...db import db_get_connection
+from ...models.work import DecisionModel, ViolationModel
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class GraphContextService:
     def __init__(self, conn: Any = None) -> None:
         """
         Initialise with an optional connection.
-        
+
         Args:
             conn: Active Ladybug connection. If None, uses db_get_connection().
         """
@@ -182,11 +182,20 @@ class GraphContextService:
         """
         counts = {}
         labels = [
-            "Project", "Backend", "Task", "Decision", "Note", 
-            "Violation", "Conversation", "Message", "Memory", 
-            "CodeSymbol", "CodeFile", "JinaIssue"
+            "Project",
+            "Backend",
+            "Task",
+            "Decision",
+            "Note",
+            "Violation",
+            "Conversation",
+            "Message",
+            "Memory",
+            "CodeSymbol",
+            "CodeFile",
+            "JinaIssue",
         ]
-        
+
         try:
             for label in labels:
                 qr = await asyncio.to_thread(

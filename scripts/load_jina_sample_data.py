@@ -11,7 +11,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from mem_graph.db import db_close_engine, db_init_engine
-from mem_graph.services.jina_embedder import JinaCodeEmbedder, JinaIssue
+from mem_graph.services.jina.jina_embedder import JinaCodeEmbedder, JinaIssue
 
 load_dotenv()
 
@@ -45,7 +45,9 @@ SAMPLE_ISSUES = [
 ]
 
 
-async def _load_sample_data(root_path: str, project_id: str | None, limit: int, threshold: float) -> None:
+async def _load_sample_data(
+    root_path: str, project_id: str | None, limit: int, threshold: float
+) -> None:
     embedder = JinaCodeEmbedder(
         jina_url=os.getenv("JINA_URL", "https://jina.example.com"),
         jina_token=os.getenv("JINA_TOKEN", "sample-token"),
@@ -66,11 +68,28 @@ async def _load_sample_data(root_path: str, project_id: str | None, limit: int, 
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Load sample Jina issues and code links into the mem-graph database.")
-    parser.add_argument("--root-path", default=str(Path.cwd()), help="Repository root to index for code matches.")
-    parser.add_argument("--project-id", default=None, help="Optional Project node ID used to scope issue and file links.")
-    parser.add_argument("--limit", type=int, default=3, help="Maximum matches to store per issue.")
-    parser.add_argument("--threshold", type=float, default=0.72, help="Semantic match threshold between 0 and 1.")
+    parser = argparse.ArgumentParser(
+        description="Load sample Jina issues and code links into the mem-graph database."
+    )
+    parser.add_argument(
+        "--root-path",
+        default=str(Path.cwd()),
+        help="Repository root to index for code matches.",
+    )
+    parser.add_argument(
+        "--project-id",
+        default=None,
+        help="Optional Project node ID used to scope issue and file links.",
+    )
+    parser.add_argument(
+        "--limit", type=int, default=3, help="Maximum matches to store per issue."
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.72,
+        help="Semantic match threshold between 0 and 1.",
+    )
     args = parser.parse_args()
 
     db_init_engine()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# src/mem_graph/services/violation_writer.py
+# src/mem_graph/services/audit/violation_writer.py
 """
 Audit-to-graph violation writer.
 
@@ -16,11 +16,11 @@ from __future__ import annotations
 ################
 import logging
 
-from ..db import db_get_connection
-from ..ids import id_generate_v7
-from ..models.audit import AuditFinding, AuditReport
+from ...db import db_get_connection
+from ...ids import id_generate_v7
+from ...models.audit import AuditFinding, AuditReport
 from .fingerprint import fingerprint_attach_to_findings, fingerprint_compute_hash
-from .graph_writer_service import GraphWriterService
+from ..graph.graph_writer_service import GraphWriterService
 
 ################
 #   CONSTANTS

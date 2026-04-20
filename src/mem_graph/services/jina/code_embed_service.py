@@ -9,8 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
-from ..config import FILE_TREE_DEFAULT_ROOT
-from ..db import db_get_connection, db_update_embedding
+from ...config import FILE_TREE_DEFAULT_ROOT
+from ...db import db_get_connection, db_update_embedding
 from .jina_common import (
     CODE_EXTENSIONS,
     MAX_FILE_BYTES,
@@ -23,8 +23,8 @@ from .jina_common import (
     summarize_content,
 )
 
-from ..app.parsers.ingest import ingest_batch
-from ..app.parsers.persist import CypherBatch, FileBatch
+from ...app.parsers.ingest import ingest_batch
+from ...app.parsers.persist import CypherBatch, FileBatch
 
 EmbeddingFn = Callable[[str], Awaitable[list[float]]]
 

@@ -9,12 +9,15 @@ from fastmcp import FastMCP
 from ..markers import tier_2_tool
 from pydantic import Field
 
-from ...services.jina_embedder import (
+from ...services.jina.jina_embedder import (
     JinaConfigurationError,
     get_jina_embedder,
 )
 
-mcp = FastMCP("integrations", instructions="Read-only Jina issue fetch and ticket-to-code linking tools.")
+mcp = FastMCP(
+    "integrations",
+    instructions="Read-only Jina issue fetch and ticket-to-code linking tools.",
+)
 
 _TAG = {"namespace:integrations"}
 
@@ -24,7 +27,9 @@ _TAG = {"namespace:integrations"}
 async def jina_fetch_issues(
     jql: Annotated[
         str | None,
-        Field(description="Optional JQL query. Defaults to the configured project key if omitted."),
+        Field(
+            description="Optional JQL query. Defaults to the configured project key if omitted."
+        ),
     ] = None,
     limit: Annotated[
         int,
@@ -32,7 +37,9 @@ async def jina_fetch_issues(
     ] = 25,
     project_id: Annotated[
         str | None,
-        Field(description="Optional project node ID used to link imported Jina issues into the graph."),
+        Field(
+            description="Optional project node ID used to link imported Jina issues into the graph."
+        ),
     ] = None,
 ) -> dict:
     """Fetch Jina issues over the read-only Jina search API and persist them in the graph."""
@@ -58,20 +65,32 @@ async def jina_find_code_for_ticket(
     issue_key: Annotated[str, Field(description="Jina issue key, for example MEM-42.")],
     root_path: Annotated[
         str | None,
-        Field(description="Optional repository root. Defaults to the linked project repo_path or the current working directory."),
+        Field(
+            description="Optional repository root. Defaults to the linked project repo_path or the current working directory."
+        ),
     ] = None,
     project_id: Annotated[
         str | None,
-        Field(description="Optional project node ID used for graph links and repo_path resolution."),
+        Field(
+            description="Optional project node ID used for graph links and repo_path resolution."
+        ),
     ] = None,
-    limit: Annotated[int, Field(description="Maximum number of code matches to return.", ge=1, le=20)] = 5,
+    limit: Annotated[
+        int, Field(description="Maximum number of code matches to return.", ge=1, le=20)
+    ] = 5,
     threshold: Annotated[
         float | None,
-        Field(description="Optional semantic match threshold override between 0 and 1.", ge=0.0, le=1.0),
+        Field(
+            description="Optional semantic match threshold override between 0 and 1.",
+            ge=0.0,
+            le=1.0,
+        ),
     ] = None,
     force_refresh: Annotated[
         bool,
-        Field(description="When true, rebuild the in-memory code index instead of reusing the active cache."),
+        Field(
+            description="When true, rebuild the in-memory code index instead of reusing the active cache."
+        ),
     ] = False,
 ) -> dict:
     """Fetch a Jina issue and find the most relevant code files for it."""
@@ -103,19 +122,34 @@ async def jina_find_code_for_ticket(
 @tier_2_tool
 @mcp.tool(tags=_TAG)
 async def jina_find_tickets_for_file(
-    file_path: Annotated[str, Field(description="File path to look up tickets for. Relative paths resolve against root_path or the project repo_path.")],
+    file_path: Annotated[
+        str,
+        Field(
+            description="File path to look up tickets for. Relative paths resolve against root_path or the project repo_path."
+        ),
+    ],
     root_path: Annotated[
         str | None,
-        Field(description="Optional repository root. Defaults to the linked project repo_path or the current working directory."),
+        Field(
+            description="Optional repository root. Defaults to the linked project repo_path or the current working directory."
+        ),
     ] = None,
     project_id: Annotated[
         str | None,
-        Field(description="Optional project node ID used for graph scoping and repo_path resolution."),
+        Field(
+            description="Optional project node ID used for graph scoping and repo_path resolution."
+        ),
     ] = None,
-    limit: Annotated[int, Field(description="Maximum number of Jina matches to return.", ge=1, le=20)] = 5,
+    limit: Annotated[
+        int, Field(description="Maximum number of Jina matches to return.", ge=1, le=20)
+    ] = 5,
     threshold: Annotated[
         float | None,
-        Field(description="Optional semantic match threshold override between 0 and 1.", ge=0.0, le=1.0),
+        Field(
+            description="Optional semantic match threshold override between 0 and 1.",
+            ge=0.0,
+            le=1.0,
+        ),
     ] = None,
     include_resolved: Annotated[
         bool,

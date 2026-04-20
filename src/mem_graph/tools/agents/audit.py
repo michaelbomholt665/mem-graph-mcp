@@ -30,8 +30,8 @@ from ...models.audit import AuditReport
 from ...providers.skills import load_skill
 from ...observability import traced_tool
 from ...services.task_queue import task_queue
-from ...services.report_writer import write_report
-from ...services.violation_writer import write_violations
+from ...services.audit.report_writer import write_report
+from ...services.audit.violation_writer import write_violations
 from ..background.progress import ContextProgressReporter, ProgressReporter, report_step
 from ..background.task_status import build_task_submission
 
@@ -55,11 +55,15 @@ register_agent(
 )
 
 
-
 @mcp.tool(
     tags={"namespace:audit"},
-    icons=[Icon(src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTIgMkM2LjQ4IDIgMiA2LjQ4IDIgMTJzNC40OCAxMCAxMCAxMCAxMC00LjQ4IDEwLTEwUzE3LjUyIDIgMTIgMnptMCA4Yy0xLjEgMC0yLS45LTIgLTJzMi45IDIgMi4yLjktMl6CTEwIEgzMDU2UzAgMjcgNzZ6bS00LTJoMnYyaC0yeiIvPjwvc3ZnPg==", mimeType="image/svg+xml")],
-    task=True
+    icons=[
+        Icon(
+            src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTIgMkM2LjQ4IDIgMiA2LjQ4IDIgMTJzNC40OCAxMCAxMCAxMCAxMC00LjQ4IDEwLTEwUzE3LjUyIDIgMTIgMnptMCA4Yy0xLjEgMC0yLS45LTIgLTJzMi45IDIgMi4yLjktMl6CTEwIEgzMDU2UzAgMjcgNzZ6bS00LTJoMnYyaC0yeiIvPjwvc3ZnPg==",
+            mimeType="image/svg+xml",
+        )
+    ],
+    task=True,
 )
 async def audit_package(
     package_path: Annotated[
@@ -73,15 +77,21 @@ async def audit_package(
     ],
     project_id: Annotated[
         str,
-        Field(description="mem-graph project ID to link findings against as Violation nodes."),
+        Field(
+            description="mem-graph project ID to link findings against as Violation nodes."
+        ),
     ],
     report_output_path: Annotated[
         str | None,
-        Field(description="Optional absolute path to write the markdown report. Omit to skip."),
+        Field(
+            description="Optional absolute path to write the markdown report. Omit to skip."
+        ),
     ] = None,
     persist_violations: Annotated[
         bool,
-        Field(description="Write findings to the graph as Violation nodes. Defaults to True."),
+        Field(
+            description="Write findings to the graph as Violation nodes. Defaults to True."
+        ),
     ] = True,
     file_extension: Annotated[
         str,
@@ -89,11 +99,15 @@ async def audit_package(
     ] = ".py",
     skill_name: Annotated[
         str,
-        Field(description="The domain or language skill to use. Defaults to 'python_quality'."),
+        Field(
+            description="The domain or language skill to use. Defaults to 'python_quality'."
+        ),
     ] = "python_quality",
     peer_review: Annotated[
         bool,
-        Field(description="Request an LLM peer review of the findings summary before returning. Defaults to False."),
+        Field(
+            description="Request an LLM peer review of the findings summary before returning. Defaults to False."
+        ),
     ] = False,
     ctx: Context = None,  # type: ignore[assignment]
 ) -> dict:
@@ -137,6 +151,8 @@ async def audit_package(
         ),
     )
     return build_task_submission(task)
+
+
 @traced_tool("audit_package", component="tool.worker")
 async def _audit_package_worker(
     *,
@@ -296,9 +312,6 @@ async def _handle_peer_review(
         return None
 
 
-
-
-
 async def _run_agent(deps: AuditDependencies) -> AuditReport | None:
     prompt = (
         "Begin the audit. List all source files, read and analyse each one "
@@ -336,7 +349,9 @@ def _maybe_persist(report: AuditReport, project_id: str, persist: bool) -> str:
         return f"Violation write failed: {exc}"
 
 
-def _build_response(report: AuditReport, output_path: str | None, violation_summary: str) -> dict:
+def _build_response(
+    report: AuditReport, output_path: str | None, violation_summary: str
+) -> dict:
     return {
         "status": "completed" if not report.partial_failure else "partial",
         "summary": report.summary,

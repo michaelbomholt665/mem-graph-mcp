@@ -8,7 +8,9 @@ import pytest
 def _fake_vector(text: str) -> list[float]:
     lowered = text.lower()
     vec = [0.0] * 768
-    for index, token in enumerate(["auth", "login", "token", "cache", "redis", "billing"]):
+    for index, token in enumerate(
+        ["auth", "login", "token", "cache", "redis", "billing"]
+    ):
         if token in lowered:
             vec[index] = 5.0 - index * 0.4
     return vec
@@ -26,8 +28,8 @@ async def _fake_embeddings_code_query(text: str) -> list[float]:
 
 @pytest.mark.asyncio
 async def test_jina_tools_round_trip(monkeypatch, db, tmp_path):
-    from mem_graph.services import jina_embedder as jina_mod
-    from mem_graph.services.jina_embedder import JinaCodeEmbedder
+    from mem_graph.services.jina import jina_embedder as jina_mod
+    from mem_graph.services.jina.jina_embedder import JinaCodeEmbedder
     from mem_graph.tools.integrations import jina as jina_tools
     from mem_graph.tools.work.projects import project_create
 
@@ -49,7 +51,10 @@ async def test_jina_tools_round_trip(monkeypatch, db, tmp_path):
                                     {
                                         "type": "paragraph",
                                         "content": [
-                                            {"type": "text", "text": "Auth token refresh needs tighter validation."}
+                                            {
+                                                "type": "text",
+                                                "text": "Auth token refresh needs tighter validation.",
+                                            }
                                         ],
                                     }
                                 ],
@@ -71,12 +76,16 @@ async def test_jina_tools_round_trip(monkeypatch, db, tmp_path):
     )
     monkeypatch.setattr(jina_tools, "get_jina_embedder", lambda: service)
 
-    project = await project_create(name="Tools", description="Jina tool tests", repo_path=str(tmp_path))
+    project = await project_create(
+        name="Tools", description="Jina tool tests", repo_path=str(tmp_path)
+    )
     project_id = project["project_id"]
 
     src_dir = tmp_path / "src"
     src_dir.mkdir()
-    (src_dir / "auth.py").write_text("def validate_login_token():\n    return 'auth login token'\n")
+    (src_dir / "auth.py").write_text(
+        "def validate_login_token():\n    return 'auth login token'\n"
+    )
     (src_dir / "cache.py").write_text("def warm_cache():\n    return 'cache redis'\n")
 
     fetched = await jina_tools.jina_fetch_issues(project_id=project_id)
@@ -105,7 +114,7 @@ async def test_jina_tools_round_trip(monkeypatch, db, tmp_path):
 @pytest.mark.asyncio
 async def test_jina_fetch_issues_reports_config_error(monkeypatch):
     from mem_graph.tools.integrations import jina as jina_tools
-    from mem_graph.services.jina_embedder import JinaCodeEmbedder
+    from mem_graph.services.jina.jina_embedder import JinaCodeEmbedder
 
     monkeypatch.setattr(
         jina_tools,

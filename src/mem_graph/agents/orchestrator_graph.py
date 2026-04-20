@@ -156,7 +156,7 @@ class ContextGatherNode(BaseNode[AutopilotState, None, AutopilotState]):
                 len(ctx.state.target_files),
             )
 
-            from ..services.graph_context_service import GraphContextService
+            from ..services.graph.graph_context_service import GraphContextService
 
             graph_service = GraphContextService()
 
@@ -175,9 +175,7 @@ class ContextGatherNode(BaseNode[AutopilotState, None, AutopilotState]):
 
             # 2. Gather file contents and manifests
             ctx.state.manifest_context = _state_read_manifests()
-            ctx.state.file_contents = _state_read_target_files(
-                ctx.state.target_files
-            )
+            ctx.state.file_contents = _state_read_target_files(ctx.state.target_files)
 
             logger.info(
                 "[CONTEXT] %d violations, %d decisions loaded.",
@@ -757,7 +755,9 @@ def _state_read_manifests() -> dict[str, str]:
         path = root / relative_path
         try:
             if path.exists():
-                manifests[relative_path] = path.read_text(encoding="utf-8", errors="replace")
+                manifests[relative_path] = path.read_text(
+                    encoding="utf-8", errors="replace"
+                )
         except Exception as exc:
             manifests[relative_path] = f"ERROR: {exc}"
 
@@ -835,7 +835,7 @@ def _state_write_note(project_id: str, content: str) -> None:
     if not project_id:
         return
     try:
-        from ..services.graph_writer_service import GraphWriterService
+        from ..services.graph.graph_writer_service import GraphWriterService
 
         writer = GraphWriterService()
         writer.write_parent_child(

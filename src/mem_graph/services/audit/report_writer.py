@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# src/mem_graph/services/report_writer.py
+# src/mem_graph/services/audit/report_writer.py
 """
 Audit report renderer.
 
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..models.audit import AuditFinding, AuditReport, AuditStats, Severity
+from ...models.audit import AuditFinding, AuditReport, AuditStats, Severity
 
 ################
 #   BUCKETING LABELS
@@ -232,12 +232,10 @@ def _render_file_findings(
 
     if recurrence_fingerprints is not None:
         new_findings = [
-            f for f in findings
-            if f.fingerprint not in recurrence_fingerprints
+            f for f in findings if f.fingerprint not in recurrence_fingerprints
         ]
         recurring_findings = [
-            f for f in findings
-            if f.fingerprint in recurrence_fingerprints
+            f for f in findings if f.fingerprint in recurrence_fingerprints
         ]
 
         if new_findings:
@@ -260,9 +258,7 @@ def _render_single_finding(finding: AuditFinding) -> str:
     """Render a single AuditFinding as a markdown block."""
     location = f"L{finding.line_start}–{finding.line_end}"
     snippet_block = (
-        f"\n```\n{finding.code_snippet}\n```"
-        if finding.code_snippet
-        else ""
+        f"\n```\n{finding.code_snippet}\n```" if finding.code_snippet else ""
     )
 
     return (
@@ -281,8 +277,7 @@ def _render_skipped_files(report: AuditReport) -> str:
         return ""
 
     rows = "\n".join(
-        f"- `{fr.file_path}` — {fr.skip_reason or 'unknown reason'}"
-        for fr in skipped
+        f"- `{fr.file_path}` — {fr.skip_reason or 'unknown reason'}" for fr in skipped
     )
 
     return f"## Appendix: Skipped Files\n\n{rows}"

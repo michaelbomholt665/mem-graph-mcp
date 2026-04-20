@@ -9,9 +9,9 @@ from typing import Any, cast
 
 import httpx
 
-from ..db import db_get_connection, db_update_embedding
+from ...db import db_get_connection, db_update_embedding
 from .code_embed_service import CodeEmbedService, ensure_project_link, rows
-from .embed_client import EmbedClientBase
+from ..embed_client import EmbedClientBase
 from .jina_common import (
     DEFAULT_TIMEOUT_SECONDS,
     DONE_STATUSES,

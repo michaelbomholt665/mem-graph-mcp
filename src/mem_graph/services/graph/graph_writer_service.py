@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# src/mem_graph/services/graph_writer_service.py
+# src/mem_graph/services/graph/graph_writer_service.py
 """
 GraphWriterService — Shared write operations for the knowledge graph.
 
@@ -14,8 +14,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from ..db import db_get_connection
-from ..ids import id_generate_v7
+from ...db import db_get_connection
+from ...ids import id_generate_v7
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class GraphWriterService:
     def __init__(self, conn: Any = None) -> None:
         """
         Initialise with an optional connection.
-        
+
         Args:
             conn: Active Ladybug connection. If None, uses db_get_connection().
         """
@@ -64,7 +64,7 @@ class GraphWriterService:
         node_id = properties.get("id") or id_generate_v7()
         props = properties.copy()
         props["id"] = node_id
-        
+
         if "created_at" not in props and "detected_at" not in props:
             props["created_at"] = datetime.now(timezone.utc)
 
@@ -75,12 +75,12 @@ class GraphWriterService:
 
         try:
             self.conn.execute(query, props)
-            
+
             if parent_id and parent_label and relationship_name:
                 self.write_relationship(
                     parent_id, parent_label, node_id, label, relationship_name
                 )
-                
+
             return node_id
         except Exception as exc:
             logger.error("Failed to write node %s: %s", label, exc)
@@ -148,9 +148,9 @@ class GraphWriterService:
             The ID of the created child node.
         """
         return self.write_node(
-            child_label, 
-            child_properties, 
-            parent_id=parent_id, 
-            parent_label=parent_label, 
-            relationship_name=rel_type
+            child_label,
+            child_properties,
+            parent_id=parent_id,
+            parent_label=parent_label,
+            relationship_name=rel_type,
         )
