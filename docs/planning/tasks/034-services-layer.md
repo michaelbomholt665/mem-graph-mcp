@@ -134,7 +134,7 @@ src/mem_graph/services/summarizer.py
 ### Phase 1: Extract GraphContextService (Sprint 1–2)
 
 **Create `services/graph_context_service.py`:**
-- [ ] Design high-level query interface:
+- [x] Design high-level query interface:
   ```python
   class GraphContextService:
       def __init__(self, conn: Connection):
@@ -177,7 +177,7 @@ src/mem_graph/services/summarizer.py
           }
   ```
 
-- [ ] Extract query logic from `orchestrator_graph.py`:
+- [x] Extract query logic from `orchestrator_graph.py`:
   ```python
   # Before (in orchestrator_graph.py):
   def _state_query_violations(project_id: str) -> list[dict]:
@@ -196,7 +196,7 @@ src/mem_graph/services/summarizer.py
       return [Violation.model_validate(r) for r in results]
   ```
 
-- [ ] Integrate into orchestrator_graph.py:
+- [x] Integrate into orchestrator_graph.py:
   ```python
   class ContextGatherNode(BaseNode[AutopilotState]):
       async def run(self, ctx: GraphRunContext[AutopilotState]) -> AutopilotState:
@@ -218,7 +218,7 @@ src/mem_graph/services/summarizer.py
 ### Phase 2: Extract GraphWriterService (Sprint 2)
 
 **Create `services/graph_writer_service.py`:**
-- [ ] Design node-write abstraction:
+- [x] Design node-write abstraction:
   ```python
   class GraphWriterService:
       def __init__(self, conn: Connection):
@@ -255,7 +255,7 @@ src/mem_graph/services/summarizer.py
           # Combines write_node + write_relationship
   ```
 
-- [ ] Refactor `report_writer.py`:
+- [x] Refactor `report_writer.py`:
   ```python
   # Before:
   async def write_audit_report(report: AuditReport, project_id: str) -> None:
@@ -300,12 +300,12 @@ src/mem_graph/services/summarizer.py
           )
   ```
 
-- [ ] Apply same pattern to `violation_writer.py`.
+- [x] Apply same pattern to `violation_writer.py`.
 
 ### Phase 3: Consolidate Embedding Retry Logic (Sprint 2)
 
 **Create `services/embed_client.py`:**
-- [ ] Base class for embedding clients:
+- [x] Base class for embedding clients:
   ```python
   class EmbedClientBase:
       def __init__(
@@ -334,7 +334,7 @@ src/mem_graph/services/summarizer.py
           raise NotImplementedError
   ```
 
-- [ ] Refactor `TextEmbedService`:
+- [x] Refactor `TextEmbedService`:
   ```python
   class TextEmbedService(EmbedClientBase):
       def __init__(self, model: str, dim: int):
@@ -348,7 +348,7 @@ src/mem_graph/services/summarizer.py
           return await self._retry_with_backoff(_call)
   ```
 
-- [ ] Refactor `JinaEmbedder`:
+- [x] Refactor `JinaEmbedder`:
   ```python
   class JinaEmbedder(EmbedClientBase):
       async def embed_text(self, text: str) -> list[float]:
@@ -361,7 +361,7 @@ src/mem_graph/services/summarizer.py
 ### Phase 4: Add Summarizer Instrumentation (Sprint 2)
 
 **Update `services/summarizer.py`:**
-- [ ] Add Logfire spans:
+- [x] Add Logfire spans:
   ```python
   from mem_graph.observability.logfire_setup import traced_span
 

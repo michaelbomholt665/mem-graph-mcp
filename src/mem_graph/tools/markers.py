@@ -1,10 +1,10 @@
 from typing import Any, Callable
 
+from .tier_registry import tier_registry
+
 TIER_1 = "tier_1"
 TIER_2 = "tier_2"
 TIER_3 = "tier_3"
-
-from .tier_registry import tier_registry
 
 def tier_1_tool(func: Callable[..., Any]) -> Callable[..., Any]:
     """Mark tool as Tier 1: always loaded, visible to users."""

@@ -29,10 +29,53 @@ import ollama
 
 from ..db import db_get_connection, db_update_embedding
 from ..embeddings import embeddings_generate
+from ..observability import traced_span
+from .embed_client import EmbedClientBase
 
 logger = logging.getLogger(__name__)
 
 _SUMMARISE_MODEL = os.getenv("OLLAMA_SUMMARISE_MODEL", "llama3.2")
+
+
+class Summarizer(EmbedClientBase):
+    """Encapsulate summarisation logic with retries and tracing."""
+
+    def __init__(self, model: str = _SUMMARISE_MODEL) -> None:
+        super().__init__(model=model)
+
+    async def summarize_transcript(self, transcript: str) -> tuple[str, str]:
+        """
+        Returns (summary_text, status).
+        status is "ok" on success, "failed" on exhausted retries.
+        """
+        with traced_span("summarizer.summarize_transcript"):
+            try:
+                summary: str = await self._retry_with_backoff(
+                    self._generate_summary, transcript
+                )
+                return summary, "ok"
+            except Exception:  # noqa: BLE001
+                return "[summary pending — Ollama unavailable]", "failed"
+
+    async def _generate_summary(self, transcript: str) -> str:
+        """Async wrapper for the blocking Ollama call."""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, partial(self._generate_summary_sync, transcript)
+        )
+
+    def _generate_summary_sync(self, transcript: str) -> str:
+        """Blocking Ollama call — run via run_in_executor."""
+        resp = ollama.generate(
+            model=self.model or _SUMMARISE_MODEL,
+            prompt=(
+                "Summarise the following conversation in 2-3 sentences, "
+                "focusing on what was accomplished and any key decisions made.\n\n"
+                f"{transcript[:8000]}"
+            ),
+        )
+        return resp.response.strip()
+
 
 _queue: asyncio.Queue[_SummaryJob | None] = asyncio.Queue()
 _worker_task: asyncio.Task[None] | None = None
@@ -79,7 +122,7 @@ async def stop_worker() -> None:
             _worker_task.cancel()
             try:
                 await _worker_task
-            except asyncio.CancelledError, Exception:
+            except (asyncio.CancelledError, Exception):
                 pass
         _worker_task = None
         return
@@ -92,7 +135,7 @@ async def stop_worker() -> None:
         _worker_task.cancel()
         try:
             await _worker_task
-        except asyncio.CancelledError, Exception:
+        except (asyncio.CancelledError, Exception):
             pass
 
     _worker_task = None
@@ -106,13 +149,14 @@ async def stop_worker() -> None:
 
 async def _run_worker() -> None:
     """Long-running coroutine — processes jobs from the queue until sentinel (None)."""
+    summarizer = Summarizer()
     while True:
         job = await _queue.get()
         if job is None:
             _queue.task_done()
             break
         try:
-            await _process(job)
+            await _process(job, summarizer)
         except Exception:  # noqa: BLE001
             logger.exception(
                 "Summariser worker: unexpected error for conversation %s",
@@ -122,56 +166,10 @@ async def _run_worker() -> None:
             _queue.task_done()
 
 
-async def _process(job: _SummaryJob) -> None:
+async def _process(job: _SummaryJob, summarizer: Summarizer) -> None:
     """Attempt to summarise with retries; write result to DB regardless."""
-    summary, status = await _summarise_with_retry(job.transcript)
+    summary, status = await summarizer.summarize_transcript(job.transcript)
     await _persist_summary(job.conversation_id, summary, status)
-
-
-async def _summarise_with_retry(
-    transcript: str,
-    max_attempts: int = 3,
-) -> tuple[str, str]:
-    """
-    Returns (summary_text, status).
-
-    status is ``"ok"`` on success, ``"failed"`` on exhausted retries.
-    """
-    for attempt in range(1, max_attempts + 1):
-        try:
-            loop = asyncio.get_running_loop()
-            summary = await loop.run_in_executor(
-                None, partial(_generate_summary_sync, transcript)
-            )
-            return summary, "ok"
-        except Exception as exc:  # noqa: BLE001
-            wait = 2 ** (attempt - 1)
-            logger.warning(
-                "Summariser attempt %d/%d failed for transcript (%d chars): %s. "
-                "Retrying in %ds.",
-                attempt,
-                max_attempts,
-                len(transcript),
-                exc,
-                wait,
-            )
-            if attempt < max_attempts:
-                await asyncio.sleep(wait)
-
-    return "[summary pending — Ollama unavailable]", "failed"
-
-
-def _generate_summary_sync(transcript: str) -> str:
-    """Blocking Ollama call — run via run_in_executor."""
-    resp = ollama.generate(
-        model=_SUMMARISE_MODEL,
-        prompt=(
-            "Summarise the following conversation in 2-3 sentences, "
-            "focusing on what was accomplished and any key decisions made.\n\n"
-            f"{transcript[:8000]}"
-        ),
-    )
-    return resp.response.strip()
 
 
 async def _persist_summary(

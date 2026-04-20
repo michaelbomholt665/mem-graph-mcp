@@ -66,6 +66,14 @@ class DecisionStatus(str, Enum):
 
 
 ################
+#   CONSTANTS
+################
+
+ID_DESCRIPTION = "UUIDv7 node identifier."
+PROJECT_ID_DESCRIPTION = "Parent Project node ID."
+
+
+################
 #   MODELS
 ################
 
@@ -79,8 +87,8 @@ class TaskModel(BaseModel):
     or spawn other tasks via TASK_BLOCKS / TASK_SPAWNS relationships.
     """
 
-    id: str = Field(description="UUIDv7 node identifier.")
-    project_id: str = Field(description="Parent Project node ID.")
+    id: str = Field(description=ID_DESCRIPTION)
+    project_id: str = Field(description=PROJECT_ID_DESCRIPTION)
     title: str = Field(description="Short imperative title, e.g. 'Add rate limiter'.")
     description: str | None = Field(
         default=None,
@@ -109,8 +117,8 @@ class DecisionModel(BaseModel):
     to tasks via TASK_DECISION relationships.
     """
 
-    id: str = Field(description="UUIDv7 node identifier.")
-    project_id: str = Field(description="Parent Project node ID.")
+    id: str = Field(description=ID_DESCRIPTION)
+    project_id: str = Field(description=PROJECT_ID_DESCRIPTION)
     title: str = Field(description="Short decision title.")
     context: str = Field(
         description="What problem or situation prompted this decision."
@@ -124,3 +132,26 @@ class DecisionModel(BaseModel):
         default=DecisionStatus.ACTIVE,
         description="Whether this decision is still in effect.",
     )
+
+
+class ViolationModel(BaseModel):
+    """
+    A policy violation or audit finding persisted in the graph.
+
+    Maps directly to the Violation node in the Kuzu graph schema.
+    """
+
+    id: str = Field(description=ID_DESCRIPTION)
+    project_id: str = Field(description=PROJECT_ID_DESCRIPTION)
+    audit_id: str | None = Field(default=None, description="Short human-readable ID.")
+    rule: str = Field(description="Rule ID that was violated.")
+    severity: str = Field(default="info", description="info | minor | major | critical | blocker")
+    file_path: str = Field(description="Path to the file containing the violation.")
+    line_start: int = Field(ge=1)
+    line_end: int = Field(ge=1)
+    description: str = Field(description="Detailed description of the violation.")
+    fingerprint: str | None = Field(default=None, description="Deduplication fingerprint.")
+    status: str = Field(default="open", description="open | recurrence | resolved | graduated")
+    detected_at: str | None = None
+    last_seen_at: str | None = None
+    resolved_at: str | None = None

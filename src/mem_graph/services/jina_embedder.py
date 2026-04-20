@@ -20,6 +20,7 @@ from ..config import (
 )
 from ..embeddings import embeddings_code, embeddings_code_query
 from .code_embed_service import CodeEmbedService
+from .embed_client import EmbedClientBase
 from .jina_common import (
     CodeMatch,
     IndexedCodeFile,
@@ -36,7 +37,7 @@ from .text_embed_service import TextEmbedService
 logger = logging.getLogger(__name__)
 
 
-class JinaCodeEmbedder:
+class JinaCodeEmbedder(EmbedClientBase):
     """Coordinate Jina issue ingestion, code indexing, and semantic matching."""
 
     def __init__(
@@ -51,6 +52,7 @@ class JinaCodeEmbedder:
         ttl_seconds: int = JINA_EMBEDDER_TTL_SECONDS,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
+        super().__init__(model="jina-code")
         self.jina_url = (jina_url or JINA_URL).rstrip("/")
         self.jina_username = jina_username or JINA_USERNAME
         self.jina_token = jina_token or JINA_TOKEN

@@ -11,6 +11,7 @@ import httpx
 
 from ..db import db_get_connection, db_update_embedding
 from .code_embed_service import CodeEmbedService, ensure_project_link, rows
+from .embed_client import EmbedClientBase
 from .jina_common import (
     DEFAULT_TIMEOUT_SECONDS,
     DONE_STATUSES,
@@ -29,7 +30,7 @@ from .jina_common import (
 EmbeddingFn = Callable[[str], Awaitable[list[float]]]
 
 
-class TextEmbedService:
+class TextEmbedService(EmbedClientBase):
     """Fetch Jina issues and coordinate issue-to-code semantic matching."""
 
     def __init__(
@@ -46,6 +47,7 @@ class TextEmbedService:
         embeddings_code: EmbeddingFn,
         embeddings_code_query: EmbeddingFn,
     ) -> None:
+        super().__init__(model="jina-api")
         self.jina_url = jina_url.rstrip("/")
         self.jina_username = jina_username
         self.jina_token = jina_token
@@ -78,30 +80,33 @@ class TextEmbedService:
         if len(bounded_jql) > 500:
             raise ValueError("JQL must be 500 characters or fewer.")
 
-        headers = {"Accept": "application/json"}
-        client_kwargs: dict[str, Any] = {
-            "base_url": self.jina_url,
-            "headers": headers,
-            "timeout": DEFAULT_TIMEOUT_SECONDS,
-        }
-        if self._transport is not None:
-            client_kwargs["transport"] = self._transport
-        if bool_has_value(self.jina_username):
-            client_kwargs["auth"] = (self.jina_username, self.jina_token)
-        else:
-            headers["Authorization"] = f"Bearer {self.jina_token}"
+        async def _fetch():
+            headers = {"Accept": "application/json"}
+            client_kwargs: dict[str, Any] = {
+                "base_url": self.jina_url,
+                "headers": headers,
+                "timeout": DEFAULT_TIMEOUT_SECONDS,
+            }
+            if self._transport is not None:
+                client_kwargs["transport"] = self._transport
+            if bool_has_value(self.jina_username):
+                client_kwargs["auth"] = (self.jina_username, self.jina_token)
+            else:
+                headers["Authorization"] = f"Bearer {self.jina_token}"
 
-        async with httpx.AsyncClient(**client_kwargs) as client:
-            response = await client.get(
-                "/rest/api/3/search",
-                params=(
-                    ("jql", bounded_jql),
-                    ("maxResults", str(bounded_limit)),
-                    ("fields", "summary,description,status,assignee,created"),
-                ),
-            )
-            response.raise_for_status()
-            payload = response.json()
+            async with httpx.AsyncClient(**client_kwargs) as client:
+                response = await client.get(
+                    "/rest/api/3/search",
+                    params=(
+                        ("jql", bounded_jql),
+                        ("maxResults", str(bounded_limit)),
+                        ("fields", "summary,description,status,assignee,created"),
+                    ),
+                )
+                response.raise_for_status()
+                return response.json()
+
+        payload: dict[str, Any] = await self._retry_with_backoff(_fetch)
 
         issues: list[JinaIssue] = []
         for raw in payload.get("issues", []):

@@ -34,7 +34,7 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Literal, Union, cast
+from typing import Any, Literal, Union
 
 from pydantic import BaseModel, Field
 from pydantic_graph import BaseNode, End, Graph, GraphRunContext
@@ -150,9 +150,24 @@ class ContextGatherNode(BaseNode[AutopilotState, None, AutopilotState]):
                 len(ctx.state.target_files),
             )
 
-            ctx.state.context_violations = _state_query_violations(ctx.state.project_id)
-            ctx.state.context_decisions = _state_query_decisions(ctx.state.project_id)
-            ctx.state.context_map = _state_query_map(ctx.state.project_id)
+            from ..services.graph_context_service import GraphContextService
+
+            graph_service = GraphContextService()
+
+            # 1. Gather graph grounding context
+            violations = await graph_service.query_violations(ctx.state.project_id)
+            ctx.state.context_violations = [
+                f"{v.rule}:{v.file_path}: {v.description[:120]}" for v in violations
+            ]
+
+            decisions = await graph_service.query_decisions(ctx.state.project_id)
+            ctx.state.context_decisions = [
+                f"{d.title}: {d.rationale[:150]}" for d in decisions
+            ]
+
+            ctx.state.context_map = await graph_service.query_map(ctx.state.project_id)
+
+            # 2. Gather file contents and manifests
             ctx.state.manifest_context = _state_read_manifests()
             ctx.state.file_contents = _state_read_target_files(
                 ctx.state.target_files
@@ -651,107 +666,9 @@ def _graph_span_attributes(
 ################
 
 
-def _state_query_violations(project_id: str) -> list[str]:
-    """
-    Fetch open violation summaries from the graph for context grounding.
-
-    Args:
-        project_id: The project to query violations for.
-
-    Returns:
-        List of violation summary strings (rule:file:description).
-    """
-    if not project_id:
-        return []
-    try:
-        from ..db import db_get_connection
-
-        conn = db_get_connection()
-        qr: Any = conn.execute(
-            """
-            MATCH (p:Project {id: $pid})-[:HAS_VIOLATION]->(v:Violation)
-            WHERE v.status IN ['open', 'recurrence']
-            RETURN v.rule, v.file_path, v.description
-            LIMIT 50
-            """,
-            {"pid": project_id},
-        )
-        if isinstance(qr, list):
-            qr = qr[0]
-        rows: list[list[Any]] = cast(list[list[Any]], qr.get_all())
-        return [f"{r[0]}:{r[1]}: {r[2][:120]}" for r in rows]
-    except Exception as exc:
-        logger.warning("Could not query violations: %s", exc)
-        return []
-
-
-def _state_query_decisions(project_id: str) -> list[str]:
-    """
-    Fetch active decision summaries from the graph for context grounding.
-
-    Args:
-        project_id: The project to query decisions for.
-
-    Returns:
-        List of decision summary strings (title: rationale).
-    """
-    if not project_id:
-        return []
-    try:
-        from ..db import db_get_connection
-
-        conn = db_get_connection()
-        qr: Any = conn.execute(
-            """
-            MATCH (p:Project {id: $pid})-[:HAS_DECISION]->(d:Decision)
-            WHERE d.status = 'active'
-            RETURN d.title, d.rationale
-            LIMIT 20
-            """,
-            {"pid": project_id},
-        )
-        if isinstance(qr, list):
-            qr = qr[0]
-        rows: list[list[Any]] = cast(list[list[Any]], qr.get_all())
-        return [f"{r[0]}: {r[1][:150]}" for r in rows]
-    except Exception as exc:
-        logger.warning("Could not query decisions: %s", exc)
-        return []
-
-
-def _state_query_map(project_id: str) -> str:
-    """
-    Fetch a compact codebase map summary from the graph.
-
-    Args:
-        project_id: The project to retrieve the map for.
-
-    Returns:
-        A short string summary of the current codebase map, or empty string.
-    """
-    if not project_id:
-        return ""
-    try:
-        from ..db import db_get_connection
-
-        conn = db_get_connection()
-        qr: Any = conn.execute(
-            """
-            MATCH (p:Project {id: $pid})-[:HAS_NOTE]->(n:Note)
-            WHERE n.kind = 'map'
-            RETURN n.content
-            ORDER BY n.created_at DESC
-            LIMIT 1
-            """,
-            {"pid": project_id},
-        )
-        if isinstance(qr, list):
-            qr = qr[0]
-        rows: list[list[Any]] = cast(list[list[Any]], qr.get_all())
-        return str(rows[0][0]) if rows else ""
-    except Exception as exc:
-        logger.warning("Could not query map: %s", exc)
-        return ""
+def _workspace_root() -> Path:
+    """Return the repository root for CLI execution."""
+    return Path(__file__).resolve().parents[3]
 
 
 def _state_read_target_files(file_paths: list[str]) -> dict[str, str]:
@@ -859,11 +776,6 @@ def _state_summarise_cli_output(
     return issues
 
 
-def _workspace_root() -> Path:
-    """Return the repository root for CLI execution."""
-    return Path(__file__).resolve().parents[3]
-
-
 def _state_write_note(project_id: str, content: str) -> None:
     """
     Write an autopilot run Note to the graph.
@@ -877,34 +789,20 @@ def _state_write_note(project_id: str, content: str) -> None:
     if not project_id:
         return
     try:
-        from datetime import datetime, timezone
+        from ..services.graph_writer_service import GraphWriterService
 
-        from ..db import db_get_connection
-        from ..ids import id_generate_v7
-
-        conn = db_get_connection()
-        note_id = id_generate_v7()
-        now = datetime.now(timezone.utc)
-
-        conn.execute(
-            """
-            CREATE (n:Note {
-                id: $id,
-                content: $content,
-                kind: 'autopilot',
-                created_at: $ts
-            })
-            """,
-            {"id": note_id, "content": content, "ts": now},
+        writer = GraphWriterService()
+        writer.write_parent_child(
+            parent_id=project_id,
+            parent_label="Project",
+            child_label="Note",
+            child_properties={
+                "content": content,
+                "kind": "autopilot",
+            },
+            rel_type="HAS_NOTE",
         )
-        conn.execute(
-            """
-            MATCH (p:Project {id: $pid}), (n:Note {id: $nid})
-            CREATE (p)-[:HAS_NOTE]->(n)
-            """,
-            {"pid": project_id, "nid": note_id},
-        )
-        logger.debug("Autopilot note %s written to graph.", note_id)
+        logger.debug("Autopilot note written to graph.")
     except Exception as exc:
         logger.warning("Could not write autopilot note: %s", exc)
 

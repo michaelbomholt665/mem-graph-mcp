@@ -157,14 +157,14 @@ def _violation_create_new(
     """
     from datetime import datetime, timezone
 
-    violation_id = id_generate_v7()
     writer = GraphWriterService(conn)
 
-    writer.write_node(
-        label="Violation",
-        properties={
-            "id": violation_id,
-            "audit_id": violation_id[:8].upper(),
+    violation_id = writer.write_parent_child(
+        parent_id=project_id,
+        parent_label="Project",
+        child_label="Violation",
+        child_properties={
+            "audit_id": id_generate_v7()[:8].upper(),  # Unique short ID
             "rule": finding.rule_id,
             "severity": finding.severity.value,
             "file_path": finding.file_path,
@@ -175,9 +175,7 @@ def _violation_create_new(
             "status": "open",
             "detected_at": datetime.now(timezone.utc),
         },
-        parent_id=project_id,
-        parent_label="Project",
-        relationship_name="HAS_VIOLATION"
+        rel_type="HAS_VIOLATION",
     )
 
     return violation_id
