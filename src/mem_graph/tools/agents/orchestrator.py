@@ -15,6 +15,7 @@ from typing import Annotated, Any, Literal
 
 import anyio
 from fastmcp import FastMCP
+from ..markers import tier_2_tool
 from fastmcp.server.context import Context
 from mcp.types import Icon
 from pydantic import Field
@@ -87,6 +88,7 @@ async def _load_skills() -> str:
         return ""
 
 
+@tier_2_tool
 @mcp.tool(
     tags={"namespace:audit"},
     icons=[
@@ -206,6 +208,7 @@ async def autopilot_remediate(
     }
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:audit"}, task=True)
 async def orchestrate_codebase(
     package_path: Annotated[
@@ -281,6 +284,7 @@ async def orchestrate_codebase(
     return build_task_submission(task)
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:audit"}, task=True)
 async def run_subagent_workflow(
     objective: Annotated[

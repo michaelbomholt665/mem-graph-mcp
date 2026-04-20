@@ -101,8 +101,8 @@ audit_agent: Agent[AuditDependencies, AuditReport] = Agent(
 ################
 
 
-@audit_agent.system_prompt
-async def build_system_prompt(ctx: RunContext[AuditDependencies]) -> str:
+@audit_agent.instructions
+async def build_instructions(ctx: RunContext[AuditDependencies]) -> str:
     """
     Build the audit system prompt from deps and the Auditor persona.
 

@@ -10,6 +10,7 @@ from fastmcp.server.context import Context
 from pydantic import Field
 
 from ..app.registry import all_agents
+from ..tools.tier_registry import tier_registry
 from .constants import (
     DEPRECATED_NAMESPACES,
     LAZY_NAMESPACES,
@@ -174,6 +175,12 @@ async def tools_activate(
 
 
 def register_tools(mcp: FastMCP) -> None:
+    errors = tier_registry.validate()
+    if errors:
+        for err in errors:
+            logger.error("Tier Validation Error: %s", err)
+        raise ValueError(f"Tool tier policy violation: {errors}")
+
     mcp.tool()(get_server_info)
     mcp.tool()(list_agents)
     mcp.tool()(list_task_types)

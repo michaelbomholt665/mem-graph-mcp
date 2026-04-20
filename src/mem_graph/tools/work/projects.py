@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Any, cast
 
 from fastmcp import FastMCP
+from ..markers import tier_2_tool
 from pydantic import Field
 
 from ...db import db_get_connection
@@ -21,6 +22,7 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 async def project_create(
     name: Annotated[str, Field(description="Project name")],
@@ -60,6 +62,7 @@ async def project_create(
     return {"project_id": project_id}
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 async def project_get(
     project_id: Annotated[str, Field(description="Project ID to retrieve")],
@@ -92,6 +95,7 @@ async def project_get(
     }
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 async def project_list() -> dict:
     """List registered projects."""
@@ -118,6 +122,7 @@ async def project_list() -> dict:
     return {"projects": projects}
 
 
+@tier_2_tool
 @mcp.tool()
 async def project_search(
     query: Annotated[

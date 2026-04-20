@@ -16,6 +16,7 @@ from typing import Annotated, Any, cast
 
 import anyio
 from fastmcp import FastMCP
+from ..markers import tier_2_tool
 from fastmcp.dependencies import Depends
 from fastmcp.server.context import Context
 from mcp.types import Icon
@@ -92,6 +93,7 @@ def _fetch_existing_violations(conn: Any, project_id: str) -> list[dict]:
     ]
 
 
+@tier_2_tool
 @mcp.tool(
     tags={"namespace:audit"},
     icons=[Icon(src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTkgMkgtNWMtMS4xIDAtMiAuOS0yIDJ2MTRjMCAxLjEuOSAyIDIgMmgxNGMxLjEgMCAyLS45IDItMlY0YzAtMS4xLS45LTItMi0yem0wIDE2aC01di00aDV2NHptMC02aC01YzAgMi4yMS0xLjc5IDQtNCA0cy00LTEuNzktNC00aDAuNzF2LTJIMTZ2Mnd6bTAgOHYtNGgydjR6Ii8+PC9zdmc+", mimeType="image/svg+xml")],

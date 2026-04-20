@@ -2,6 +2,7 @@
 """Graph-enriched file status helpers for the file explorer."""
 
 from __future__ import annotations
+from ..markers import hidden_tool
 
 import os
 from pathlib import Path
@@ -11,7 +12,6 @@ from pydantic import BaseModel, Field
 
 from ...config import FILE_TREE_DEFAULT_ROOT
 from ...db import db_get_connection
-from .filesystem import _TAG, mcp
 
 _DONE_STATUSES = {"closed", "done", "resolved"}
 _SEVERITY_ORDER = {
@@ -248,7 +248,7 @@ def _project_root(project_id: str | None) -> str | None:
     return str(repo_path) if repo_path else None
 
 
-@mcp.tool(tags=_TAG)
+@hidden_tool
 async def get_file_violations(
     file_path: Annotated[
         str,

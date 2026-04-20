@@ -20,6 +20,7 @@ from ..db import db_get_connection
 from ..ids import id_generate_v7
 from ..models.audit import AuditFinding, AuditReport
 from .fingerprint import fingerprint_attach_to_findings, fingerprint_compute_hash
+from .graph_writer_service import GraphWriterService
 
 ################
 #   CONSTANTS
@@ -157,25 +158,11 @@ def _violation_create_new(
     from datetime import datetime, timezone
 
     violation_id = id_generate_v7()
-    now = datetime.now(timezone.utc)
+    writer = GraphWriterService(conn)
 
-    conn.execute(
-        """
-        CREATE (v:Violation {
-            id: $id,
-            audit_id: $audit_id,
-            rule: $rule,
-            severity: $severity,
-            file_path: $file_path,
-            line_start: $line_start,
-            line_end: $line_end,
-            description: $description,
-            fingerprint: $fingerprint,
-            status: 'open',
-            detected_at: $ts
-        })
-        """,
-        {
+    writer.write_node(
+        label="Violation",
+        properties={
             "id": violation_id,
             "audit_id": violation_id[:8].upper(),
             "rule": finding.rule_id,
@@ -185,16 +172,12 @@ def _violation_create_new(
             "line_end": finding.line_end,
             "description": f"{finding.description}\n\nFix: {finding.suggested_fix}",
             "fingerprint": fingerprint,
-            "ts": now,
+            "status": "open",
+            "detected_at": datetime.now(timezone.utc),
         },
-    )
-
-    conn.execute(
-        """
-        MATCH (p:Project {id: $project_id}), (v:Violation {id: $violation_id})
-        CREATE (p)-[:HAS_VIOLATION]->(v)
-        """,
-        {"project_id": project_id, "violation_id": violation_id},
+        parent_id=project_id,
+        parent_label="Project",
+        relationship_name="HAS_VIOLATION"
     )
 
     return violation_id

@@ -93,8 +93,8 @@ rule_injector_agent: Agent[RuleInjectorDependencies, RuleSetResult] = Agent(
 )
 
 
-@rule_injector_agent.system_prompt
-async def rule_injector_build_system_prompt(
+@rule_injector_agent.instructions
+async def rule_injector_build_instructions(
     ctx: RunContext[RuleInjectorDependencies],
 ) -> str:
     """

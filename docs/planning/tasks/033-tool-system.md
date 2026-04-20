@@ -204,7 +204,7 @@ src/mem_graph/agents/validate/sentry_agent.py
 ### Phase 1: Define Tier Markers (Sprint 1)
 
 **Create `tools/markers.py`:**
-- [ ] Define decorators:
+- [x] Define decorators:
   ```python
   from functools import wraps
   from typing import Callable
@@ -234,7 +234,7 @@ src/mem_graph/agents/validate/sentry_agent.py
   ```
 
 **Create `tools/tier_registry.py`:**
-- [ ] Define validation registry:
+- [x] Define validation registry:
   ```python
   class ToolRegistry:
       def __init__(self):
@@ -268,7 +268,7 @@ src/mem_graph/agents/validate/sentry_agent.py
 ### Phase 2: Mark All Existing Tools (Sprint 1)
 
 **Add markers to all tool files:**
-- [ ] Audit tools:
+- [x] Audit tools:
   ```python
   @tier_2_tool
   @mcp.tool()
@@ -281,7 +281,7 @@ src/mem_graph/agents/validate/sentry_agent.py
       # ... implementation
   ```
 
-- [ ] Tier 1 tools (memory):
+- [x] Tier 1 tools (memory):
   ```python
   @tier_1_tool
   @mcp.tool()
@@ -299,7 +299,7 @@ src/mem_graph/agents/validate/sentry_agent.py
       ...
   ```
 
-- [ ] Confirmations (Tier 1):
+- [x] Confirmations (Tier 1):
   ```python
   @tier_1_tool
   @mcp.tool()
@@ -307,7 +307,7 @@ src/mem_graph/agents/validate/sentry_agent.py
       ...
   ```
 
-- [ ] Filesystem tools (demote to Tier 3):
+- [x] Filesystem tools (demote to Tier 3):
   ```python
   @hidden_tool
   @mcp.tool()
@@ -320,7 +320,7 @@ src/mem_graph/agents/validate/sentry_agent.py
       ...
   ```
 
-- [ ] Graph queries (demote to Tier 3):
+- [x] Graph queries (demote to Tier 3):
   ```python
   @hidden_tool
   @mcp.tool()
@@ -336,7 +336,7 @@ src/mem_graph/agents/validate/sentry_agent.py
 ### Phase 3: Extract Service-Level Logic (Sprint 1–2)
 
 **Create `services/graph_context_service.py`:**
-- [ ] Move high-level query helpers from `tools/graph/graph_queries.py`:
+- [x] Move high-level query helpers from `tools/graph/graph_queries.py`:
   ```python
   class GraphContextService:
       async def query_violations(self, project_id: str) -> list[Violation]:
@@ -356,7 +356,7 @@ src/mem_graph/agents/validate/sentry_agent.py
           """Get index status."""
   ```
 
-- [ ] Tools call the service, not raw DB:
+- [x] Tools call the service, not raw DB:
   ```python
   # Before (in tools/graph/graph_queries.py):
   @hidden_tool
@@ -376,7 +376,7 @@ src/mem_graph/agents/validate/sentry_agent.py
   ```
 
 **Create `services/graph_writer_service.py`:**
-- [ ] Extract shared node-write patterns:
+- [x] Extract shared node-write patterns:
   ```python
   class GraphWriterService:
       async def write_node(
@@ -400,12 +400,12 @@ src/mem_graph/agents/validate/sentry_agent.py
           """Write a relationship between two nodes."""
   ```
 
-- [ ] Refactor `services/report_writer.py` and `services/violation_writer.py` to use it.
+- [x] Refactor `services/report_writer.py` and `services/violation_writer.py` to use it.
 
 ### Phase 4: Consolidate Overlapping Tools (Sprint 2)
 
 **Merge `audit_package` and `audit_package_batch`:**
-- [ ] Create unified tool:
+- [x] Create unified tool:
   ```python
   @tier_2_tool
   @mcp.tool()
@@ -433,7 +433,7 @@ src/mem_graph/agents/validate/sentry_agent.py
 ### Phase 5: Make Outcome-Oriented Tools (Sprint 2)
 
 **Verify tools complete full stories:**
-- [ ] `task_decompose_feature()` example:
+- [x] `task_decompose_feature()` example:
   ```python
   @tier_2_tool
   @mcp.tool()
@@ -463,12 +463,12 @@ src/mem_graph/agents/validate/sentry_agent.py
       return result.output
   ```
 
-- [ ] Review all Tier 2 tools for outcome-completeness.
+- [x] Review all Tier 2 tools for outcome-completeness.
 
 ### Phase 6: Server-Level Validation (Sprint 2–3)
 
 **Update server startup:**
-- [ ] Integrate `ToolRegistry` in `src/mem_graph/server.py`:
+- [x] Integrate `ToolRegistry` in `src/mem_graph/server.py`:
   ```python
   async def startup():
       # Scan all tool files
@@ -489,7 +489,7 @@ src/mem_graph/agents/validate/sentry_agent.py
       ctx.tool_registry = registry
   ```
 
-- [ ] Implement `tools_activate(namespace)`:
+- [x] Implement `tools_activate(namespace)`:
   ```python
   @mcp.tool()
   async def tools_activate(namespace: str) -> dict:
@@ -506,7 +506,7 @@ src/mem_graph/agents/validate/sentry_agent.py
 ### Phase 7: Agent-Local Tool Verification (Sprint 3)
 
 **Ensure no agent-local tools leak:**
-- [ ] Add validation script `scripts/validate_agent_tool_scope.py`:
+- [x] Add validation script `scripts/validate_agent_tool_scope.py`:
   ```python
   def validate_agent_tool_scope():
       """Check that agent-local @agent.tool decorators are not in MCP namespace."""
@@ -525,11 +525,11 @@ src/mem_graph/agents/validate/sentry_agent.py
                   f"Agent-local tool {tool_name} leaked into MCP surface!"
   ```
 
-- [ ] Run validation on every agent file.
+- [x] Run validation on every agent file.
 
 ### Phase 8: Documentation (Sprint 3)
 
-- [ ] Create `docs/planning/design/tools/tool-tier-system.md`:
+- [x] Create `docs/planning/design/tools/tool-tier-system.md`:
   ```markdown
   # Tool Tier System
 

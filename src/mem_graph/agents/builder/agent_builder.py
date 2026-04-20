@@ -129,8 +129,8 @@ agent_builder_discovery_agent: Agent[
 )
 
 
-@agent_builder_discovery_agent.system_prompt
-async def _builder_discovery_prompt(ctx: RunContext[AgentBuilderDependencies]) -> str:
+@agent_builder_discovery_agent.instructions
+async def _builder_discovery_instructions(ctx: RunContext[AgentBuilderDependencies]) -> str:
     persona = PERSONA_REGISTRY["agent_builder"].get_system_instructions()
     return f"""{persona}
 

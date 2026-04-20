@@ -104,8 +104,8 @@ chat_agent: Agent[ChatDependencies, ChatAnswer] = Agent(
 )
 
 
-@chat_agent.system_prompt
-async def chat_build_system_prompt(ctx: RunContext[ChatDependencies]) -> str:
+@chat_agent.instructions
+async def chat_build_instructions(ctx: RunContext[ChatDependencies]) -> str:
     """
     Build the Chat Agent system prompt.
 

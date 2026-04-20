@@ -159,8 +159,8 @@ orchestrator_agent = Agent(
 ################
 
 
-@orchestrator_agent.system_prompt
-def build_system_prompt(ctx: RunContext[OrchestratorDependencies]) -> str:
+@orchestrator_agent.instructions
+def build_instructions(ctx: RunContext[OrchestratorDependencies]) -> str:
     """
     Build the orchestrator system prompt.
 

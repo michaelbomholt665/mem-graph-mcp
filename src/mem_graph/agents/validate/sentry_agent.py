@@ -89,8 +89,8 @@ sentry_agent: Agent[SentryDependencies, SentryReport] = Agent(
 )
 
 
-@sentry_agent.system_prompt
-async def sentry_build_system_prompt(ctx: RunContext[SentryDependencies]) -> str:
+@sentry_agent.instructions
+async def sentry_build_instructions(ctx: RunContext[SentryDependencies]) -> str:
     """Build the Sentry Agent system prompt."""
     standards = coding_standards_get_for_language(ctx.deps.language)
     manifest_block = "\n".join(

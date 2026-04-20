@@ -2,13 +2,13 @@
 """Hierarchical file-tree tool with optional graph metadata enrichment."""
 
 from __future__ import annotations
+from ..markers import hidden_tool
 
 from pathlib import Path
 from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-from .filesystem import _TAG, mcp
 from .status import FileStatus, load_file_status_map, resolve_root_path
 
 _SKIP_DIRS = {".git", ".venv", "__pycache__", "node_modules", "dist", "build"}
@@ -118,7 +118,7 @@ def _build_tree(
     return node
 
 
-@mcp.tool(tags=_TAG)
+@hidden_tool
 async def get_file_tree(
     root_path: Annotated[
         str | None,

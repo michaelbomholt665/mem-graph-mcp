@@ -132,8 +132,8 @@ validation_agent: Agent[ValidationDependencies, ValidationReport] = Agent(
 )
 
 
-@validation_agent.system_prompt
-async def validation_build_system_prompt(ctx: RunContext[ValidationDependencies]) -> str:
+@validation_agent.instructions
+async def validation_build_instructions(ctx: RunContext[ValidationDependencies]) -> str:
     """
     Build the Validation Agent system prompt.
 

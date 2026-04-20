@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastmcp import FastMCP
+from ..markers import hidden_tool
 from pydantic import Field
 
 from ...app.parsers.assets import get_registry
@@ -39,7 +40,7 @@ mcp = FastMCP("code", instructions="Tree-sitter code parser and graph indexing t
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(tags={"namespace:code"})
+@hidden_tool
 def parser_health() -> dict[str, Any]:
     """Report parser assets, caches, and default limits."""
     registry = get_registry()
@@ -80,7 +81,7 @@ def parser_health() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(tags={"namespace:code"})
+@hidden_tool
 def parser_parse_file(
     path: Annotated[
         str, Field(description="Absolute or project-relative path to the source file.")
@@ -112,7 +113,7 @@ def parser_parse_file(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(tags={"namespace:code"})
+@hidden_tool
 def extract_code_symbols(
     path: Annotated[
         str, Field(description="Absolute or project-relative path to the source file.")
@@ -165,7 +166,7 @@ def extract_code_symbols(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(tags={"namespace:code"})
+@hidden_tool
 def index_code_symbols(
     root: Annotated[
         str,
@@ -207,7 +208,7 @@ def index_code_symbols(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(tags={"namespace:code"})
+@hidden_tool
 def index_code_tree(
     root: Annotated[str, Field(description="Root directory to index recursively.")],
     include: Annotated[

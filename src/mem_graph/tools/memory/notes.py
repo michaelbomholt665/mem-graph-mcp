@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Any, cast
 
 from fastmcp import FastMCP
+from ..markers import tier_2_tool
 from fastmcp.dependencies import Depends
 from pydantic import Field
 
@@ -23,6 +24,7 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:notes"})
 async def note_create(
     content: Annotated[str, Field(description="Note body / content")],
@@ -90,6 +92,7 @@ async def note_create(
     return {"note_id": note_id}
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:notes"})
 async def note_search(
     query: Annotated[str, Field(description="Natural language search query")],
@@ -165,6 +168,7 @@ async def note_search(
     return {"notes": notes, "query": query}
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:notes"})
 async def note_list(
     project_id: Annotated[str | None, Field(description="Filter by project")] = None,

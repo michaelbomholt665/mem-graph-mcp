@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Annotated, Any, Callable, cast
 
 from fastmcp import FastMCP
+from ..markers import hidden_tool
 from pydantic import BaseModel, Field
 
 from ...db import db_get_connection
@@ -689,7 +690,7 @@ def _collect_directional_relationships(
     return relationships
 
 
-@mcp.tool(tags={"namespace:graph"})
+@hidden_tool
 async def get_graph_snapshot(
     project_id: Annotated[
         str | None,
@@ -740,7 +741,7 @@ async def get_graph_snapshot(
     )
 
 
-@mcp.tool(tags={"namespace:graph"})
+@hidden_tool
 async def get_node_details(
     node_id: Annotated[
         str, Field(description="Identifier of the graph node to inspect.")
@@ -756,7 +757,7 @@ async def get_node_details(
     )
 
 
-@mcp.tool(tags={"namespace:graph"})
+@hidden_tool
 async def search_graph(
     query: Annotated[
         str, Field(description="Plain-text query to match against graph nodes.")

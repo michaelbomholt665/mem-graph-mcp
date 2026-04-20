@@ -17,6 +17,7 @@ from typing import Annotated
 
 import anyio
 from fastmcp import FastMCP
+from ..markers import tier_2_tool
 from fastmcp.server.context import Context
 from mcp.types import Icon
 from pydantic import Field
@@ -56,6 +57,7 @@ async def _load_skills() -> str:
         return ""
 
 
+@tier_2_tool
 @mcp.tool(
     tags={"namespace:audit"},
     icons=[Icon(src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48cGF0aCBkPSJNMTIgMkM2LjQ4IDIgMiA2LjQ4IDIgMTJzNC40OCAxMCAxMCAxMCAxMC00LjQ4IDEwLTEwUzE3LjUyIDIgMTIgMnptMCA4Yy0xLjEgMC0yLS45LTIgLTJzMi45IDIgMi4zNzZoLTJ6TTE4IDE2SDlWMTBoOXY2eiIvPjwvc3ZnPg==", mimeType="image/svg+xml")],

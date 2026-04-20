@@ -163,8 +163,8 @@ task_agent: Agent[TaskDependencies, DecompositionReport] = Agent(
 ################
 
 
-@task_agent.system_prompt
-async def build_system_prompt(ctx: RunContext[TaskDependencies]) -> str:
+@task_agent.instructions
+async def build_instructions(ctx: RunContext[TaskDependencies]) -> str:
     """
     Build the system prompt from deps and the Architect persona at runtime.
     """

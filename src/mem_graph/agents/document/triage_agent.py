@@ -167,8 +167,8 @@ triage_agent: Agent[TriageDependencies, TriageReport] = Agent(
 ################
 
 
-@triage_agent.system_prompt
-async def build_system_prompt(ctx: RunContext[TriageDependencies]) -> str:
+@triage_agent.instructions
+async def build_instructions(ctx: RunContext[TriageDependencies]) -> str:
     """
     Build the system prompt from deps and the Triage persona at runtime.
     """

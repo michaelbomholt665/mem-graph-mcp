@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastmcp import FastMCP
+from ..markers import tier_2_tool
 from pydantic import Field
 
 from ...services.jina_embedder import (
@@ -18,6 +19,7 @@ mcp = FastMCP("integrations", instructions="Read-only Jina issue fetch and ticke
 _TAG = {"namespace:integrations"}
 
 
+@tier_2_tool
 @mcp.tool(tags=_TAG)
 async def jina_fetch_issues(
     jql: Annotated[
@@ -50,6 +52,7 @@ async def jina_fetch_issues(
     }
 
 
+@tier_2_tool
 @mcp.tool(tags=_TAG)
 async def jina_find_code_for_ticket(
     issue_key: Annotated[str, Field(description="Jina issue key, for example MEM-42.")],
@@ -97,6 +100,7 @@ async def jina_find_code_for_ticket(
     }
 
 
+@tier_2_tool
 @mcp.tool(tags=_TAG)
 async def jina_find_tickets_for_file(
     file_path: Annotated[str, Field(description="File path to look up tickets for. Relative paths resolve against root_path or the project repo_path.")],

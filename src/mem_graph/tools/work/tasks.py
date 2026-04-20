@@ -11,6 +11,7 @@ from typing import Annotated, Any, cast
 
 import anyio
 from fastmcp import FastMCP
+from ..markers import tier_2_tool
 from pydantic import Field
 
 from ...app.registry import AgentEntry, register_agent
@@ -40,6 +41,7 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 async def task_create(
     project_id: Annotated[str, Field(description="Owning project ID")],
@@ -101,6 +103,7 @@ async def task_create(
     return {"task_id": task_id}
 
 
+@tier_2_tool
 @mcp.tool()
 async def task_update(
     task_id: Annotated[str, Field(description="Task ID to update")],
@@ -152,6 +155,7 @@ async def task_update(
     return {"task_id": task_id, "ok": True}
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 async def task_get(
     task_id: Annotated[str, Field(description="Task ID to retrieve")],
@@ -241,6 +245,7 @@ def _query_blockers(conn: Any, task_id: str) -> list[dict]:
     ]
 
 
+@tier_2_tool
 @mcp.tool()
 async def task_search(
     query: Annotated[str, Field(description="Natural language search query")],
@@ -315,6 +320,7 @@ async def task_search(
     return {"tasks": tasks, "query": query}
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 async def task_link_decision(
     task_id: Annotated[str, Field(description="Task ID")],
@@ -332,6 +338,7 @@ async def task_link_decision(
     return {"ok": True}
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 async def task_link_violation(
     task_id: Annotated[str, Field(description="Task ID")],
@@ -349,6 +356,7 @@ async def task_link_violation(
     return {"ok": True}
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 async def task_block(
     task_id: Annotated[str, Field(description="Task ID that is being blocked")],
@@ -425,6 +433,7 @@ def _fetch_open_violations(conn: Any, project_id: str) -> list[dict]:
     ]
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 async def task_decompose_feature(
     project_id: Annotated[str, Field(description="Project ID")],

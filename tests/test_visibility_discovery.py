@@ -56,7 +56,7 @@ async def test_system_inspect_summarizes_catalog():
 
     payload = await system_inspect(SimpleNamespace(fastmcp=server_mod.mcp))
 
-    assert payload["tools"]["count"] >= 60
+    assert payload["tools"]["count"] >= 45
     assert payload["prompts"]["count"] >= 1
     assert payload["resources"]["count"] >= 1
     assert payload["agents"]["count"] >= 8

@@ -22,6 +22,8 @@ from fastmcp.server.context import Context
 from mcp.types import Icon
 from pydantic import Field
 
+from ..markers import tier_2_tool
+
 from ...db import db_get_connection
 from ...observability import traced_tool
 from ...services.memory import MemoryService
@@ -30,6 +32,7 @@ logger = logging.getLogger(__name__)
 mcp = FastMCP("memory")
 
 
+@tier_2_tool
 @mcp.tool(
     tags={"namespace:memory"},
     icons=[
@@ -73,6 +76,7 @@ async def memory_store(
     return {"memory_id": memory_id}
 
 
+@tier_2_tool
 @mcp.tool(
     tags={"namespace:memory"},
     icons=[

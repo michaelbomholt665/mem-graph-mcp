@@ -11,6 +11,7 @@ from typing import Annotated, Any, cast
 
 import anyio
 from fastmcp import FastMCP
+from ..markers import tier_2_tool
 from pydantic import Field
 
 from ...agents.document.decision_agent import DecisionDependencies, decision_agent
@@ -40,6 +41,7 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+@tier_2_tool
 @mcp.tool()
 async def decision_record(
     project_id: Annotated[str, Field(description="Owning project ID")],
@@ -96,6 +98,7 @@ async def decision_record(
     return {"decision_id": decision_id}
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 async def decision_supersede(
     old_id: Annotated[str, Field(description="ID of the decision being superseded")],
@@ -129,6 +132,7 @@ async def decision_supersede(
     return {"ok": True}
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 async def decision_get(
     decision_id: Annotated[str, Field(description="Decision ID to retrieve")],
@@ -191,6 +195,7 @@ async def decision_get(
     return {"decision": decision}
 
 
+@tier_2_tool
 @mcp.tool()
 async def decision_search(
     query: Annotated[str, Field(description="Natural language search query")],
@@ -278,6 +283,7 @@ async def _load_decision_skills() -> str:
         return ""
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:audit"})
 async def decision_review(
     project_id: Annotated[str, Field(description="Project ID")],

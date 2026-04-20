@@ -127,8 +127,8 @@ fixer_agent: Agent[FixerDependencies, FixerReport] = Agent(
 )
 
 
-@fixer_agent.system_prompt
-async def fixer_build_system_prompt(ctx: RunContext[FixerDependencies]) -> str:
+@fixer_agent.instructions
+async def fixer_build_instructions(ctx: RunContext[FixerDependencies]) -> str:
     """
     Build the Fixer Agent system prompt.
 

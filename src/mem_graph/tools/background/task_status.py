@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastmcp import FastMCP
+from ..markers import tier_2_tool
 from fastmcp.server.context import Context
 from pydantic import Field
 
@@ -53,6 +54,7 @@ def _can_access(task: Task, ctx: Context | None) -> bool:
     return ctx.session_id == task.session_id
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:background"})
 async def get_task_status(
     task_id: str = Field(description="Task identifier returned by a background tool."),
@@ -65,6 +67,7 @@ async def get_task_status(
     return build_task_status(task)
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:background"})
 async def cancel_task(
     task_id: str = Field(description="Task identifier returned by a background tool."),

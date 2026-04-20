@@ -155,8 +155,8 @@ decision_agent: Agent[DecisionDependencies, ReviewReport] = Agent(
 ################
 
 
-@decision_agent.system_prompt
-async def build_system_prompt(ctx: RunContext[DecisionDependencies]) -> str:
+@decision_agent.instructions
+async def build_instructions(ctx: RunContext[DecisionDependencies]) -> str:
     """
     Build the system prompt from deps and the Architect persona at runtime.
     """

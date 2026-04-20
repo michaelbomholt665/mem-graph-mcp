@@ -173,8 +173,8 @@ router_agent: Agent[RouterDependencies, RouterDecision] = Agent(
 )
 
 
-@router_agent.system_prompt
-async def router_build_system_prompt(ctx: RunContext[RouterDependencies]) -> str:
+@router_agent.instructions
+async def router_build_instructions(ctx: RunContext[RouterDependencies]) -> str:
     """
     Build the Router Agent system prompt.
 

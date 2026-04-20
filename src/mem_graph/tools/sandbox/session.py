@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastmcp import FastMCP
+from ..markers import hidden_tool
 from pydantic import Field
 
 from ...services.sandbox_sessions import sandbox_manager
@@ -13,7 +14,7 @@ mcp = FastMCP("sandbox", instructions="Sandbox session status and cleanup tools.
 _TAG = {"namespace:sandbox"}
 
 
-@mcp.tool(tags=_TAG)
+@hidden_tool
 async def sandbox_session_status(
     session_id: Annotated[str, Field(description="Sandbox session id.")],
 ) -> dict[str, Any]:
@@ -22,7 +23,7 @@ async def sandbox_session_status(
     return session.model_dump(mode="json")
 
 
-@mcp.tool(tags=_TAG)
+@hidden_tool
 async def sandbox_session_list() -> dict[str, Any]:
     manager = sandbox_manager()
     return {
@@ -30,7 +31,7 @@ async def sandbox_session_list() -> dict[str, Any]:
     }
 
 
-@mcp.tool(tags=_TAG)
+@hidden_tool
 async def sandbox_session_destroy(
     session_id: Annotated[str, Field(description="Sandbox session id to destroy.")],
 ) -> dict[str, Any]:

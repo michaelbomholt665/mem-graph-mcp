@@ -163,8 +163,8 @@ map_agent: Agent[MapDependencies, MapReport] = Agent(
 ################
 
 
-@map_agent.system_prompt
-async def build_system_prompt(ctx: RunContext[MapDependencies]) -> str:
+@map_agent.instructions
+async def build_instructions(ctx: RunContext[MapDependencies]) -> str:
     """
     Build the system prompt from deps and the Mapper persona at runtime.
     """

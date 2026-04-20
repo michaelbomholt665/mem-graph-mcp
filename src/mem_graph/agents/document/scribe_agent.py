@@ -114,8 +114,8 @@ scribe_agent: Agent[ScribeDependencies, ScribeReport] = Agent(
 )
 
 
-@scribe_agent.system_prompt
-async def scribe_build_system_prompt(ctx: RunContext[ScribeDependencies]) -> str:
+@scribe_agent.instructions
+async def scribe_build_instructions(ctx: RunContext[ScribeDependencies]) -> str:
     """
     Build the Scribe Agent system prompt.
 

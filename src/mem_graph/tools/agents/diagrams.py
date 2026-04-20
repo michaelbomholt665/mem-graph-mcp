@@ -10,6 +10,7 @@ import logging
 from typing import Annotated
 
 from fastmcp import FastMCP
+from ..markers import tier_2_tool
 from pydantic import Field
 
 from ...app.registry import AgentEntry, register_agent
@@ -30,6 +31,7 @@ register_agent(
 )
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 async def generate_diagram(
     description: Annotated[str, Field(description="What to diagram — feature, system, flow, or relationship.")],

@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastmcp import FastMCP
+from ..markers import hidden_tool
 
 from pydantic import Field
 
@@ -39,7 +40,7 @@ _TAG = {"namespace:filesystem"}
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(tags=_TAG)
+@hidden_tool
 @traced_tool("file_read")
 async def file_read(
     path: Annotated[str, Field(description="Absolute path to the file to read.")],
@@ -76,7 +77,7 @@ async def file_read(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(tags=_TAG)
+@hidden_tool
 @traced_tool("file_search")
 async def file_search(
     directory: Annotated[str, Field(description="Absolute path to the root directory to search.")],
@@ -106,7 +107,7 @@ async def file_search(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(tags=_TAG)
+@hidden_tool
 @traced_tool("file_grep")
 async def file_grep(
     directory: Annotated[str, Field(description="Absolute path to the root directory to search.")],
@@ -169,7 +170,7 @@ def _grep_file(path: str, compiled: re.Pattern[str], limit: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(tags=_TAG)
+@hidden_tool
 @traced_tool("file_write")
 async def file_write(
     path: Annotated[str, Field(description="Absolute path to the file to create or overwrite.")],
@@ -193,7 +194,7 @@ async def file_write(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(tags=_TAG)
+@hidden_tool
 @traced_tool("file_edit")
 async def file_edit(
     path: Annotated[str, Field(description="Absolute path to the file to edit.")],
@@ -231,7 +232,7 @@ async def file_edit(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(tags=_TAG)
+@hidden_tool
 @traced_tool("file_delete")
 async def file_delete(
     path: Annotated[str, Field(description="Absolute path to the file to delete.")],

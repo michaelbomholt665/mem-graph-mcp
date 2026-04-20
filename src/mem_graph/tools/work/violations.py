@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Any, cast
 
 from fastmcp import FastMCP
+from ..markers import tier_2_tool
 from pydantic import Field
 
 from ...db import db_get_connection
@@ -28,6 +29,7 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 @traced_tool("violation_record")
 async def violation_record(
@@ -102,6 +104,7 @@ async def violation_record(
     return {"violation_id": violation_id}
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 @traced_tool("violation_resolve")
 async def violation_resolve(
@@ -120,6 +123,7 @@ async def violation_resolve(
     return {"violation_id": violation_id, "status": "resolved"}
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 @traced_tool("violation_recur")
 async def violation_recur(
@@ -198,6 +202,7 @@ async def violation_recur(
     return {"violation_id": recurrence_id, "original_id": original_id}
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 @traced_tool("violation_search")
 async def violation_search(
@@ -278,6 +283,7 @@ async def violation_search(
     return {"violations": violations, "query": query}
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:work"})
 @traced_tool("violation_list")
 async def violation_list(

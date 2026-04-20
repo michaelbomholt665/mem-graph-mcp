@@ -20,6 +20,8 @@ from typing import Annotated, Any, cast
 from fastmcp import FastMCP
 from pydantic import Field
 
+from ..markers import tier_1_tool, tier_2_tool
+
 from ...db import db_get_connection
 from ...embeddings import embeddings_generate, embeddings_query
 from ...ids import id_generate_v7
@@ -151,6 +153,7 @@ def _bulk_insert_messages(
     return msg_ids
 
 
+@tier_1_tool
 @mcp.tool(tags={"namespace:memory"})
 async def memory_capture_session(
     project_id: Annotated[
@@ -197,6 +200,7 @@ async def memory_capture_session(
     )
 
 
+@tier_1_tool
 @mcp.tool(tags={"namespace:memory"})
 async def memory_recall(
     query: Annotated[
@@ -319,6 +323,7 @@ async def memory_recall(
     )
 
 
+@tier_2_tool
 @mcp.tool(tags={"namespace:memory"})
 async def memory_annotate(
     conversation_id: Annotated[
