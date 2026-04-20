@@ -19,7 +19,12 @@ from ..agents.document.task_agent import (
     task_agent,
 )
 from ..models.evals import EvalCase, EvalMode, EvalSuite, ScorerName, SuiteBinding
-from .fixtures import format_preloaded_files, load_graph_fixtures
+from .fixtures import (
+    fixture_output_for,
+    format_preloaded_files,
+    load_graph_fixtures,
+    metadata_string,
+)
 from .scorers import HostedTextScorer
 
 
@@ -46,6 +51,7 @@ class DocumentMeta:
     expected_pattern: str | None
     tags: list[str]
     source: str = "synthetic"
+
 
 _GRAPH_FIXTURES = load_graph_fixtures()["document"]
 
@@ -120,11 +126,18 @@ def _render_decision_report(report: ReviewReport) -> str:
 
 async def _run_fixture(case: EvalCase) -> str:
     await asyncio.sleep(0)
-    return _FIXTURE_OUTPUTS[case.case_id]
+    return fixture_output_for(_FIXTURE_OUTPUTS, case.case_id, suite_name="document")
 
 
 async def _run_live(case: EvalCase) -> str:
-    if case.metadata.get("workflow") == "task":
+    workflow = metadata_string(
+        case.metadata,
+        "workflow",
+        suite_name="document",
+        case_id=case.case_id,
+        default="task",
+    )
+    if workflow == "task":
         task_deps = TaskDependencies(
             feature_description=_GRAPH_FIXTURES["feature_description"],
             project_id=load_graph_fixtures()["project_id"],
@@ -159,7 +172,13 @@ def build_document_dataset() -> Dataset[DocumentInput, DocumentOutput, DocumentM
     project_id = fixtures["project_id"]
     cases: list[Case[DocumentInput, DocumentOutput, DocumentMeta]] = []
     for case in DOCUMENT_EVAL_SUITE.cases:
-        workflow = case.metadata.get("workflow", "task")
+        workflow = metadata_string(
+            case.metadata,
+            "workflow",
+            suite_name="document",
+            case_id=case.case_id,
+            default="task",
+        )
         files = (
             list(_GRAPH_FIXTURES["decision_files"])
             if workflow == "decision"

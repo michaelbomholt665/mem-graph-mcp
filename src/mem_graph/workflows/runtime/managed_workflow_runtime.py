@@ -9,7 +9,6 @@ to apply profile-appropriate constraints to the managed sub-agent workflow.
 
 from __future__ import annotations
 
-from ...agents.router_agent import WorkflowPlan
 from ...agents.workflow_graph import (
     AuditNode,
     ContextGatherNode,
@@ -25,6 +24,7 @@ from ...agents.workflow_graph import (
     managed_workflow_graph,
     run_managed_workflow,
 )
+from ...models.agent_outputs import WorkflowPlan
 from ...resources.workflows.selector import WorkflowSelection, select_all
 from .workflow_sandbox import (
     abort_workflow_sandbox,
@@ -106,7 +106,9 @@ async def run_managed_workflow_with_selection(
     )
 
     try:
-        state = await run_managed_workflow(effective_plan, execute_agents=execute_agents)
+        state = await run_managed_workflow(
+            effective_plan, execute_agents=execute_agents
+        )
         finalized = await finalize_workflow_sandbox(
             sandbox,
             validation_passed=not state.blockers,

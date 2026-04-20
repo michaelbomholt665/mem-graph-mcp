@@ -16,14 +16,13 @@ from __future__ import annotations
 ################
 #   IMPORTS
 ################
-
 import logging
 from dataclasses import dataclass, field
 
-from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
 from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
+from ...models.agent_outputs import DecompositionReport, Task, TaskComplexity
 from ...resources.personas import ARCHITECT_PERSONA
 from ...resources.prompts import get_reasoning_mode_guidance
 
@@ -32,84 +31,6 @@ from ...resources.prompts import get_reasoning_mode_guidance
 ################
 
 logger = logging.getLogger(__name__)
-
-
-################
-#   MODELS
-################
-
-
-class Task(BaseModel):
-    """
-    A single unit of work in the decomposed task list.
-
-    Maps directly to a Task node in the mem-graph schema.
-    Dependencies reference other task IDs within the same decomposition.
-    """
-
-    task_id: str = Field(
-        description="Short stable ID for this task, e.g. 'T01', 'T02'. Used in dependencies."
-    )
-    title: str = Field(description="Concise action-oriented task title.")
-    description: str = Field(
-        description="What needs to be done, why, and any constraints or risks."
-    )
-    phase: str = Field(
-        description="TDD phase: 'planning', 'red', 'green', 'refactor', or 'audit'."
-    )
-    priority: str = Field(
-        default="normal",
-        description="Task priority: 'low', 'normal', 'high', 'critical'.",
-    )
-    primary_file: str | None = Field(
-        default=None,
-        description="File this task primarily touches, from the codebase map.",
-    )
-    affected_files: list[str] = Field(
-        default_factory=list,
-        description="Other files likely affected by this task.",
-    )
-    dependencies: list[str] = Field(
-        default_factory=list,
-        description="task_id values that must complete before this task starts.",
-    )
-    open_violations: list[str] = Field(
-        default_factory=list,
-        description="Violation IDs from the graph relevant to this task.",
-    )
-    relevant_decisions: list[str] = Field(
-        default_factory=list,
-        description="Decision IDs from the graph that constrain this task.",
-    )
-    acceptance_criteria: list[str] = Field(
-        default_factory=list,
-        description="Specific, verifiable conditions for this task to be considered done.",
-    )
-
-
-class DecompositionReport(BaseModel):
-    """
-    Complete task decomposition for a feature request.
-
-    Ordered list of tasks with dependency graph, estimated complexity,
-    and any blockers identified from the graph context.
-    """
-
-    feature_description: str = Field(description="The original feature request.")
-    project_id: str = Field(description="Project this decomposition belongs to.")
-    tasks: list[Task] = Field(default_factory=list)
-    summary: str = Field(
-        description="Narrative explaining the decomposition approach and key decisions."
-    )
-    identified_blockers: list[str] = Field(
-        default_factory=list,
-        description="Open violations or decisions that block or constrain this feature.",
-    )
-    estimated_complexity: str = Field(
-        default="medium",
-        description="Overall complexity estimate: 'low', 'medium', 'high', 'very_high'.",
-    )
-    partial_failure: bool = Field(default=False)
 
 
 ################
@@ -140,6 +61,7 @@ class TaskDependencies:
     skills_content: str = ""
     _task_state: list["Task"] = field(default_factory=list)
     reasoning_mode: str = ""
+
 
 ################
 #   AGENT
@@ -220,7 +142,9 @@ async def build_instructions(ctx: RunContext[TaskDependencies]) -> str:
 def _format_codebase_map(features: list[dict]) -> str:
     """Render codebase map features as a reference list."""
     if not features:
-        return "No codebase map available — decompose based on feature description alone."
+        return (
+            "No codebase map available — decompose based on feature description alone."
+        )
 
     lines = []
     for f in features:
@@ -273,10 +197,10 @@ async def process_batch(
     tasks_from_previous_batch: list[Task],
 ) -> str:
     """
-    Submit tasks generated in the previous step and optionally retrieve answers 
+    Submit tasks generated in the previous step and optionally retrieve answers
     to queries about the graph context.
 
-    Request answers to at most 5 context questions at once. Pass an empty 
+    Request answers to at most 5 context questions at once. Pass an empty
     context_queries list to just submit tasks.
     """
     _get_state(ctx).extend(tasks_from_previous_batch)
@@ -300,7 +224,7 @@ async def finalize_decomposition(
     ctx: RunContext[TaskDependencies],
     summary: str,
     identified_blockers: list[str],
-    estimated_complexity: str = "medium",
+    estimated_complexity: TaskComplexity = "medium",
     partial_failure: bool = False,
 ) -> DecompositionReport:
     """

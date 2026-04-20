@@ -1,5 +1,8 @@
 from typing import Dict, List, Optional
-from .markers import TIER_1, TIER_2, TIER_3
+
+TIER_1 = "tier_1"
+TIER_2 = "tier_2"
+TIER_3 = "tier_3"
 
 class ToolRegistry:
     def __init__(self) -> None:

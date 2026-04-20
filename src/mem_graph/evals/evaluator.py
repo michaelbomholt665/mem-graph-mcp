@@ -9,7 +9,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Sequence, TypeVar
+from typing import Any, Protocol, Sequence, TypeVar
+
+import anyio
 
 from ..ids import id_generate_v7
 from ..models.evals import (
@@ -28,7 +30,35 @@ from .audit_evals import push_audit_dataset, run_audit_eval
 from .document_evals import push_document_dataset, run_document_eval
 from .fix_evals import push_fix_dataset, run_fix_eval
 from .map_evals import push_map_dataset, run_map_eval
-from .scorers import score_case_output
+from .scorers import score_case_output, validate_suite_configuration
+from .suites import (
+    push_chat_dataset,
+    push_go_quality_skill_dataset,
+    push_orchestrator_dataset,
+    push_python_quality_skill_dataset,
+    push_router_dataset,
+    push_rule_injector_dataset,
+    push_security_skill_dataset,
+    push_sentry_dataset,
+    push_triage_dataset,
+    push_typescript_quality_skill_dataset,
+    push_workflow_autopilot_dataset,
+    push_workflow_feature_implementation_dataset,
+    push_workflow_package_audit_dataset,
+    run_chat_eval,
+    run_go_quality_skill_eval,
+    run_orchestrator_eval,
+    run_python_quality_skill_eval,
+    run_router_eval,
+    run_rule_injector_eval,
+    run_security_skill_eval,
+    run_sentry_eval,
+    run_triage_eval,
+    run_typescript_quality_skill_eval,
+    run_workflow_autopilot_eval,
+    run_workflow_feature_implementation_eval,
+    run_workflow_package_audit_eval,
+)
 from .validate_evals import push_validate_dataset, run_validate_eval
 
 InputsT = TypeVar("InputsT")
@@ -41,20 +71,57 @@ DEFAULT_PASS_THRESHOLD = 0.67  # Allows one miss in three runs for stochastic to
 DEFAULT_RUNS = 3  # Minimum for meaningful stochastic variance measurement
 DEFAULT_CASE_TIMEOUT_S = 120  # Per-case timeout in seconds for live agent runs
 
+
+class GraphConnection(Protocol):
+    """Minimal database connection protocol required for eval summary persistence."""
+
+    def execute(
+        self,
+        query: str,
+        params: dict[str, object] | None = None,
+    ) -> Any: ...
+
+
 _HOSTED_PUSHERS = {
     "audit": push_audit_dataset,
+    "chat": push_chat_dataset,
     "document": push_document_dataset,
     "fix": push_fix_dataset,
     "map": push_map_dataset,
+    "orchestrator": push_orchestrator_dataset,
+    "router": push_router_dataset,
+    "rule_injector": push_rule_injector_dataset,
+    "sentry": push_sentry_dataset,
+    "skill_go_quality": push_go_quality_skill_dataset,
+    "skill_python_quality": push_python_quality_skill_dataset,
+    "skill_security": push_security_skill_dataset,
+    "skill_typescript_quality": push_typescript_quality_skill_dataset,
+    "triage": push_triage_dataset,
     "validate": push_validate_dataset,
+    "workflow_autopilot": push_workflow_autopilot_dataset,
+    "workflow_feature_implementation": push_workflow_feature_implementation_dataset,
+    "workflow_package_audit": push_workflow_package_audit_dataset,
 }
 
 _HOSTED_RUNNERS = {
     "audit": run_audit_eval,
+    "chat": run_chat_eval,
     "document": run_document_eval,
     "fix": run_fix_eval,
     "map": run_map_eval,
+    "orchestrator": run_orchestrator_eval,
+    "router": run_router_eval,
+    "rule_injector": run_rule_injector_eval,
+    "sentry": run_sentry_eval,
+    "skill_go_quality": run_go_quality_skill_eval,
+    "skill_python_quality": run_python_quality_skill_eval,
+    "skill_security": run_security_skill_eval,
+    "skill_typescript_quality": run_typescript_quality_skill_eval,
+    "triage": run_triage_eval,
     "validate": run_validate_eval,
+    "workflow_autopilot": run_workflow_autopilot_eval,
+    "workflow_feature_implementation": run_workflow_feature_implementation_eval,
+    "workflow_package_audit": run_workflow_package_audit_eval,
 }
 
 
@@ -88,11 +155,10 @@ class Evaluator:
         output = ""
         error: str | None = None
         scorer_name: ScorerName = case.scorer or default_scorer
+        timeout_s = case.timeout_s or DEFAULT_CASE_TIMEOUT_S
 
         try:
-            output = await asyncio.wait_for(
-                runner(case), timeout=DEFAULT_CASE_TIMEOUT_S
-            )
+            output = await asyncio.wait_for(runner(case), timeout=timeout_s)
             scorer_name, score = score_case_output(
                 case,
                 output,
@@ -100,7 +166,7 @@ class Evaluator:
             )
         except asyncio.TimeoutError:
             score = 0.0
-            error = f"Eval case timed out after {DEFAULT_CASE_TIMEOUT_S}s"
+            error = f"Eval case timed out after {timeout_s}s"
         except Exception as exc:  # noqa: BLE001
             score = 0.0
             error = str(exc)
@@ -150,7 +216,11 @@ class Evaluator:
         failure_details: list[EvalFailureDetail] = []
         total_score = 0.0
         total_duration_ms = 0.0
-        run_count = runs_override or case.runs or suite.default_runs
+        run_count = _resolve_case_run_count(
+            case,
+            suite_default_runs=suite.default_runs,
+            runs_override=runs_override,
+        )
         scorer_name = case.scorer or suite.default_scorer
 
         for run_index in range(1, run_count + 1):
@@ -195,24 +265,35 @@ class Evaluator:
             if suite_pass_threshold is not None
             else suite.pass_threshold
         )
+        validate_suite_configuration(suite)
         started_at = _utc_now()
         start = perf_counter()
 
-        case_results: list[EvalCaseResult] = []
-        for case in suite.cases:
-            case_results.append(
-                await self.run_case(
+        case_results: list[EvalCaseResult | None] = [None] * len(suite.cases)
+        concurrency = suite.max_case_concurrency or max(1, len(suite.cases))
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def execute_case(index: int, case: EvalCase) -> None:
+            async with semaphore:
+                case_results[index] = await self.run_case(
                     suite,
                     case,
                     binding.runner,
                     suite_pass_threshold=threshold,
                     runs_override=runs_override,
                 )
-            )
+
+        async with anyio.create_task_group() as task_group:
+            for index, case in enumerate(suite.cases):
+                task_group.start_soon(execute_case, index, case)
+
+        resolved_case_results = [
+            result for result in case_results if result is not None
+        ]
 
         total_duration_ms = (perf_counter() - start) * 1000
-        passed_case_count = sum(1 for result in case_results if result.passed)
-        case_count = len(case_results)
+        passed_case_count = sum(1 for result in resolved_case_results if result.passed)
+        case_count = len(resolved_case_results)
         case_pass_rate = passed_case_count / case_count if case_count else 0.0
 
         return EvalSuiteResult(
@@ -221,12 +302,12 @@ class Evaluator:
             case_count=case_count,
             passed_case_count=passed_case_count,
             case_pass_rate=case_pass_rate,
-            run_count=sum(result.run_count for result in case_results),
+            run_count=sum(result.run_count for result in resolved_case_results),
             passed=case_pass_rate >= threshold,
             total_duration_ms=total_duration_ms,
             started_at=started_at,
             completed_at=_utc_now(),
-            case_results=case_results,
+            case_results=resolved_case_results,
         )
 
     async def run_report(
@@ -249,18 +330,29 @@ class Evaluator:
         else:
             suite_names = list(registry)
 
+        for suite_name in suite_names:
+            validate_suite_configuration(registry[suite_name].suite)
+
         started_at = _utc_now()
         start = perf_counter()
-        suite_results = [
-            await self.run_suite(
-                registry[name],
+        suite_results: list[EvalSuiteResult | None] = [None] * len(suite_names)
+
+        async def execute_suite(index: int, suite_name: str) -> None:
+            suite_results[index] = await self.run_suite(
+                registry[suite_name],
                 suite_pass_threshold=suite_pass_threshold,
                 runs_override=runs_override,
             )
-            for name in suite_names
+
+        async with anyio.create_task_group() as task_group:
+            for index, suite_name in enumerate(suite_names):
+                task_group.start_soon(execute_suite, index, suite_name)
+
+        resolved_suite_results = [
+            result for result in suite_results if result is not None
         ]
-        total_suites = len(suite_results)
-        passed_suites = sum(1 for result in suite_results if result.passed)
+        total_suites = len(resolved_suite_results)
+        passed_suites = sum(1 for result in resolved_suite_results if result.passed)
         suite_pass_rate = passed_suites / total_suites if total_suites else 0.0
 
         return EvalReport(
@@ -271,14 +363,14 @@ class Evaluator:
             total_duration_ms=(perf_counter() - start) * 1000,
             started_at=started_at,
             completed_at=_utc_now(),
-            suite_results=suite_results,
+            suite_results=resolved_suite_results,
         )
 
     def persist_report_summary(
         self,
         report: EvalReport,
         *,
-        conn: Any,
+        conn: GraphConnection,
         project_id: str,
         trigger: str = "manual",
         report_path: str | None = None,
@@ -369,6 +461,19 @@ def render_eval_report(report: EvalReport) -> str:
             if case.failure_details:
                 lines.append(f"    last_failure: {case.failure_details[-1].reason}")
     return "\n".join(lines)
+
+
+def _resolve_case_run_count(
+    case: EvalCase,
+    *,
+    suite_default_runs: int,
+    runs_override: int | None,
+) -> int:
+    if runs_override is not None:
+        return runs_override
+    if "runs" in case.model_fields_set:
+        return case.runs
+    return suite_default_runs
 
 
 def write_json_report(report: EvalReport, output_path: str | Path) -> str:

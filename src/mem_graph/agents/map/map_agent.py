@@ -12,19 +12,19 @@ decomposition, decision review) to provide codebase context.
 
 from __future__ import annotations
 
+import logging
+import os
+
 ################
 #   IMPORTS
 ################
-
 from dataclasses import dataclass, field
-import logging
-import os
 from pathlib import Path
 
-from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
 from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
+from ...models.agent_outputs import FeatureLocation, FileRelationship, MapReport
 from ...resources.personas import MAPPER_PERSONA
 from ...resources.prompts import get_reasoning_mode_guidance
 
@@ -35,84 +35,6 @@ from ...resources.prompts import get_reasoning_mode_guidance
 _MAX_FILE_BYTES = 64_000
 
 logger = logging.getLogger(__name__)
-
-
-################
-#   MODELS
-################
-
-
-class FeatureLocation(BaseModel):
-    """
-    A single feature-to-file mapping discovered during analysis.
-
-    Represents the agent's understanding of where a named feature,
-    subsystem, or concern lives in the codebase.
-    """
-
-    feature_name: str = Field(
-        description="Human-readable name of the feature or concern, e.g. 'authentication', 'snapshot commit'."
-    )
-    primary_file: str = Field(
-        description="File where this feature's core logic lives."
-    )
-    supporting_files: list[str] = Field(
-        default_factory=list,
-        description="Files that contribute to or support this feature.",
-    )
-    consumers: list[str] = Field(
-        default_factory=list,
-        description="Files that import or call into this feature.",
-    )
-    description: str = Field(
-        description="One sentence describing what this feature does."
-    )
-
-
-class FileRelationship(BaseModel):
-    """
-    A directional dependency between two files.
-
-    Represents an import, function call, or interface implementation
-    that creates a coupling between source and target.
-    """
-
-    source_file: str = Field(description="File that depends on the target.")
-    target_file: str = Field(description="File being depended upon.")
-    relationship_kind: str = Field(
-        description="Nature of the relationship: 'imports', 'calls', 'implements', 'embeds'."
-    )
-    symbols: list[str] = Field(
-        default_factory=list,
-        description="Specific symbols (functions, types) involved in the relationship.",
-    )
-
-
-class MapReport(BaseModel):
-    """
-    Complete codebase map produced by the map agent.
-
-    Contains feature locations, file relationships, and a summary
-    narrative. Written to the graph by the MCP tool wrapper.
-    """
-
-    package_path: str = Field(description="Root path that was mapped.")
-    features: list[FeatureLocation] = Field(
-        default_factory=list,
-        description="Feature geography — what lives where.",
-    )
-    relationships: list[FileRelationship] = Field(
-        default_factory=list,
-        description="File-level dependency relationships.",
-    )
-    entry_points: list[str] = Field(
-        default_factory=list,
-        description="Files identified as top-level entry points (main, handlers, routers).",
-    )
-    summary: str = Field(
-        description="Narrative overview of the codebase structure and key observations."
-    )
-    partial_failure: bool = Field(default=False)
 
 
 ################
@@ -140,6 +62,7 @@ class MapDependencies:
     _map_features: list[FeatureLocation] = field(default_factory=list)
     _map_relationships: list[FileRelationship] = field(default_factory=list)
     reasoning_mode: str = ""
+
 
 ################
 #   AGENT
@@ -337,4 +260,7 @@ def _get_state(ctx: RunContext[MapDependencies]) -> dict:
     Uses deps._map_features and deps._map_relationships instead of
     monkey-patching onto RunContext.
     """
-    return {"features": ctx.deps._map_features, "relationships": ctx.deps._map_relationships}
+    return {
+        "features": ctx.deps._map_features,
+        "relationships": ctx.deps._map_relationships,
+    }

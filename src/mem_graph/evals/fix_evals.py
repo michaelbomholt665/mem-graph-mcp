@@ -10,7 +10,12 @@ from pydantic_evals import Case, Dataset
 from ..agents.fix.fixer_agent import FixerDependencies, FixerReport, fixer_agent
 from ..config import ModelTier
 from ..models.evals import EvalCase, EvalMode, EvalSuite, ScorerName, SuiteBinding
-from .fixtures import load_code_fixtures, load_violation_fixtures
+from .fixtures import (
+    fixture_output_for,
+    load_code_fixtures,
+    load_violation_fixtures,
+    metadata_string,
+)
 from .scorers import HostedTextScorer
 
 
@@ -37,6 +42,7 @@ class FixMeta:
     expected_pattern: str | None
     tags: list[str]
     source: str = "synthetic"
+
 
 _CODE_FIXTURES = load_code_fixtures()
 _VIOLATION_FIXTURES = load_violation_fixtures()
@@ -92,15 +98,27 @@ def _render_fix_report(report: FixerReport) -> str:
 
 async def _run_fixture(case: EvalCase) -> str:
     await asyncio.sleep(0)
-    return _FIXTURE_OUTPUTS[case.case_id]
+    return fixture_output_for(_FIXTURE_OUTPUTS, case.case_id, suite_name="fix")
 
 
 async def _run_live(case: EvalCase) -> str:
-    file_path = case.metadata.get("file_path", "fixtures/eval_fix.py")
+    file_path = metadata_string(
+        case.metadata,
+        "file_path",
+        suite_name="fix",
+        case_id=case.case_id,
+        default="fixtures/eval_fix.py",
+    )
+    fixture_key = metadata_string(
+        case.metadata,
+        "fixture_key",
+        suite_name="fix",
+        case_id=case.case_id,
+    )
     violations = list(_VIOLATION_FIXTURES["fix"][case.case_id])
     deps = FixerDependencies(
         violations=violations,
-        file_contents={file_path: _CODE_FIXTURES[case.metadata["fixture_key"]]},
+        file_contents={file_path: _CODE_FIXTURES[fixture_key]},
         tier=ModelTier.STANDARD.value,
         project_id="eval-fixture",
     )
@@ -118,7 +136,19 @@ def build_fix_binding(mode: EvalMode) -> SuiteBinding:
 def build_fix_dataset() -> Dataset[FixInput, FixOutput, FixMeta]:
     cases: list[Case[FixInput, FixOutput, FixMeta]] = []
     for case in FIX_EVAL_SUITE.cases:
-        fixture_key = case.metadata["fixture_key"]
+        fixture_key = metadata_string(
+            case.metadata,
+            "fixture_key",
+            suite_name="fix",
+            case_id=case.case_id,
+        )
+        file_path = metadata_string(
+            case.metadata,
+            "file_path",
+            suite_name="fix",
+            case_id=case.case_id,
+            default="fixtures/eval_fix.py",
+        )
         scorer = case.scorer or FIX_EVAL_SUITE.default_scorer
         cases.append(
             Case(
@@ -126,7 +156,7 @@ def build_fix_dataset() -> Dataset[FixInput, FixOutput, FixMeta]:
                 inputs=FixInput(
                     prompt=case.prompt,
                     file_content=_CODE_FIXTURES[fixture_key],
-                    file_path=case.metadata.get("file_path", "fixtures/eval_fix.py"),
+                    file_path=file_path,
                     violation_count=len(_VIOLATION_FIXTURES["fix"][case.case_id]),
                 ),
                 expected_output=FixOutput(
@@ -172,7 +202,9 @@ async def run_fix_eval() -> None:
         case_id = inputs.file_path.split("/")[-1].removesuffix(".py")
         violations = list(_VIOLATION_FIXTURES["fix"].get(case_id, []))
         if not violations:
-            case_id = "fix-hardcoded-secret" if "payment" in case_id else "fix-bare-except"
+            case_id = (
+                "fix-hardcoded-secret" if "payment" in case_id else "fix-bare-except"
+            )
             violations = list(_VIOLATION_FIXTURES["fix"][case_id])
         deps = FixerDependencies(
             violations=violations,

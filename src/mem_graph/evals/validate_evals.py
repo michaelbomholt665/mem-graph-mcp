@@ -9,7 +9,12 @@ from pydantic_evals import Case, Dataset
 
 from ..agents.validate.validation_agent import ValidationDependencies, validation_agent
 from ..models.evals import EvalCase, EvalMode, EvalSuite, ScorerName, SuiteBinding
-from .fixtures import load_code_fixtures, load_violation_fixtures
+from .fixtures import (
+    fixture_output_for,
+    load_code_fixtures,
+    load_violation_fixtures,
+    metadata_string,
+)
 from .scorers import HostedTextScorer
 
 
@@ -37,6 +42,7 @@ class ValidateMeta:
     expected_pattern: str | None
     tags: list[str]
     source: str = "synthetic"
+
 
 _CODE_FIXTURES = load_code_fixtures()
 _VIOLATION_FIXTURES = load_violation_fixtures()
@@ -87,16 +93,34 @@ VALIDATE_EVAL_SUITE = EvalSuite(
 
 async def _run_fixture(case: EvalCase) -> str:
     await asyncio.sleep(0)
-    return _FIXTURE_OUTPUTS[case.case_id]
+    return fixture_output_for(_FIXTURE_OUTPUTS, case.case_id, suite_name="validate")
 
 
 async def _run_live(case: EvalCase) -> str:
-    file_path = case.metadata.get("file_path", "fixtures/eval_validation.py")
+    file_path = metadata_string(
+        case.metadata,
+        "file_path",
+        suite_name="validate",
+        case_id=case.case_id,
+        default="fixtures/eval_validation.py",
+    )
+    proposed_key = metadata_string(
+        case.metadata,
+        "proposed_key",
+        suite_name="validate",
+        case_id=case.case_id,
+    )
+    original_key = metadata_string(
+        case.metadata,
+        "original_key",
+        suite_name="validate",
+        case_id=case.case_id,
+    )
     deps = ValidationDependencies(
         language="python",
         original_violations=list(_VIOLATION_FIXTURES["validate"][case.case_id]),
-        proposed_patches={file_path: _CODE_FIXTURES[case.metadata["proposed_key"]]},
-        original_file_contents={file_path: _CODE_FIXTURES[case.metadata["original_key"]]},
+        proposed_patches={file_path: _CODE_FIXTURES[proposed_key]},
+        original_file_contents={file_path: _CODE_FIXTURES[original_key]},
     )
     result = await validation_agent.run(case.prompt, deps=deps)
     return result.output.status.value
@@ -112,15 +136,33 @@ def build_validate_binding(mode: EvalMode) -> SuiteBinding:
 def build_validate_dataset() -> Dataset[ValidateInput, ValidateOutput, ValidateMeta]:
     cases: list[Case[ValidateInput, ValidateOutput, ValidateMeta]] = []
     for case in VALIDATE_EVAL_SUITE.cases:
-        file_path = case.metadata.get("file_path", "fixtures/eval_validation.py")
+        file_path = metadata_string(
+            case.metadata,
+            "file_path",
+            suite_name="validate",
+            case_id=case.case_id,
+            default="fixtures/eval_validation.py",
+        )
+        original_key = metadata_string(
+            case.metadata,
+            "original_key",
+            suite_name="validate",
+            case_id=case.case_id,
+        )
+        proposed_key = metadata_string(
+            case.metadata,
+            "proposed_key",
+            suite_name="validate",
+            case_id=case.case_id,
+        )
         scorer = case.scorer or VALIDATE_EVAL_SUITE.default_scorer
         cases.append(
             Case(
                 name=case.case_id,
                 inputs=ValidateInput(
                     prompt=case.prompt,
-                    original_file_content=_CODE_FIXTURES[case.metadata["original_key"]],
-                    proposed_file_content=_CODE_FIXTURES[case.metadata["proposed_key"]],
+                    original_file_content=_CODE_FIXTURES[original_key],
+                    proposed_file_content=_CODE_FIXTURES[proposed_key],
                     file_path=file_path,
                     case_id=case.case_id,
                 ),

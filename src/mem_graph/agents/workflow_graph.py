@@ -20,9 +20,9 @@ from pydantic import BaseModel, Field
 from pydantic_graph import BaseNode, End, Graph, GraphRunContext
 
 from ..config import WorkflowStageName, config_get_model_for_workflow_stage
+from ..models.agent_outputs import WorkflowPlan
 from ..resources.personas import PERSONA_REGISTRY
 from ..resources.prompts import PROMPT_REGISTRY
-from .router_agent import WorkflowPlan
 
 
 class WorkflowStageResult(BaseModel):
@@ -356,8 +356,7 @@ def _read_target_files(paths: list[str]) -> dict[str, str]:
 
 def _format_file_context(file_contents: dict[str, str]) -> str:
     return "\n\n".join(
-        f"### {path}\n```\n{content}\n```"
-        for path, content in file_contents.items()
+        f"### {path}\n```\n{content}\n```" for path, content in file_contents.items()
     )
 
 

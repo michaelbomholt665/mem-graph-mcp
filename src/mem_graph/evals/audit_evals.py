@@ -10,7 +10,7 @@ from pydantic_evals import Case, Dataset
 from ..agents.audit.audit_agent import AuditDependencies, audit_agent
 from ..models.audit import AuditReport
 from ..models.evals import EvalCase, EvalMode, EvalSuite, ScorerName, SuiteBinding
-from .fixtures import load_code_fixtures
+from .fixtures import fixture_output_for, load_code_fixtures, metadata_string
 from .scorers import HostedTextScorer
 
 
@@ -37,6 +37,7 @@ class AuditMeta:
     tags: list[str]
     rule_focus: str
     source: str = "synthetic"
+
 
 _CODE_FIXTURES = load_code_fixtures()
 
@@ -100,8 +101,7 @@ AUDIT_EVAL_SUITE = EvalSuite(
 
 def _render_audit_report(report: AuditReport) -> str:
     findings = [
-        f"{finding.rule_id}: {finding.description}"
-        for finding in report.all_findings
+        f"{finding.rule_id}: {finding.description}" for finding in report.all_findings
     ]
     findings_block = "\n".join(findings) if findings else "no issues found"
     return f"{report.summary}\n{findings_block}".strip()
@@ -113,12 +113,23 @@ def _fixture_context(file_path: str, code: str) -> str:
 
 async def _run_fixture(case: EvalCase) -> str:
     await asyncio.sleep(0)
-    return _FIXTURE_OUTPUTS[case.case_id]
+    return fixture_output_for(_FIXTURE_OUTPUTS, case.case_id, suite_name="audit")
 
 
 async def _run_live(case: EvalCase) -> str:
-    fixture_key = case.metadata["fixture_key"]
-    file_path = case.metadata.get("file_path", "fixtures/eval_fixture.py")
+    fixture_key = metadata_string(
+        case.metadata,
+        "fixture_key",
+        suite_name="audit",
+        case_id=case.case_id,
+    )
+    file_path = metadata_string(
+        case.metadata,
+        "file_path",
+        suite_name="audit",
+        case_id=case.case_id,
+        default="fixtures/eval_fixture.py",
+    )
     deps = AuditDependencies(
         package_path="eval-fixture",
         file_extension=".py",
@@ -138,7 +149,19 @@ def build_audit_binding(mode: EvalMode) -> SuiteBinding:
 def build_audit_dataset() -> Dataset[AuditInput, AuditOutput, AuditMeta]:
     cases: list[Case[AuditInput, AuditOutput, AuditMeta]] = []
     for case in AUDIT_EVAL_SUITE.cases:
-        fixture_key = case.metadata["fixture_key"]
+        fixture_key = metadata_string(
+            case.metadata,
+            "fixture_key",
+            suite_name="audit",
+            case_id=case.case_id,
+        )
+        file_path = metadata_string(
+            case.metadata,
+            "file_path",
+            suite_name="audit",
+            case_id=case.case_id,
+            default="fixtures/eval_fixture.py",
+        )
         scorer = case.scorer or AUDIT_EVAL_SUITE.default_scorer
         cases.append(
             Case(
@@ -146,7 +169,7 @@ def build_audit_dataset() -> Dataset[AuditInput, AuditOutput, AuditMeta]:
                 inputs=AuditInput(
                     prompt=case.prompt,
                     file_content=_CODE_FIXTURES[fixture_key],
-                    file_path=case.metadata.get("file_path", "fixtures/eval_fixture.py"),
+                    file_path=file_path,
                 ),
                 expected_output=AuditOutput(
                     text=case.expected_output or " ".join(case.expected_keywords)

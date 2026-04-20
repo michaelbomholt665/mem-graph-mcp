@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 import json
+import os
 
 from dotenv import load_dotenv
 from logfire.experimental.api_client import AsyncLogfireAPIClient, LogfireAPIClient
 from pydantic import BaseModel
+
+from .fixtures import get_repo_root
 
 
 class LogfireDatasetCapabilities(BaseModel):
@@ -22,12 +23,8 @@ class LogfireDatasetCapabilities(BaseModel):
     can_delete_dataset: bool
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
 def _load_env() -> None:
-    load_dotenv(_repo_root() / ".env")
+    load_dotenv(get_repo_root() / ".env")
 
 
 def _api_key() -> str:
@@ -52,13 +49,13 @@ def _base_url() -> str | None:
     if explicit:
         return explicit
 
-    credentials_path = _repo_root() / ".logfire" / "logfire_credentials.json"
+    credentials_path = get_repo_root() / ".logfire" / "logfire_credentials.json"
     if not credentials_path.exists():
         return None
 
     try:
         credentials = json.loads(credentials_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return None
 
     url = credentials.get("logfire_api_url")

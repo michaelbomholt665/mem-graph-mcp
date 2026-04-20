@@ -16,16 +16,18 @@ from __future__ import annotations
 ################
 #   IMPORTS
 ################
-
 import logging
 from dataclasses import dataclass, field
 
-from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
 from ...config import DEFER_AGENT_MODEL_CHECK, ModelTier, config_get_model_for_tier
+from ...models.agent_outputs import FilePatch, FixerReport
 from ...resources.personas import MECHANIC_PERSONA
-from ...resources.prompts import build_tool_names_for_prompt, get_reasoning_mode_guidance
+from ...resources.prompts import (
+    build_tool_names_for_prompt,
+    get_reasoning_mode_guidance,
+)
 
 ################
 #   CONSTANTS
@@ -34,53 +36,6 @@ from ...resources.prompts import build_tool_names_for_prompt, get_reasoning_mode
 logger = logging.getLogger(__name__)
 
 _FIXER_MODEL = config_get_model_for_tier(ModelTier.STANDARD)
-
-################
-#   MODELS
-################
-
-
-class FilePatch(BaseModel):
-    """
-    A proposed code change for a single file.
-
-    Attributes:
-        file_path: Repo-relative path to the file being changed.
-        original_snippet: The problematic code being replaced.
-        proposed_snippet: The fixed code replacement.
-        violation_ids: Violation IDs this patch resolves.
-        rationale: Why this change fixes the violation.
-    """
-
-    file_path: str = Field(description="Repo-relative path to the target file.")
-    original_snippet: str = Field(description="The exact problematic code being replaced.")
-    proposed_snippet: str = Field(description="The replacement code that fixes the violation.")
-    violation_ids: list[str] = Field(
-        default_factory=list,
-        description="Rule IDs or violation node IDs this patch resolves.",
-    )
-    rationale: str = Field(description="Why this change resolves the violation.")
-
-
-class FixerReport(BaseModel):
-    """
-    Complete output from a Fixer Agent run.
-
-    Contains all proposed patches, unresolved violations that could not
-    be fixed automatically, and a summary of the proposed changes.
-    """
-
-    patches: list[FilePatch] = Field(
-        default_factory=list,
-        description="All proposed file patches.",
-    )
-    unresolved_violations: list[str] = Field(
-        default_factory=list,
-        description="Violation IDs that could not be automatically fixed.",
-    )
-    summary: str = Field(description="Narrative summary of proposed changes.")
-    tier_used: str = Field(description="Model tier identifier used for this run.")
-
 
 ################
 #   DEPS
@@ -186,7 +141,9 @@ async def fixer_read_file_context(
     Returns:
         File content string or an error message if not found.
     """
-    return ctx.deps.file_contents.get(file_path, f"ERROR: {file_path} not in provided context.")
+    return ctx.deps.file_contents.get(
+        file_path, f"ERROR: {file_path} not in provided context."
+    )
 
 
 @fixer_agent.tool  # Scope: agent-local only

@@ -13,20 +13,19 @@ Agent-local tools: list_files, process_batch, finalize_review
 
 from __future__ import annotations
 
+import logging
+import os
+
 ################
 #   IMPORTS
 ################
-
 from dataclasses import dataclass, field
-from enum import Enum
-import logging
-import os
 from pathlib import Path
 
-from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
 from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
+from ...models.agent_outputs import DecisionReview, DriftStatus, ReviewReport
 from ...resources.personas import ARCHITECT_PERSONA
 from ...resources.prompts import get_reasoning_mode_guidance
 
@@ -37,74 +36,6 @@ from ...resources.prompts import get_reasoning_mode_guidance
 _MAX_FILE_BYTES = 64_000
 
 logger = logging.getLogger(__name__)
-
-
-################
-#   MODELS
-################
-
-
-class DriftStatus(str, Enum):
-    """
-    Whether a decision is still reflected in the codebase.
-
-    HONOURED: code matches the decision's intent.
-    DRIFTED: code has diverged from what the decision specified.
-    SUPERSEDED: decision was already marked superseded in the graph.
-    UNVERIFIABLE: not enough code evidence to make a determination.
-    """
-
-    HONOURED = "honoured"
-    DRIFTED = "drifted"
-    SUPERSEDED = "superseded"
-    UNVERIFIABLE = "unverifiable"
-
-
-class DecisionReview(BaseModel):
-    """
-    Review outcome for a single architectural decision.
-
-    Produced by the agent after comparing the decision's rationale
-    against current source files.
-    """
-
-    decision_id: str = Field(description="Graph decision ID being reviewed.")
-    decision_title: str = Field(description="Human-readable decision title.")
-    status: DriftStatus = Field(description="Whether the decision is still honoured.")
-    evidence: str = Field(
-        description="Specific code evidence supporting the drift assessment."
-    )
-    drifted_files: list[str] = Field(
-        default_factory=list,
-        description="Files where the drift is visible.",
-    )
-    recommendation: str = Field(
-        description=(
-            "What to do: 'no action', 'update decision', 'fix code', "
-            "'open violation', or 'supersede decision'."
-        )
-    )
-    severity: str = Field(
-        default="minor",
-        description="How serious the drift is: 'info', 'minor', 'major', 'critical'.",
-    )
-
-
-class ReviewReport(BaseModel):
-    """
-    Complete decision review for a project.
-
-    Contains all individual decision reviews and a summary of
-    how many decisions are still being honoured vs drifted.
-    """
-
-    project_id: str = Field(description="Project this review belongs to.")
-    reviews: list[DecisionReview] = Field(default_factory=list)
-    summary: str = Field(description="Narrative overview of the review findings.")
-    honoured_count: int = Field(default=0)
-    drifted_count: int = Field(default=0)
-    unverifiable_count: int = Field(default=0)
-    partial_failure: bool = Field(default=False)
 
 
 ################
@@ -132,6 +63,7 @@ class DecisionDependencies:
     extra_file_context: str = ""
     _decision_state: list["DecisionReview"] = field(default_factory=list)
     reasoning_mode: str = ""
+
 
 ################
 #   AGENT
@@ -270,7 +202,7 @@ async def process_batch(
     Submit decision reviews and receive the next batch of file content to inspect.
 
     Pass an empty list for reviews_from_previous_batch on the first call.
-    Max 5 files requested at once. The returned file content informs your 
+    Max 5 files requested at once. The returned file content informs your
     ensuing reviews.
     """
     _get_state(ctx).extend(reviews_from_previous_batch)
@@ -342,5 +274,7 @@ def _compute_counts(reviews: list[DecisionReview]) -> dict:
     return {
         "honoured_count": sum(1 for r in reviews if r.status == DriftStatus.HONOURED),
         "drifted_count": sum(1 for r in reviews if r.status == DriftStatus.DRIFTED),
-        "unverifiable_count": sum(1 for r in reviews if r.status == DriftStatus.UNVERIFIABLE),
+        "unverifiable_count": sum(
+            1 for r in reviews if r.status == DriftStatus.UNVERIFIABLE
+        ),
     }

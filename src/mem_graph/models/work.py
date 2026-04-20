@@ -10,6 +10,7 @@ Provides typed I/O for work-management tools and task decomposition agents.
 from __future__ import annotations
 
 from enum import Enum
+from typing import Literal, TypeAlias
 
 from pydantic import BaseModel, Field
 
@@ -71,6 +72,15 @@ class DecisionStatus(str, Enum):
 
 ID_DESCRIPTION = "UUIDv7 node identifier."
 PROJECT_ID_DESCRIPTION = "Parent Project node ID."
+WorkTaskPhase: TypeAlias = Literal["planning", "red", "green", "refactor", "audit"]
+ViolationSeverity: TypeAlias = Literal[
+    "info",
+    "minor",
+    "major",
+    "critical",
+    "blocker",
+]
+ViolationStatus: TypeAlias = Literal["open", "recurrence", "resolved", "graduated"]
 
 
 ################
@@ -89,22 +99,24 @@ class TaskModel(BaseModel):
 
     id: str = Field(description=ID_DESCRIPTION)
     project_id: str = Field(description=PROJECT_ID_DESCRIPTION)
-    title: str = Field(description="Short imperative title, e.g. 'Add rate limiter'.")
+    title: str = Field(
+        description="Short imperative title that stays scannable in task lists, e.g. 'Add rate limiter'."
+    )
     description: str | None = Field(
         default=None,
-        description="Full description including acceptance criteria.",
+        description="Expanded task narrative including motivation, scope, and acceptance criteria.",
     )
     status: WorkTaskStatus = Field(
         default=WorkTaskStatus.PLANNING,
-        description="Current phase in the TDD lifecycle.",
+        description="Current lifecycle state of the task within the planning-to-delivery flow.",
     )
     priority: TaskPriority = Field(
         default=TaskPriority.MEDIUM,
-        description="Task priority for scheduling.",
+        description="Task priority used for scheduling and surfacing urgent work first.",
     )
-    phase: str | None = Field(
+    phase: WorkTaskPhase | None = Field(
         default=None,
-        description="Optional sprint or iteration phase label.",
+        description="Optional explicit TDD phase label when the task needs more precise sequencing than status alone.",
     )
 
 
@@ -119,18 +131,22 @@ class DecisionModel(BaseModel):
 
     id: str = Field(description=ID_DESCRIPTION)
     project_id: str = Field(description=PROJECT_ID_DESCRIPTION)
-    title: str = Field(description="Short decision title.")
-    context: str = Field(
-        description="What problem or situation prompted this decision."
+    title: str = Field(
+        description="Short decision title that can stand alone in reports and graph views."
     )
-    rationale: str = Field(description="Why this option was chosen over alternatives.")
+    context: str = Field(
+        description="What problem, constraint, or operational context prompted this decision."
+    )
+    rationale: str = Field(
+        description="Why this option was chosen over alternatives, including the trade-offs it optimizes for."
+    )
     alternatives: list[str] = Field(
         default_factory=list,
-        description="Other options that were considered and rejected.",
+        description="Other options that were considered and rejected, ideally with enough detail to explain the trade-off.",
     )
     status: DecisionStatus = Field(
         default=DecisionStatus.ACTIVE,
-        description="Whether this decision is still in effect.",
+        description="Whether this decision is active, superseded by a newer decision, or deprecated.",
     )
 
 
@@ -143,15 +159,48 @@ class ViolationModel(BaseModel):
 
     id: str = Field(description=ID_DESCRIPTION)
     project_id: str = Field(description=PROJECT_ID_DESCRIPTION)
-    audit_id: str | None = Field(default=None, description="Short human-readable ID.")
-    rule: str = Field(description="Rule ID that was violated.")
-    severity: str = Field(default="info", description="info | minor | major | critical | blocker")
-    file_path: str = Field(description="Path to the file containing the violation.")
-    line_start: int = Field(ge=1)
-    line_end: int = Field(ge=1)
-    description: str = Field(description="Detailed description of the violation.")
-    fingerprint: str | None = Field(default=None, description="Deduplication fingerprint.")
-    status: str = Field(default="open", description="open | recurrence | resolved | graduated")
-    detected_at: str | None = None
-    last_seen_at: str | None = None
-    resolved_at: str | None = None
+    audit_id: str | None = Field(
+        default=None,
+        description="Short human-readable identifier shown in reports or issue trackers, when available.",
+    )
+    rule: str = Field(
+        description="Stable rule identifier that describes the violated policy or audit check."
+    )
+    severity: ViolationSeverity = Field(
+        default="info",
+        description="Severity assigned to this violation after triage or audit classification.",
+    )
+    file_path: str = Field(
+        description="Repo-relative or absolute path to the file containing the violation."
+    )
+    line_start: int = Field(
+        ge=1,
+        description="1-indexed line where the violation begins, using the nearest relevant boundary when exact precision is unavailable.",
+    )
+    line_end: int = Field(
+        ge=1,
+        description="1-indexed line where the violation ends, which must be greater than or equal to line_start.",
+    )
+    description: str = Field(
+        description="Concrete explanation of what is wrong, why it matters, and what behavior or policy it violates."
+    )
+    fingerprint: str | None = Field(
+        default=None,
+        description="Stable deduplication fingerprint derived from the rule, file, and normalized code snippet.",
+    )
+    status: ViolationStatus = Field(
+        default="open",
+        description="Lifecycle state for this violation as it moves from detection through remediation.",
+    )
+    detected_at: str | None = Field(
+        default=None,
+        description="Timestamp when this violation was first detected, typically encoded as ISO-8601 text.",
+    )
+    last_seen_at: str | None = Field(
+        default=None,
+        description="Timestamp when this violation was most recently observed during a later audit or validation run.",
+    )
+    resolved_at: str | None = Field(
+        default=None,
+        description="Timestamp when the violation was marked resolved, if remediation has completed.",
+    )

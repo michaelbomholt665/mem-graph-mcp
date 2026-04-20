@@ -15,17 +15,19 @@ from __future__ import annotations
 ################
 #   IMPORTS
 ################
-
 import logging
 from dataclasses import dataclass, field
 
-from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
 from ...config import DEFER_AGENT_MODEL_CHECK, ModelTier, config_get_model_for_tier
+from ...models.agent_outputs import SentryReport, TestCaseProposal
 from ...resources.coding_standards import coding_standards_get_for_language
 from ...resources.personas import SENTRY_PERSONA
-from ...resources.prompts import build_tool_names_for_prompt, get_reasoning_mode_guidance
+from ...resources.prompts import (
+    build_tool_names_for_prompt,
+    get_reasoning_mode_guidance,
+)
 
 ################
 #   CONSTANTS
@@ -34,28 +36,6 @@ from ...resources.prompts import build_tool_names_for_prompt, get_reasoning_mode
 logger = logging.getLogger(__name__)
 
 _SENTRY_MODEL = config_get_model_for_tier(ModelTier.MICRO)
-
-################
-#   MODELS
-################
-
-
-class TestCaseProposal(BaseModel):
-    """A single failing test case the Sentry wants to add."""
-
-    file_path: str = Field(description="Repo-relative path to the test file.")
-    test_name: str = Field(description="Name of the failing test case.")
-    failing_assertion: str = Field(description="The assertion or expectation that should fail before the fix.")
-    rationale: str = Field(description="Why this test is needed before any code changes.")
-
-
-class SentryReport(BaseModel):
-    """Complete output from a Sentry Agent run."""
-
-    test_cases: list[TestCaseProposal] = Field(default_factory=list, description="Failing tests to write first.")
-    summary: str = Field(description="Narrative summary of the test strategy.")
-    framework: str = Field(description="Test framework identified from the manifest or repository context.")
-
 
 ################
 #   DEPS
@@ -114,13 +94,13 @@ async def sentry_build_instructions(ctx: RunContext[SentryDependencies]) -> str:
 {standards}
 
 ## Manifest Context
-{manifest_block or 'None provided.'}
+{manifest_block or "None provided."}
 
 ## Existing Violations (must be covered by red tests)
-{chr(10).join(f"  - {violation}" for violation in ctx.deps.context_violations) or '  - None'}
+{chr(10).join(f"  - {violation}" for violation in ctx.deps.context_violations) or "  - None"}
 
 ## Existing Decisions (respect these when writing tests)
-{chr(10).join(f"  - {decision}" for decision in ctx.deps.context_decisions) or '  - None'}
+{chr(10).join(f"  - {decision}" for decision in ctx.deps.context_decisions) or "  - None"}
 
 ## Test Architecture Rules
 - Draft the failing test first; do not propose production changes here.
@@ -139,7 +119,9 @@ async def sentry_read_file(
     file_path: str,
 ) -> str:
     """Return the pre-read content of a file for inspection."""
-    return ctx.deps.file_contents.get(file_path, f"ERROR: {file_path} not in provided context.")
+    return ctx.deps.file_contents.get(
+        file_path, f"ERROR: {file_path} not in provided context."
+    )
 
 
 @sentry_agent.tool  # Scope: agent-local only
@@ -170,7 +152,11 @@ async def sentry_finalize_plan(
 ) -> SentryReport:
     """Finalize the failing-test plan and produce the SentryReport."""
     test_cases = ctx.deps._sentry_tests
-    logger.info("Sentry planned %d test case(s) for %d file(s).", len(test_cases), len(ctx.deps.file_contents))
+    logger.info(
+        "Sentry planned %d test case(s) for %d file(s).",
+        len(test_cases),
+        len(ctx.deps.file_contents),
+    )
 
     return SentryReport(
         test_cases=test_cases,

@@ -13,18 +13,25 @@ from __future__ import annotations
 ################
 #   IMPORTS
 ################
-
 import logging
 from dataclasses import dataclass, field
-from enum import Enum
 
-from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
 from ...config import DEFER_AGENT_MODEL_CHECK, ModelTier, config_get_model_for_tier
+from ...models.agent_outputs import (
+    ValidationCheck,
+    ValidationReport,
+    ValidationSeverity,
+    ValidationStatus,
+    ValidationViolation,
+)
 from ...resources.coding_standards import coding_standards_get_for_language
 from ...resources.personas import GUARD_PERSONA
-from ...resources.prompts import build_tool_names_for_prompt, get_reasoning_mode_guidance
+from ...resources.prompts import (
+    build_tool_names_for_prompt,
+    get_reasoning_mode_guidance,
+)
 
 ################
 #   CONSTANTS
@@ -33,62 +40,6 @@ from ...resources.prompts import build_tool_names_for_prompt, get_reasoning_mode
 logger = logging.getLogger(__name__)
 
 _VALIDATION_MODEL = config_get_model_for_tier(ModelTier.STANDARD)
-
-################
-#   MODELS
-################
-
-
-class ValidationStatus(str, Enum):
-    """
-    Result of the validation gate.
-
-    APPROVED means the patch is safe to apply and sync to the graph.
-    REJECTED means one or more checks failed — the patch must be revised.
-    """
-
-    APPROVED = "approved"
-    REJECTED = "rejected"
-
-
-class ValidationViolation(BaseModel):
-    """
-    A single issue found during validation of a proposed patch.
-
-    Attributes:
-        file_path: File where the issue was detected.
-        check: Which validation check failed.
-        description: What is wrong with the proposed change.
-        severity: How critical this finding is for the approve/reject decision.
-    """
-
-    file_path: str = Field(description="File where the issue was detected.")
-    check: str = Field(
-        description="Check that failed: 'logic', 'style', 'naming', 'scope_exceeded'.",
-    )
-    description: str = Field(description="What is wrong and what must be corrected.")
-    severity: str = Field(
-        default="major",
-        description="Severity: critical, major, minor.",
-    )
-
-
-class ValidationReport(BaseModel):
-    """
-    Complete output from a Validation Agent run.
-
-    Contains the approve/reject decision, all validation violations found,
-    and a detailed rationale for the decision.
-    """
-
-    status: ValidationStatus = Field(description="APPROVED or REJECTED.")
-    violations: list[ValidationViolation] = Field(
-        default_factory=list,
-        description="Issues found during validation (empty when APPROVED).",
-    )
-    rationale: str = Field(description="Detailed explanation of the decision.")
-    files_checked: int = Field(description="Number of patch files inspected.")
-
 
 ################
 #   DEPS
@@ -156,7 +107,11 @@ async def validation_build_instructions(ctx: RunContext[ValidationDependencies])
         )
 
     tools_section = build_tool_names_for_prompt(
-        ["validation_inspect_patch", "validation_record_violation", "validation_finalize_decision"]
+        [
+            "validation_inspect_patch",
+            "validation_record_violation",
+            "validation_finalize_decision",
+        ]
     )
 
     return f"""{GUARD_PERSONA.get_system_instructions()}
@@ -207,9 +162,9 @@ async def validation_inspect_patch(
 async def validation_record_violation(
     ctx: RunContext[ValidationDependencies],
     file_path: str,
-    check: str,
+    check: ValidationCheck,
     description: str,
-    severity: str,
+    severity: ValidationSeverity,
 ) -> str:
     """
     Record a validation issue found during patch inspection.
@@ -228,7 +183,9 @@ async def validation_record_violation(
         file_path=file_path, check=check, description=description, severity=severity
     )
     ctx.deps._validation_violations.append(v)
-    logger.debug("Validation issue recorded: [%s] %s — %s", check, file_path, description)
+    logger.debug(
+        "Validation issue recorded: [%s] %s — %s", check, file_path, description
+    )
     return f"Issue recorded ({check}/{severity}) for `{file_path}`."
 
 
@@ -251,9 +208,7 @@ async def validation_finalize_decision(
         The completed ValidationReport with status and violations.
     """
     recorded = ctx.deps._validation_violations
-    status = (
-        ValidationStatus.APPROVED if not recorded else ValidationStatus.REJECTED
-    )
+    status = ValidationStatus.APPROVED if not recorded else ValidationStatus.REJECTED
 
     logger.info(
         "Validation %s: %d issue(s) across %d file(s).",

@@ -71,13 +71,17 @@ class AuditRule(BaseModel):
     """
 
     rule_id: str = Field(
-        description="Stable rule identifier, e.g. 'CWE-252' or 'lakehouse:frozen-schema'."
+        description="Stable rule identifier, e.g. 'CWE-252', 'security:sql-injection', or 'lakehouse:frozen-schema'."
     )
-    category: FindingCategory = Field(description="Category this rule belongs to.")
+    category: FindingCategory = Field(
+        description="Top-level category this rule belongs to, such as security, bug, or complexity."
+    )
     description: str = Field(
-        description="What this rule checks for. Written for LLM consumption — be specific."
+        description="What this rule checks for. Written for LLM consumption, so it should describe the failure mode precisely enough to support self-correction."
     )
-    severity: Severity = Field(description="Default severity when this rule fires.")
+    severity: Severity = Field(
+        description="Default severity when this rule fires, for example blocker for hardcoded secrets or major for unchecked errors."
+    )
     examples: list[str] = Field(
         default_factory=list,
         description="Short code snippets illustrating violations of this rule.",
@@ -107,10 +111,12 @@ class AuditFinding(BaseModel):
         description="Absolute or repo-relative path to the file containing this finding."
     )
     line_start: int = Field(
-        ge=1, description="First line of the problematic code block (1-indexed)."
+        ge=1,
+        description="1-indexed line where the finding begins. Use the nearest relevant statement or function boundary when exact precision is uncertain.",
     )
     line_end: int = Field(
-        ge=1, description="Last line of the problematic code block (1-indexed)."
+        ge=1,
+        description="1-indexed line where the finding ends. This must be greater than or equal to line_start.",
     )
 
     @model_validator(mode="after")
@@ -122,15 +128,15 @@ class AuditFinding(BaseModel):
         return self
 
     description: str = Field(
-        description="Clear explanation of what is wrong and why it matters."
+        description="Clear explanation of what is wrong, why it matters, and what concrete risk or failure mode it introduces."
     )
     suggested_fix: str = Field(
-        description="Concrete suggestion for how to resolve the finding."
+        description="Concrete replacement or remediation action to resolve the finding, not a vague recommendation."
     )
     code_snippet: Annotated[
         str | None,
         Field(
-            description="The offending code lines for inline report display.",
+            description="Literal offending code lines copied from the file for inline review; do not paraphrase or summarize.",
             default=None,
         ),
     ]
@@ -152,7 +158,9 @@ class FileAuditResult(BaseModel):
     loop. Aggregated into AuditReport at the end of the run.
     """
 
-    file_path: str = Field(description="Path to the analysed file.")
+    file_path: str = Field(
+        description="Path to the analysed file as presented to the audit agent and downstream report writers."
+    )
     findings: list[AuditFinding] = Field(
         default_factory=list,
         description="All findings identified in this file.",
@@ -163,7 +171,7 @@ class FileAuditResult(BaseModel):
     )
     skip_reason: str | None = Field(
         default=None,
-        description="Reason for skipping, populated only when skipped=True.",
+        description="Reason the file was skipped, populated only when skipped=True so downstream summaries can explain partial coverage.",
     )
 
 
@@ -174,17 +182,27 @@ class AuditStats(BaseModel):
     Provides a quick overview without iterating over all findings.
     """
 
-    total_files_analysed: int
-    total_files_skipped: int
-    total_findings: int
+    total_files_analysed: int = Field(
+        description="Count of files fully analysed during the audit run."
+    )
+    total_files_skipped: int = Field(
+        description="Count of files skipped because of read failures, size limits, or explicit exclusions."
+    )
+    total_findings: int = Field(
+        description="Total number of findings produced across all successfully analysed files."
+    )
     by_severity: dict[str, int] = Field(
-        description="Finding count keyed by Severity value."
+        description="Finding count keyed by Severity value so reports can summarize risk distribution quickly."
     )
     by_category: dict[str, int] = Field(
-        description="Finding count keyed by FindingCategory value."
+        description="Finding count keyed by FindingCategory value for grouping bugs, leaks, security issues, and other classes."
     )
-    blocker_count: int
-    critical_count: int
+    blocker_count: int = Field(
+        description="Number of blocker-severity findings that should stop a release or require immediate attention."
+    )
+    critical_count: int = Field(
+        description="Number of critical-severity findings that demand urgent remediation but may not hard-block execution."
+    )
 
 
 class AuditReport(BaseModel):
@@ -196,9 +214,11 @@ class AuditReport(BaseModel):
     and a flag indicating whether any tool calls failed during the run.
     """
 
-    package_path: str = Field(description="Root path that was audited.")
+    package_path: str = Field(
+        description="Root path or package identifier that scoped the audit run."
+    )
     summary: str = Field(
-        description="Human-readable narrative summary of the audit findings."
+        description="Human-readable narrative summary of the audit findings, including the most important risks and overall cleanliness of the target."
     )
     file_results: list[FileAuditResult] = Field(
         default_factory=list,
@@ -206,7 +226,7 @@ class AuditReport(BaseModel):
     )
     stats: AuditStats = Field(description="Aggregated finding counts.")
     rules_applied: list[str] = Field(
-        description="Rule IDs that were active during this audit run."
+        description="Rule IDs that were active during this audit run, in the order they were supplied to the audit agent."
     )
     partial_failure: bool = Field(
         default=False,

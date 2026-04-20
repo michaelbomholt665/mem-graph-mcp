@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+from time import perf_counter
 
 import pytest
 from starlette.requests import Request
 
 from mem_graph.evals import build_suite_registry
 from mem_graph.evals.evaluator import Evaluator, main, write_json_report
+from mem_graph.evals.scorers import exact_match_score
+from mem_graph.models.evals import EvalCase, EvalSuite, SuiteBinding
 
 
 def _request(path: str = "/", query: str = "") -> Request:
@@ -28,14 +31,27 @@ async def test_fixture_eval_registry_runs_all_suites() -> None:
     registry = build_suite_registry(mode="fixture")
     report = await Evaluator().run_report(registry, mode="fixture")
 
-    assert report.total_suites == 5
-    assert report.passed_suites == 5
+    assert report.total_suites == 18
+    assert report.passed_suites == 18
     assert {suite.suite_name for suite in report.suite_results} == {
         "audit",
+        "chat",
         "document",
         "fix",
         "map",
+        "orchestrator",
+        "router",
+        "rule_injector",
+        "sentry",
+        "skill_go_quality",
+        "skill_python_quality",
+        "skill_security",
+        "skill_typescript_quality",
+        "triage",
         "validate",
+        "workflow_autopilot",
+        "workflow_feature_implementation",
+        "workflow_package_audit",
     }
     assert all(
         case.passed for suite in report.suite_results for case in suite.case_results
@@ -82,7 +98,7 @@ async def test_eval_report_can_be_written_and_persisted(db, tmp_path) -> None:
     payload = json.loads(
         (tmp_path / "reports" / "fixture.json").read_text(encoding="utf-8")
     )
-    assert payload["total_suites"] == 5
+    assert payload["total_suites"] == 18
     assert output_path.endswith("fixture.json")
 
     project = await project_create(name="Eval Project", description="Tracks eval runs")
@@ -103,7 +119,7 @@ async def test_eval_report_can_be_written_and_persisted(db, tmp_path) -> None:
         {"project_id": project["project_id"], "eval_run_id": eval_run_id},
     )
     rows = result.get_all()
-    assert rows == [["fixture", 5, 5, output_path, "fixture-ci", "pytest", None]]
+    assert rows == [["fixture", 18, 18, output_path, "fixture-ci", "pytest", None]]
 
     from mem_graph import server as server_mod
 
@@ -120,8 +136,6 @@ async def test_eval_report_can_be_written_and_persisted(db, tmp_path) -> None:
 @pytest.mark.asyncio
 @pytest.mark.evals
 async def test_tier_comparison_assertions_can_use_stable_bindings() -> None:
-    from mem_graph.models.evals import EvalCase, EvalSuite, SuiteBinding
-
     suite = EvalSuite(
         suite_name="tier-comparison",
         agent_name="fixture",
@@ -161,3 +175,112 @@ async def test_tier_comparison_assertions_can_use_stable_bindings() -> None:
     )
 
     assert quick_report.suite_pass_rate < expert_report.suite_pass_rate
+
+
+@pytest.mark.asyncio
+@pytest.mark.evals
+async def test_evaluator_respects_case_timeout_override() -> None:
+    suite = EvalSuite(
+        suite_name="timeout",
+        agent_name="fixture",
+        description="Timeout handling",
+        default_scorer="exact",
+        default_runs=1,
+        cases=[
+            EvalCase(
+                case_id="timeout-case",
+                description="Runner should time out.",
+                prompt="wait",
+                expected_output="done",
+                scorer="exact",
+                timeout_s=0.01,
+            )
+        ],
+    )
+
+    async def slow_runner(case: EvalCase) -> str:
+        del case
+        await asyncio.sleep(0.05)
+        return "done"
+
+    report = await Evaluator().run_report(
+        {"timeout": SuiteBinding(suite=suite, runner=slow_runner)},
+        mode="fixture",
+    )
+
+    failure = report.suite_results[0].case_results[0].failure_details[0]
+    assert "0.01s" in failure.reason
+
+
+@pytest.mark.asyncio
+@pytest.mark.evals
+async def test_evaluator_runs_cases_in_parallel() -> None:
+    suite = EvalSuite(
+        suite_name="parallel",
+        agent_name="fixture",
+        description="Parallel execution coverage.",
+        default_scorer="exact",
+        default_runs=1,
+        max_case_concurrency=4,
+        cases=[
+            EvalCase(
+                case_id=f"case-{index}",
+                description="Parallel case.",
+                prompt="approved",
+                expected_output="approved",
+                scorer="exact",
+            )
+            for index in range(4)
+        ],
+    )
+
+    async def slow_runner(case: EvalCase) -> str:
+        del case
+        await asyncio.sleep(0.1)
+        return "approved"
+
+    started = perf_counter()
+    report = await Evaluator().run_report(
+        {"parallel": SuiteBinding(suite=suite, runner=slow_runner)},
+        mode="fixture",
+    )
+    elapsed = perf_counter() - started
+
+    assert report.passed_suites == 1
+    assert elapsed < 0.25
+
+
+def test_text_normalization_handles_unicode_equivalents() -> None:
+    assert exact_match_score("Cafe\u0301", "Café") == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.evals
+async def test_invalid_regex_suite_fails_fast() -> None:
+    suite = EvalSuite(
+        suite_name="invalid-regex",
+        agent_name="fixture",
+        description="Regex validation",
+        default_scorer="regex",
+        default_runs=1,
+        cases=[
+            EvalCase(
+                case_id="regex-case",
+                description="Bad regex.",
+                prompt="test",
+                expected_pattern="[unterminated",
+                scorer="regex",
+            )
+        ],
+    )
+
+    async def quick_runner(case: EvalCase) -> str:
+        del case
+        await asyncio.sleep(0)
+        return "test"
+
+    with pytest.raises(ValueError, match="Invalid regex"):
+        await Evaluator().run_report(
+            {"invalid-regex": SuiteBinding(suite=suite, runner=quick_runner)},
+            mode="fixture",
+        )

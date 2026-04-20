@@ -5,19 +5,24 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
 from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 
-from ..models.evals import EvalCase, ScorerName
+from ..models.evals import EvalCase, EvalSuite, ScorerName
 
 logger = logging.getLogger(__name__)
 
 
 def _normalize_text(value: str) -> str:
-    return " ".join(value.strip().lower().split())
+    normalized = unicodedata.normalize("NFKD", value)
+    without_marks = "".join(
+        char for char in normalized if unicodedata.category(char) != "Mn"
+    )
+    return " ".join(without_marks.strip().lower().split())
 
 
 def exact_match_score(output: str, expected: str) -> float:
@@ -64,6 +69,26 @@ def regex_score(output: str, pattern: str) -> float:
         logger.warning("Invalid regex pattern %r: %s", pattern, exc)
         return 0.0
     return 1.0 if compiled.search(output) else 0.0
+
+
+def validate_suite_configuration(suite: EvalSuite) -> None:
+    """Fail fast when a suite contains invalid regex configuration."""
+
+    for case in suite.cases:
+        scorer = case.scorer or suite.default_scorer
+        if scorer != "regex":
+            continue
+        pattern = case.expected_pattern or ""
+        if not pattern:
+            raise ValueError(
+                f"Eval suite '{suite.suite_name}' case '{case.case_id}' uses regex scoring without expected_pattern."
+            )
+        try:
+            _compile_pattern(pattern)
+        except re.error as exc:
+            raise ValueError(
+                f"Invalid regex in eval suite '{suite.suite_name}' case '{case.case_id}': {pattern!r}"
+            ) from exc
 
 
 def _semantic_token_overlap(output: str, expected: str) -> float:

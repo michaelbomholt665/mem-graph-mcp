@@ -9,7 +9,7 @@ from pydantic_evals import Case, Dataset
 
 from ..agents.map.map_agent import MapDependencies, MapReport, map_agent
 from ..models.evals import EvalCase, EvalMode, EvalSuite, ScorerName, SuiteBinding
-from .fixtures import format_preloaded_files, load_graph_fixtures
+from .fixtures import fixture_output_for, format_preloaded_files, load_graph_fixtures
 from .scorers import HostedTextScorer
 
 
@@ -34,6 +34,7 @@ class MapMeta:
     expected_pattern: str | None
     tags: list[str]
     source: str = "synthetic"
+
 
 _GRAPH_FIXTURES = load_graph_fixtures()["map"]
 
@@ -103,7 +104,7 @@ def _render_map_report(report: MapReport) -> str:
 
 async def _run_fixture(case: EvalCase) -> str:
     await asyncio.sleep(0)
-    return _FIXTURE_OUTPUTS[case.case_id]
+    return fixture_output_for(_FIXTURE_OUTPUTS, case.case_id, suite_name="map")
 
 
 async def _run_live(case: EvalCase) -> str:

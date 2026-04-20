@@ -80,7 +80,7 @@ class TextEmbedService(EmbedClientBase):
         if len(bounded_jql) > 500:
             raise ValueError("JQL must be 500 characters or fewer.")
 
-        async def _fetch():
+        async def _fetch() -> dict[str, Any]:
             headers = {"Accept": "application/json"}
             client_kwargs: dict[str, Any] = {
                 "base_url": self.jina_url,

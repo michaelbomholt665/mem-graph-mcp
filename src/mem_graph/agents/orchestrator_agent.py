@@ -24,10 +24,23 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 import anyio
-from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
 from ..config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK
+from ..models.agent_outputs import (
+    AuditAggregate,
+    BatchFileContent,
+    BatchResult,
+    DecisionAggregate,
+    GenericAggregate,
+    GenericBatchOutput,
+    MapAggregate,
+    MapReport,
+    OrchestratorReport,
+    ReviewReport,
+    SubagentBatchOutput,
+)
+from ..models.audit import AuditReport
 
 ################
 #   CONSTANTS
@@ -39,64 +52,6 @@ _DEFAULT_TIMEOUT = 120.0
 _MAX_FILE_BYTES = 64_000
 
 logger = logging.getLogger(__name__)
-
-
-################
-#   MODELS
-################
-
-
-class BatchFileContent(BaseModel):
-    """
-    A single file's path and content for passing into a batch.
-
-    Content is pre-read by the orchestrator so sub-agents receive
-    everything they need without additional file I/O tool calls.
-    """
-
-    path: str = Field(description="Absolute path to the file.")
-    content: str = Field(description="File content, truncated if over size limit.")
-    truncated: bool = Field(default=False, description="True if content was truncated.")
-
-
-class BatchResult(BaseModel):
-    """
-    Aggregated result from one batch of sub-agent invocations.
-
-    Carries the raw sub-agent output alongside batch metadata so the
-    aggregation step can track provenance.
-    """
-
-    batch_index: int = Field(description="Zero-based index of this batch.")
-    files_processed: list[str] = Field(description="Paths processed in this batch.")
-    output: Any = Field(description="Raw output from the sub-agent.")
-    failed: bool = Field(
-        default=False, description="True if sub-agent failed this batch."
-    )
-    error: str | None = Field(default=None, description="Error message on failure.")
-
-
-class OrchestratorReport(BaseModel):
-    """
-    Final aggregated output from an orchestrator run.
-
-    Contains per-batch results, a merged aggregate, and run metadata.
-    The aggregate structure depends on the sub-agent type — audit
-    produces merged findings, map produces merged features, etc.
-    """
-
-    package_path: str
-    subagent_name: str
-    total_files: int
-    total_batches: int
-    failed_batches: int = Field(default=0)
-    batch_results: list[BatchResult] = Field(default_factory=list)
-    aggregate: dict = Field(
-        default_factory=dict,
-        description="Merged output across all batches, keyed by sub-agent output type.",
-    )
-    summary: str = Field(description="Narrative summary of the orchestration run.")
-    partial_failure: bool = Field(default=False)
 
 
 ################
@@ -282,7 +237,7 @@ def finalize(
         total_batches=len(batch_results),
         failed_batches=failed,
         batch_results=batch_results,
-        aggregate=ctx.deps.aggregate,
+        aggregate=_build_aggregate(ctx.deps.subagent_name, ctx.deps.aggregate),
         summary=summary,
         partial_failure=failed > 0,
     )
@@ -343,7 +298,7 @@ async def run_orchestrator_batches(
         total_batches=len(deps.batch_results),
         failed_batches=failed,
         batch_results=list(deps.batch_results),
-        aggregate=dict(deps.aggregate),
+        aggregate=_build_aggregate(deps.subagent_name, deps.aggregate),
         summary=final_summary,
         partial_failure=failed > 0,
     )
@@ -371,7 +326,7 @@ async def _invoke_subagent(
         return BatchResult(
             batch_index=batch_index,
             files_processed=paths,
-            output=output,
+            output=_coerce_batch_output(output),
         )
 
     except TimeoutError:
@@ -397,7 +352,7 @@ async def _invoke_subagent(
 async def _dispatch(
     deps: OrchestratorDependencies | RunContext[OrchestratorDependencies],
     file_contents: list[BatchFileContent],
-) -> Any:
+) -> SubagentBatchOutput:
     """
     Route to the correct sub-agent based on subagent_name.
 
@@ -421,7 +376,7 @@ async def _dispatch(
 def _find_project_helper_runner(
     deps: OrchestratorDependencies,
     name: str,
-) -> dict[str, Any] | None:
+) -> GenericBatchOutput | None:
     """
     Resolve a project-specific helper-agent spec for orchestration.
 
@@ -440,14 +395,16 @@ def _find_project_helper_runner(
 
     if spec is None:
         return None
-    return {
-        "helper_agent": spec.model_dump(mode="json"),
-        "status": "spec_discovered",
-        "message": (
-            "Project helper-agent spec found. Runtime execution is pending "
-            "a concrete helper-agent adapter."
-        ),
-    }
+    return GenericBatchOutput(
+        payload={
+            "helper_agent": spec.model_dump(mode="json"),
+            "status": "spec_discovered",
+            "message": (
+                "Project helper-agent spec found. Runtime execution is pending "
+                "a concrete helper-agent adapter."
+            ),
+        }
+    )
 
 
 async def _run_audit_batch(
@@ -595,6 +552,8 @@ def _merge_into_aggregate(
         _merge_map(aggregate, result.output)
     elif subagent_name == "decision":
         _merge_decision(aggregate, result.output)
+    elif isinstance(result.output, GenericBatchOutput):
+        aggregate.setdefault("payload", {}).update(result.output.payload)
 
 
 def _merge_audit(aggregate: dict, output: Any) -> None:
@@ -734,10 +693,46 @@ def _summarise_orchestration(
         )
     elif subagent_name == "decision":
         details = f" reviews={len(aggregate.get('reviews', []))}"
+    elif aggregate.get("payload"):
+        details = f" keys={len(aggregate.get('payload', {}))}"
     return (
         f"{status}: {subagent_name} processed {total_files} file(s) "
         f"across {total_batches} batch(es); failed_batches={failed_batches}.{details}"
     )
+
+
+def _coerce_batch_output(output: Any) -> SubagentBatchOutput:
+    if isinstance(output, (AuditReport, MapReport, ReviewReport, GenericBatchOutput)):
+        return output
+    if isinstance(output, dict):
+        return GenericBatchOutput(payload=output)
+    if output is None:
+        return GenericBatchOutput(payload={})
+    return GenericBatchOutput(payload={"value": str(output)})
+
+
+def _build_aggregate(
+    subagent_name: str,
+    aggregate: dict[str, Any],
+) -> AuditAggregate | MapAggregate | DecisionAggregate | GenericAggregate:
+    if subagent_name == "audit":
+        return AuditAggregate(
+            all_findings=list(aggregate.get("all_findings", [])),
+            files_analysed=int(aggregate.get("files_analysed", 0)),
+            files_skipped=int(aggregate.get("files_skipped", 0)),
+        )
+    if subagent_name == "map":
+        return MapAggregate(
+            features=list(aggregate.get("features", [])),
+            relationships=list(aggregate.get("relationships", [])),
+            entry_points=list(dict.fromkeys(aggregate.get("entry_points", []))),
+        )
+    if subagent_name == "decision":
+        return DecisionAggregate(
+            reviews=list(aggregate.get("reviews", [])),
+            drifted=list(dict.fromkeys(aggregate.get("drifted", []))),
+        )
+    return GenericAggregate(payload=dict(aggregate.get("payload", {})))
 
 
 def _format_file_block(file_contents: list[BatchFileContent]) -> str:
@@ -765,12 +760,12 @@ def _summarise_batch_result(result: BatchResult, subagent_name: str) -> str:
         return f"Error: {result.error}"
 
     output = result.output
-    if subagent_name == "audit" and hasattr(output, "stats"):
+    if subagent_name == "audit" and isinstance(output, AuditReport):
         return f"{output.stats.total_findings} finding(s) — {output.stats.blocker_count} blocker(s)."
-    if subagent_name == "map" and hasattr(output, "features"):
+    if subagent_name == "map" and isinstance(output, MapReport):
         return f"{len(output.features)} feature(s), {len(output.relationships)} relationship(s) mapped."
-    if subagent_name == "decision" and hasattr(output, "reviews"):
-        drifted = sum(1 for r in output.reviews if r.status.value == "drifted")
+    if subagent_name == "decision" and isinstance(output, ReviewReport):
+        drifted = sum(review.status.value == "drifted" for review in output.reviews)
         return f"{len(output.reviews)} decision(s) reviewed — {drifted} drifted."
 
     return "Completed."
