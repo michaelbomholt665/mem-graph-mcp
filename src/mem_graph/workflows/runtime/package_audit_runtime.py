@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
+from pydantic_ai.usage import RunUsage
 from pydantic_graph import BaseNode, End, Graph, GraphRunContext
 
 from ...resources.workflows.selector import select_all
@@ -163,6 +164,11 @@ class PackageAuditState(BaseModel):
     # AggregateNode output
     report: PackageAuditReport | None = None
 
+    # Accumulated sub-agent usage across all chunks.
+    usage_requests: int = 0
+    usage_input_tokens: int = 0
+    usage_output_tokens: int = 0
+
 
 ################
 #   FILE DISCOVERY
@@ -228,11 +234,17 @@ async def _analyze_chunk(
     package: str,
     *,
     execute_agents: bool,
+    chunk_usage: RunUsage | None = None,
 ) -> list[ChunkFinding]:
     """Analyze a single chunk of files and return findings.
 
     When execute_agents is True, delegates to the audit agent.
     Otherwise returns an empty findings list (dry-run for testing).
+
+    Delegate handoff contract:
+    - prompt: pre-formatted file block; agent must NOT re-read files from disk
+    - deps: AuditDependencies in "preloaded" mode with extra_file_context set
+    - usage: chunk_usage threaded through for canonical per-job aggregation
     """
     if not execute_agents:
         return []
@@ -253,6 +265,7 @@ async def _analyze_chunk(
             f"Audit this chunk of {len(chunk)} file(s) from package '{package}'. "
             "Return an AuditReport with all findings.",
             deps=deps,
+            usage=chunk_usage,
         )
         report = result.output
         findings: list[ChunkFinding] = []
@@ -367,14 +380,19 @@ class AnalyzeNode(BaseNode[PackageAuditState, None, PackageAuditReport]):
                     len(chunk),
                 )
                 file_contents = _read_files_async(chunk)
+                chunk_usage = RunUsage()
                 chunk_findings = await _analyze_chunk(
                     chunk,
                     file_contents,
                     pkg_path,
                     execute_agents=ctx.state.execute_agents,
+                    chunk_usage=chunk_usage,
                 )
                 pkg_findings.extend(chunk_findings)
                 ctx.state.total_chunks_processed += 1
+                ctx.state.usage_requests += chunk_usage.requests
+                ctx.state.usage_input_tokens += chunk_usage.input_tokens or 0
+                ctx.state.usage_output_tokens += chunk_usage.output_tokens or 0
 
             ctx.state.package_findings[pkg_path] = pkg_findings
         return AggregateNode()

@@ -62,6 +62,11 @@ class ManagedWorkflowState(BaseModel):
     blockers: list[str] = Field(default_factory=list)
     final_report: str = ""
 
+    # Accumulated sub-agent usage across all stages.
+    usage_requests: int = 0
+    usage_input_tokens: int = 0
+    usage_output_tokens: int = 0
+
 
 _READ_TOOLS = ["file_read", "file_search", "file_grep"]
 _WRITE_TOOLS = ["file_read", "file_search", "file_grep", "file_edit", "file_write"]
@@ -110,12 +115,18 @@ class ImplementationNode(BaseNode[ManagedWorkflowState, None, ManagedWorkflowSta
                     ),
                     project_id=ctx.state.project_id,
                 )
+                # Delegate handoff: fixer_agent receives file_contents pre-read in
+                # ContextGatherNode. Agent implements the objective via patches.
                 result = await fixer_agent.run(
                     "Implement the requested change using the provided file context. "
                     "Return a FixerReport.",
                     deps=deps,
                 )
                 ctx.state.implementation_output = result.output.model_dump(mode="json")
+                u = result.usage()
+                ctx.state.usage_requests += u.requests
+                ctx.state.usage_input_tokens += u.input_tokens or 0
+                ctx.state.usage_output_tokens += u.output_tokens or 0
             except Exception as exc:  # noqa: BLE001
                 ctx.state.blockers.append(f"implementation: {exc}")
         _record_stage(ctx.state, "implementation", _WRITE_TOOLS)
@@ -138,11 +149,17 @@ class AuditNode(BaseNode[ManagedWorkflowState, None, ManagedWorkflowState]):
                     extra_file_context=_format_file_context(ctx.state.file_contents),
                     mode="preloaded",
                 )
+                # Delegate handoff: audit_agent receives pre-formatted file context
+                # via extra_file_context in "preloaded" mode — no disk access.
                 result = await audit_agent.run(
                     "Audit the current workflow file context and return an AuditReport.",
                     deps=deps,
                 )
                 ctx.state.audit_output = result.output.model_dump(mode="json")
+                u = result.usage()
+                ctx.state.usage_requests += u.requests
+                ctx.state.usage_input_tokens += u.input_tokens or 0
+                ctx.state.usage_output_tokens += u.output_tokens or 0
             except Exception as exc:  # noqa: BLE001
                 ctx.state.blockers.append(f"audit: {exc}")
         _record_stage(ctx.state, "audit", _READ_TOOLS)
@@ -191,12 +208,18 @@ class DocumentationNode(BaseNode[ManagedWorkflowState, None, ManagedWorkflowStat
                     language="python",
                     file_contents=patch_contents or ctx.state.file_contents,
                 )
+                # Delegate handoff: scribe_agent receives implementation patch contents
+                # (or file_contents if no patches). Agent must NOT modify logic.
                 result = await scribe_agent.run(
                     "Review documentation and style for the current workflow output. "
                     "Return a ScribeReport.",
                     deps=deps,
                 )
                 ctx.state.documentation_output = result.output.model_dump(mode="json")
+                u = result.usage()
+                ctx.state.usage_requests += u.requests
+                ctx.state.usage_input_tokens += u.input_tokens or 0
+                ctx.state.usage_output_tokens += u.output_tokens or 0
             except Exception as exc:  # noqa: BLE001
                 ctx.state.blockers.append(f"documentation: {exc}")
         _record_stage(ctx.state, "documentation", _WRITE_TOOLS)
@@ -218,11 +241,17 @@ class ContextMapUpdateNode(BaseNode[ManagedWorkflowState, None, ManagedWorkflowS
                     package_path=".",
                     extra_file_context=_format_file_context(ctx.state.file_contents),
                 )
+                # Delegate handoff: map_agent receives pre-formatted file context
+                # via extra_file_context in "preloaded" mode — no disk access.
                 result = await map_agent.run(
                     "Map the workflow file context and return a MapReport.",
                     deps=deps,
                 )
                 ctx.state.context_map_output = result.output.model_dump(mode="json")
+                u = result.usage()
+                ctx.state.usage_requests += u.requests
+                ctx.state.usage_input_tokens += u.input_tokens or 0
+                ctx.state.usage_output_tokens += u.output_tokens or 0
             except Exception as exc:  # noqa: BLE001
                 ctx.state.blockers.append(f"context_map_update: {exc}")
         _record_stage(ctx.state, "context_map_update", _WRITE_TOOLS)

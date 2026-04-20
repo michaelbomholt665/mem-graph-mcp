@@ -25,6 +25,7 @@ from typing import Any, Awaitable, Callable
 
 import anyio
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.usage import RunUsage, UsageLimits
 
 from ..config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK
 from ..models.agent_outputs import (
@@ -41,6 +42,7 @@ from ..models.agent_outputs import (
     SubagentBatchOutput,
 )
 from ..models.audit import AuditReport
+from .tooling import require_max_items
 
 ################
 #   CONSTANTS
@@ -79,12 +81,13 @@ class OrchestratorDependencies:
     timeout: float = _DEFAULT_TIMEOUT
     skills_content: str = ""
     extra_context: dict = field(default_factory=dict)
+    usage_limits: UsageLimits | None = None
     batch_results: list[BatchResult] = field(default_factory=list)
     aggregate: dict[str, Any] = field(default_factory=dict)
 
 
 SubagentRunner = Callable[
-    [OrchestratorDependencies, list[BatchFileContent]],
+    [OrchestratorDependencies, list[BatchFileContent], RunUsage | None],
     Awaitable[Any],
 ]
 
@@ -177,7 +180,8 @@ async def process_batch(
     Results are stored in working state for aggregation by finalize.
     Call this once per batch before moving to the next group of files.
     """
-    capped_paths = file_paths[: ctx.deps.batch_size]
+    require_max_items("file_paths", file_paths, limit=ctx.deps.batch_size)
+    capped_paths = list(file_paths)
     batch_index = len(ctx.deps.batch_results)
 
     logger.info(
@@ -253,6 +257,7 @@ async def run_orchestrator_batches(
     *,
     summary: str | None = None,
     progress_callback: Callable[[int, int, BatchResult], Awaitable[None]] | None = None,
+    usage: RunUsage | None = None,
 ) -> OrchestratorReport:
     """
     Run the full batched orchestration workflow deterministically.
@@ -260,7 +265,20 @@ async def run_orchestrator_batches(
     Python owns file discovery, batch ordering, sub-agent dispatch, aggregation,
     and final report construction. The LLM sub-agents only reason over the
     pre-read batch content they receive.
+
+    Args:
+        deps: OrchestratorDependencies controlling the run.
+        summary: Optional pre-composed summary. Auto-generated when omitted.
+        progress_callback: Optional async callback invoked after each batch.
+        usage: Optional shared RunUsage object. When provided, token counts from
+            every nested sub-agent run are accumulated into this object, enabling
+            canonical per-job usage aggregation (task 039 — multi-agent usage).
+            Pass a ``RunUsage()`` instance from the call site and inspect it after
+            the function returns.
     """
+    # Canonical usage aggregation: one RunUsage object for the entire job.
+    job_usage = usage if usage is not None else RunUsage()
+
     deps.batch_results.clear()
     deps.aggregate.clear()
 
@@ -276,7 +294,9 @@ async def run_orchestrator_batches(
             len(batch_paths),
         )
         file_contents = await _read_batch(batch_paths)
-        result = await _invoke_subagent(deps, batch_index, file_contents)
+        result = await _invoke_subagent(
+            deps, batch_index, file_contents, job_usage=job_usage
+        )
         deps.batch_results.append(result)
         _merge_into_aggregate(deps.aggregate, result, deps.subagent_name)
         if progress_callback is not None:
@@ -290,6 +310,15 @@ async def run_orchestrator_batches(
         len(deps.batch_results),
         failed,
         deps.aggregate,
+    )
+    logger.info(
+        "[ORCH] job complete subagent=%s total_files=%d requests=%d "
+        "input_tokens=%d output_tokens=%d",
+        deps.subagent_name,
+        total_files,
+        job_usage.requests,
+        job_usage.input_tokens,
+        job_usage.output_tokens,
     )
     return OrchestratorReport(
         package_path=deps.package_path,
@@ -308,12 +337,20 @@ async def _invoke_subagent(
     deps: OrchestratorDependencies | RunContext[OrchestratorDependencies],
     batch_index: int,
     file_contents: list[BatchFileContent],
+    job_usage: RunUsage | None = None,
 ) -> BatchResult:
     """
     Dispatch a batch to the appropriate sub-agent.
 
     Routes to audit, map, or decision agent based on subagent_name.
     Runs with a timeout and catches failures to allow partial runs.
+
+    Delegate handoff contract:
+    - prompt: preloaded file context formatted as a single block string
+    - deps: agent-specific deps with ``extra_file_context`` set to the file block
+    - mode: "preloaded" — delegate must NOT re-read files from disk
+    - usage: ``job_usage`` passed through so all nested runs share the canonical
+      per-job RunUsage accumulator (task 039 usage propagation).
     """
     if isinstance(deps, RunContext):
         deps = deps.deps
@@ -321,7 +358,7 @@ async def _invoke_subagent(
 
     try:
         with anyio.fail_after(deps.timeout):
-            output = await _dispatch(deps, file_contents)
+            output = await _dispatch(deps, file_contents, job_usage=job_usage)
 
         return BatchResult(
             batch_index=batch_index,
@@ -352,6 +389,7 @@ async def _invoke_subagent(
 async def _dispatch(
     deps: OrchestratorDependencies | RunContext[OrchestratorDependencies],
     file_contents: list[BatchFileContent],
+    job_usage: RunUsage | None = None,
 ) -> SubagentBatchOutput:
     """
     Route to the correct sub-agent based on subagent_name.
@@ -364,7 +402,7 @@ async def _dispatch(
     name = deps.subagent_name
     runner = SUBAGENT_REGISTRY.get(name)
     if runner is not None:
-        return await runner(deps, file_contents)
+        return await runner(deps, file_contents, job_usage)
     project_helper = _find_project_helper_runner(deps, name)
     if project_helper is not None:
         return project_helper
@@ -410,6 +448,7 @@ def _find_project_helper_runner(
 async def _run_audit_batch(
     deps: OrchestratorDependencies,
     file_contents: list[BatchFileContent],
+    job_usage: RunUsage | None = None,
 ) -> Any:
     """
     Run the audit agent on a batch of pre-read files.
@@ -417,13 +456,14 @@ async def _run_audit_batch(
     Injects file content via skills_content so the agent has all
     files available without additional read tool calls.
     """
-    return await _run_audit_rule_set_batch(deps, file_contents, "default")
+    return await _run_audit_rule_set_batch(deps, file_contents, "default", job_usage)
 
 
 async def _run_audit_rule_set_batch(
     deps: OrchestratorDependencies,
     file_contents: list[BatchFileContent],
     rule_set: str,
+    job_usage: RunUsage | None = None,
 ) -> Any:
     """Run a preloaded audit batch with a named audit rule set."""
     from .audit.factory import build_audit_agent_bundle
@@ -441,43 +481,57 @@ async def _run_audit_rule_set_batch(
         f"Analyse these {len(file_contents)} files against the rules checklist. "
         "The file contents are provided in extra_file_context. Return an AuditReport."
     )
-    result = await bundle.agent.run(prompt, deps=bundle.deps)
+    result = await bundle.agent.run(
+        prompt,
+        deps=bundle.deps,
+        usage=job_usage,
+        usage_limits=deps.usage_limits,
+    )
     return result.output
 
 
 async def _run_security_audit_batch(
     deps: OrchestratorDependencies,
     file_contents: list[BatchFileContent],
+    job_usage: RunUsage | None = None,
 ) -> Any:
     """Run security-focused preloaded audit."""
-    return await _run_audit_rule_set_batch(deps, file_contents, "security")
+    return await _run_audit_rule_set_batch(deps, file_contents, "security", job_usage)
 
 
 async def _run_bug_audit_batch(
     deps: OrchestratorDependencies,
     file_contents: list[BatchFileContent],
+    job_usage: RunUsage | None = None,
 ) -> Any:
     """Run correctness/bug-focused preloaded audit."""
-    return await _run_audit_rule_set_batch(deps, file_contents, "bug")
+    return await _run_audit_rule_set_batch(deps, file_contents, "bug", job_usage)
 
 
 async def _run_smell_audit_batch(
     deps: OrchestratorDependencies,
     file_contents: list[BatchFileContent],
+    job_usage: RunUsage | None = None,
 ) -> Any:
     """Run maintainability/code-smell-focused preloaded audit."""
-    return await _run_audit_rule_set_batch(deps, file_contents, "smell")
+    return await _run_audit_rule_set_batch(deps, file_contents, "smell", job_usage)
 
 
 async def _run_map_batch(
     deps: OrchestratorDependencies,
     file_contents: list[BatchFileContent],
+    job_usage: RunUsage | None = None,
 ) -> Any:
     """
     Run the map agent on a batch of pre-read files.
 
     Injects file content so the map agent can identify features and
     relationships without separate file reads.
+
+    Delegate handoff contract:
+    - prompt: preloaded file context; agent must NOT re-read files from disk
+    - deps: MapDependencies with ``extra_file_context`` set to the file block
+    - usage: ``job_usage`` threaded through for canonical per-job aggregation
     """
     from .map.map_agent import MapDependencies, map_agent
 
@@ -494,18 +548,29 @@ async def _run_map_batch(
         "File contents are in extra_file_context — do not call read_file. "
         "Record each feature and relationship then finalize."
     )
-    result = await map_agent.run(prompt, deps=map_deps)
+    result = await map_agent.run(
+        prompt,
+        deps=map_deps,
+        usage=job_usage,
+        usage_limits=deps.usage_limits,
+    )
     return result.output
 
 
 async def _run_decision_batch(
     deps: OrchestratorDependencies,
     file_contents: list[BatchFileContent],
+    job_usage: RunUsage | None = None,
 ) -> Any:
     """
     Run the decision review agent on a batch of pre-read files.
 
     Passes pre-read content and injects decisions from extra_context.
+
+    Delegate handoff contract:
+    - prompt: preloaded file context; agent must NOT re-read files from disk
+    - deps: DecisionDependencies with ``extra_file_context`` set to the file block
+    - usage: ``job_usage`` threaded through for canonical per-job aggregation
     """
     from .document.decision_agent import DecisionDependencies, decision_agent
 
@@ -522,7 +587,12 @@ async def _run_decision_batch(
         "File contents are in extra_file_context — do not call read_file. "
         "Record each review then finalize."
     )
-    result = await decision_agent.run(prompt, deps=decision_deps)
+    result = await decision_agent.run(
+        prompt,
+        deps=decision_deps,
+        usage=job_usage,
+        usage_limits=deps.usage_limits,
+    )
     return result.output
 
 

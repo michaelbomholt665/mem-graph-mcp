@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from pydantic_ai.usage import RunUsage
 from pydantic_evals import Case, Dataset
 
 from ...agents.orchestrator_agent import (
@@ -119,6 +120,7 @@ def _build_audit_report(
 async def _aggregate_runner(
     deps: OrchestratorDependencies,
     files: list[BatchFileContent],
+    job_usage: RunUsage | None = None,
 ) -> AuditReport:
     await asyncio.sleep(0)
     return _build_audit_report(deps, files, findings_per_file=1)
@@ -127,6 +129,7 @@ async def _aggregate_runner(
 async def _partial_failure_runner(
     deps: OrchestratorDependencies,
     files: list[BatchFileContent],
+    job_usage: RunUsage | None = None,
 ) -> AuditReport:
     await asyncio.sleep(0)
     if any("module_2" in file.path for file in files):

@@ -22,9 +22,9 @@
   "files.exclude": {
     "**/.git": true,
     "**/.venv": false, // Keep visible if you like, set to true to hide
-    "**/__pycache__": true,
+    "**/__pycache__": false,
     "**/.pytest_cache": true,
-    "**/.ruff_cache": true,
+    "**/.ruff_cache": false,
     "**/.mypy_cache": false,
     "**/.DS_Store": true,
     "**/build": true,
@@ -33,6 +33,10 @@
     ".scannerwork/": true,
     ".sonarlint/": true,
     "**/dist/**": true,
+    ".copilot-backups/": true,
+    ".logfire/": true,
+    ".qodo/": true,
+    ".kilo": true,
   },
   // --- Search & Watcher Exclusions ---
   // Prevents VS Code from indexing/searching inside these folders (Performance boost)
@@ -56,6 +60,7 @@
     "src"
   ],
   "python.analysis.exclude": [
+    "**/.*",
     "**/node_modules",
     "**/__pycache__",
     ".git",

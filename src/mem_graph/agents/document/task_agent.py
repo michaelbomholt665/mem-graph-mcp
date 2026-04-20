@@ -21,10 +21,10 @@ from dataclasses import dataclass, field
 
 from pydantic_ai import Agent, RunContext
 
+from ...capabilities import ReasoningStrategyCapability
 from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
 from ...models.agent_outputs import DecompositionReport, Task, TaskComplexity
 from ...resources.personas import ARCHITECT_PERSONA
-from ...resources.prompts import get_reasoning_mode_guidance
 
 ################
 #   CONSTANTS
@@ -77,6 +77,7 @@ task_agent: Agent[TaskDependencies, DecompositionReport] = Agent(
         top_p=ARCHITECT_PERSONA.params.top_p,
     ),
     defer_model_check=DEFER_AGENT_MODEL_CHECK,
+    capabilities=[ReasoningStrategyCapability()],
 )
 
 
@@ -95,13 +96,6 @@ async def build_instructions(ctx: RunContext[TaskDependencies]) -> str:
     map_block = _format_codebase_map(ctx.deps.codebase_map)
     violations_block = _format_violations(ctx.deps.open_violations)
     decisions_block = _format_decisions(ctx.deps.prior_decisions)
-
-    reasoning_hint = ""
-    if ctx.deps.reasoning_mode:
-        reasoning_hint = (
-            f"\n\n## Reasoning Strategy\n"
-            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
-        )
 
     return f"""{persona_instr}
 
@@ -135,7 +129,6 @@ async def build_instructions(ctx: RunContext[TaskDependencies]) -> str:
 - If a prior decision constrains the implementation, reference it and honour it.
 - Do not create tasks that contradict prior decisions without flagging the conflict.
 - Phase ordering: planning tasks before red, red before green, green before refactor.
-{reasoning_hint}
 """
 
 

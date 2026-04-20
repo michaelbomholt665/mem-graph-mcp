@@ -10,6 +10,7 @@ with Ollama, Jina, and other external services.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar, cast
@@ -70,7 +71,7 @@ class EmbedClientBase:
             try:
                 # Support both async and sync functions (wrapped in executor if needed)
                 # But here we assume fn is either async or properly wrapped.
-                if asyncio.iscoroutinefunction(fn):
+                if inspect.iscoroutinefunction(fn):
                     return await cast(Awaitable[T], fn(*args, **kwargs))
                 return cast(T, fn(*args, **kwargs))
             except Exception as exc:

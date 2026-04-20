@@ -19,16 +19,16 @@ from __future__ import annotations
 ################
 #   IMPORTS
 ################
-
 import asyncio
-from dataclasses import dataclass, field
 import logging
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Literal
 
 from pydantic_ai import Agent, RunContext
 
+from ...capabilities import ReasoningStrategyCapability, UsageTrackingCapability
 from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
 from ...models.audit import (
     AuditReport,
@@ -39,7 +39,8 @@ from ...models.audit import (
     Severity,
 )
 from ...resources.personas import AUDITOR_PERSONA
-from ...resources.prompts import build_tool_names_for_prompt, get_reasoning_mode_guidance
+from ...resources.prompts import build_tool_names_for_prompt
+from ..tooling import hide_tool_in_preloaded_mode, require_max_items
 from .rules import DEFAULT_RULES
 
 ################
@@ -79,6 +80,7 @@ class AuditDependencies:
     mode: Literal["standalone", "preloaded"] = "standalone"
     reasoning_mode: str = ""
 
+
 ################
 #   AGENT
 ################
@@ -93,6 +95,10 @@ audit_agent: Agent[AuditDependencies, AuditReport] = Agent(
         top_p=AUDITOR_PERSONA.params.top_p,
     ),
     defer_model_check=DEFER_AGENT_MODEL_CHECK,
+    capabilities=[
+        ReasoningStrategyCapability(),
+        UsageTrackingCapability(agent_name="audit"),
+    ],
 )
 
 
@@ -115,14 +121,6 @@ async def build_instructions(ctx: RunContext[AuditDependencies]) -> str:
     rules_block = _format_rules_for_prompt(ctx.deps.rules)
     skills_block = ctx.deps.skills_content or "No additional domain knowledge provided."
 
-    # Reasoning-mode guidance injected when available
-    reasoning_hint = ""
-    if ctx.deps.reasoning_mode:
-        reasoning_hint = (
-            f"\n\n## Reasoning Strategy\n"
-            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
-        )
-
     if ctx.deps.mode == "preloaded":
         return f"""{persona_instr}
 
@@ -130,7 +128,7 @@ async def build_instructions(ctx: RunContext[AuditDependencies]) -> str:
 {skills_block}
 
 ## Pre-loaded Files
-{ctx.deps.extra_file_context or 'No files were provided.'}
+{ctx.deps.extra_file_context or "No files were provided."}
 
 ## Your Task
 Analyse only the pre-loaded files above and return an AuditReport directly
@@ -148,7 +146,6 @@ workflow steps.
 - severity may be escalated from the rule default if context warrants it — explain in description.
 - Do NOT report the same issue twice in the same file.
 - Missing implementation stubs are findings — do not give benefit of the doubt to empty function bodies.
-{reasoning_hint}
 """
 
     # standalone mode — agent owns the discovery/batching workflow
@@ -183,7 +180,6 @@ Analyse every source file in {ctx.deps.package_path}.
 - severity may be escalated from the rule default if context warrants it — explain in description.
 - Do NOT report the same issue twice in the same file.
 - Missing implementation stubs are findings — do not give benefit of the doubt to empty function bodies.
-{reasoning_hint}
 """
 
 
@@ -212,7 +208,7 @@ def _format_rules_for_prompt(rules: list[AuditRule]) -> str:
 ################
 
 
-@audit_agent.tool  # Scope: agent-local only
+@audit_agent.tool(prepare=hide_tool_in_preloaded_mode)  # Scope: agent-local only
 async def list_files(ctx: RunContext[AuditDependencies]) -> list[str]:
     """
     List all source files in the package directory.
@@ -226,7 +222,7 @@ async def list_files(ctx: RunContext[AuditDependencies]) -> list[str]:
     return glob.glob(pattern, recursive=True)
 
 
-@audit_agent.tool  # Scope: agent-local only
+@audit_agent.tool(prepare=hide_tool_in_preloaded_mode)  # Scope: agent-local only
 async def process_batch(
     ctx: RunContext[AuditDependencies],
     file_paths: list[str],
@@ -239,10 +235,11 @@ async def process_batch(
     The agent cannot receive new file content without first submitting
     findings for the files it already read. Returns the file contents.
     """
+    require_max_items("file_paths", file_paths, limit=5)
     ctx.deps.file_results.extend(findings_from_previous_batch)
 
     results = []
-    for path in file_paths[:5]:  # hard cap
+    for path in file_paths:
         content = _read_file_internal(path)
         results.append(f"### {path}\n{content}")
 
@@ -269,7 +266,7 @@ def _read_file_internal(file_path: str) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-@audit_agent.tool  # Scope: agent-local only
+@audit_agent.tool(prepare=hide_tool_in_preloaded_mode)  # Scope: agent-local only
 async def finalize_report(
     ctx: RunContext[AuditDependencies],
     summary: str,
@@ -345,7 +342,9 @@ def _compute_stats(file_results: list[FileAuditResult]) -> AuditStats:
 ################
 
 
-def with_retry(max_attempts: int = _RETRY_MAX) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+def with_retry(
+    max_attempts: int = _RETRY_MAX,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Decorator that retries an async function with exponential backoff.
 
@@ -353,6 +352,7 @@ def with_retry(max_attempts: int = _RETRY_MAX) -> Callable[[Callable[..., Any]],
     raising, so the agent can record a partial_failure rather than
     crashing the entire run.
     """
+
     def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             last_exc: Exception | None = None
@@ -365,7 +365,11 @@ def with_retry(max_attempts: int = _RETRY_MAX) -> Callable[[Callable[..., Any]],
                     wait = 2 ** (attempt - 1)
                     logger.warning(
                         "Tool '%s' attempt %d/%d failed: %s — retrying in %ds.",
-                        fn.__name__, attempt, max_attempts, exc, wait,
+                        fn.__name__,
+                        attempt,
+                        max_attempts,
+                        exc,
+                        wait,
                     )
                     if attempt < max_attempts:
                         await asyncio.sleep(wait)

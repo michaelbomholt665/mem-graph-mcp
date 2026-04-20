@@ -83,7 +83,15 @@ def load_language(manifest: GrammarManifest) -> Any:
         lib = ctypes.CDLL(str(manifest.so_path))
         fn = getattr(lib, fn_name)
         fn.restype = ctypes.c_void_p
-        language = Language(fn())
+        capsule_new = ctypes.pythonapi.PyCapsule_New
+        capsule_new.restype = ctypes.py_object
+        capsule_new.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+        language_capsule = capsule_new(
+            ctypes.c_void_p(fn()),
+            b"tree_sitter.Language",
+            None,
+        )
+        language = Language(language_capsule)
     except (OSError, AttributeError) as exc:
         raise RuntimeError(
             f"Cannot load grammar {manifest.language_key!r} from {manifest.so_path}: {exc}"

@@ -24,10 +24,11 @@ from pathlib import Path
 
 from pydantic_ai import Agent, RunContext
 
+from ...capabilities import ReasoningStrategyCapability
 from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
 from ...models.agent_outputs import DecisionReview, DriftStatus, ReviewReport
 from ...resources.personas import ARCHITECT_PERSONA
-from ...resources.prompts import get_reasoning_mode_guidance
+from ..tooling import hide_tool_in_preloaded_mode, require_max_items
 
 ################
 #   CONSTANTS
@@ -79,6 +80,7 @@ decision_agent: Agent[DecisionDependencies, ReviewReport] = Agent(
         top_p=ARCHITECT_PERSONA.params.top_p,
     ),
     defer_model_check=DEFER_AGENT_MODEL_CHECK,
+    capabilities=[ReasoningStrategyCapability()],
 )
 
 
@@ -95,13 +97,6 @@ async def build_instructions(ctx: RunContext[DecisionDependencies]) -> str:
     persona_instr = ARCHITECT_PERSONA.get_system_instructions()
     skills_block = ctx.deps.skills_content or "No additional domain knowledge provided."
     decisions_block = _format_decisions(ctx.deps.decisions)
-
-    reasoning_hint = ""
-    if ctx.deps.reasoning_mode:
-        reasoning_hint = (
-            f"\n\n## Reasoning Strategy\n"
-            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
-        )
 
     if ctx.deps.extra_file_context:
         file_section = (
@@ -150,7 +145,6 @@ async def build_instructions(ctx: RunContext[DecisionDependencies]) -> str:
 - Do not mark DRIFTED without naming the file and what the violation is.
 - Do not mark HONOURED just because you found no violations — look for positive evidence.
 - Trivial drift (naming, style) is 'minor'. Architectural violations are 'major' or 'critical'.
-{reasoning_hint}
 """
 
 
@@ -175,7 +169,7 @@ def _format_decisions(decisions: list[dict]) -> str:
 ################
 
 
-@decision_agent.tool  # Scope: agent-local only
+@decision_agent.tool(prepare=hide_tool_in_preloaded_mode)  # Scope: agent-local only
 async def list_files(
     ctx: RunContext[DecisionDependencies],
     extension: str = ".py",
@@ -192,7 +186,7 @@ async def list_files(
     return glob.glob(pattern, recursive=True)
 
 
-@decision_agent.tool  # Scope: agent-local only
+@decision_agent.tool(prepare=hide_tool_in_preloaded_mode)  # Scope: agent-local only
 async def process_batch(
     ctx: RunContext[DecisionDependencies],
     file_paths: list[str],
@@ -205,10 +199,11 @@ async def process_batch(
     Max 5 files requested at once. The returned file content informs your
     ensuing reviews.
     """
+    require_max_items("file_paths", file_paths, limit=5)
     _get_state(ctx).extend(reviews_from_previous_batch)
 
     results = []
-    for path in file_paths[:5]:
+    for path in file_paths:
         content = _read_file_internal(path)
         results.append(f"### {path}\n{content}")
 
@@ -235,7 +230,7 @@ def _read_file_internal(file_path: str) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-@decision_agent.tool  # Scope: agent-local only
+@decision_agent.tool(prepare=hide_tool_in_preloaded_mode)  # Scope: agent-local only
 async def finalize_review(
     ctx: RunContext[DecisionDependencies],
     summary: str,

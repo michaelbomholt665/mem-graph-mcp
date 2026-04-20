@@ -21,12 +21,12 @@ from dataclasses import dataclass, field
 
 from pydantic_ai import Agent, RunContext
 
+from ...capabilities import ReasoningStrategyCapability
 from ...config import DEFER_AGENT_MODEL_CHECK, ModelTier, config_get_model_for_tier
 from ...models.agent_outputs import FilePatch, FixerReport
 from ...resources.personas import MECHANIC_PERSONA
 from ...resources.prompts import (
     build_tool_names_for_prompt,
-    get_reasoning_mode_guidance,
 )
 
 ################
@@ -79,6 +79,7 @@ fixer_agent: Agent[FixerDependencies, FixerReport] = Agent(
     deps_type=FixerDependencies,
     output_type=FixerReport,
     defer_model_check=DEFER_AGENT_MODEL_CHECK,
+    capabilities=[ReasoningStrategyCapability()],
 )
 
 
@@ -96,13 +97,6 @@ async def fixer_build_instructions(ctx: RunContext[FixerDependencies]) -> str:
     Returns:
         Complete system prompt string.
     """
-    reasoning_hint = ""
-    if ctx.deps.reasoning_mode:
-        reasoning_hint = (
-            f"\n\n## Reasoning Strategy\n"
-            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
-        )
-
     tools_section = build_tool_names_for_prompt(
         ["fixer_read_file_context", "fixer_record_patch", "fixer_mark_unresolvable"]
     )
@@ -120,8 +114,7 @@ async def fixer_build_instructions(ctx: RunContext[FixerDependencies]) -> str:
 
 ## Model Tier
 Operating at tier: {ctx.deps.tier}
-{tools_section}{reasoning_hint}
-
+{tools_section}
 {ctx.deps.skills_content}
 """
 

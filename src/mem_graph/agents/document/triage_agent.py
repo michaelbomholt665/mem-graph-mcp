@@ -15,7 +15,6 @@ from __future__ import annotations
 ################
 #   IMPORTS
 ################
-
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
@@ -23,9 +22,9 @@ from enum import Enum
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
+from ...capabilities import ReasoningStrategyCapability
 from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
 from ...resources.personas import TRIAGE_PERSONA
-from ...resources.prompts import get_reasoning_mode_guidance
 
 ################
 #   CONSTANTS
@@ -66,8 +65,12 @@ class RawFinding(BaseModel):
     file_path: str = Field(description="File containing the finding.")
     line_start: int = Field(default=0, description="Line number, 0 if unknown.")
     line_end: int = Field(default=0, description="End line, 0 if unknown.")
-    severity: str = Field(default="minor", description="Reported severity from source tool.")
-    description: str = Field(description="Raw finding description from the source tool.")
+    severity: str = Field(
+        default="minor", description="Reported severity from source tool."
+    )
+    description: str = Field(
+        description="Raw finding description from the source tool."
+    )
     source: str = Field(
         default="unknown",
         description="Origin: 'policycheck', 'manual', 'audit_agent', etc.",
@@ -145,6 +148,7 @@ class TriageDependencies:
     _triage_state: list["TriagedViolation"] = field(default_factory=list)
     reasoning_mode: str = ""
 
+
 ################
 #   AGENT
 ################
@@ -159,6 +163,7 @@ triage_agent: Agent[TriageDependencies, TriageReport] = Agent(
         top_p=TRIAGE_PERSONA.params.top_p,
     ),
     defer_model_check=DEFER_AGENT_MODEL_CHECK,
+    capabilities=[ReasoningStrategyCapability()],
 )
 
 
@@ -176,13 +181,6 @@ async def build_instructions(ctx: RunContext[TriageDependencies]) -> str:
     skills_block = ctx.deps.skills_content or "No additional domain knowledge provided."
     raw_block = _format_raw_findings(ctx.deps.raw_findings)
     existing_block = _format_existing_violations(ctx.deps.existing_violations)
-
-    reasoning_hint = ""
-    if ctx.deps.reasoning_mode:
-        reasoning_hint = (
-            f"\n\n## Reasoning Strategy\n"
-            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
-        )
 
     return f"""{persona_instr}
 
@@ -213,7 +211,6 @@ After all findings are triaged, call `finalize_triage` with a summary.
 
 Be precise. Do not mark something WONTFIX without a specific rationale.
 Do not mark something DUPLICATE unless it is genuinely the same finding in the same file and lines.
-{reasoning_hint}
 """
 
 
@@ -234,7 +231,9 @@ def _format_raw_findings(findings: list[RawFinding]) -> str:
 def _format_existing_violations(violations: list[dict]) -> str:
     """Render existing graph violations as a reference list."""
     if not violations:
-        return "No existing violations provided — treat all findings as potentially new."
+        return (
+            "No existing violations provided — treat all findings as potentially new."
+        )
 
     lines = []
     for v in violations:
@@ -260,7 +259,7 @@ async def process_batch(
     """
     Submit decisions from the previous batch and retrieve the next batch of findings
     and their matching existing violations.
-    
+
     Pass indices (0 to len(raw_findings)-1) to select up to 5 raw findings at a time.
     Returns the finding details and any existing violations that match by rule and file.
     Pass an empty list for findings_indices on the final call.
@@ -272,18 +271,29 @@ async def process_batch(
         if idx < 0 or idx >= len(ctx.deps.raw_findings):
             results.append(f"### Index {idx}\nERROR: Index out of bounds.")
             continue
-            
+
         finding = ctx.deps.raw_findings[idx]
         matching = [
-            v for v in ctx.deps.existing_violations
-            if v.get("rule") == finding.rule_id and v.get("file_path") == finding.file_path
+            v
+            for v in ctx.deps.existing_violations
+            if v.get("rule") == finding.rule_id
+            and v.get("file_path") == finding.file_path
         ]
-        
-        match_str = "No existing matches." if not matching else (
-            "Found matching existing violation(s):\n" + 
-            "\n".join([f"- [{v.get('id', '?')}] status={v.get('status', '?')}" for v in matching])
+
+        match_str = (
+            "No existing matches."
+            if not matching
+            else (
+                "Found matching existing violation(s):\n"
+                + "\n".join(
+                    [
+                        f"- [{v.get('id', '?')}] status={v.get('status', '?')}"
+                        for v in matching
+                    ]
+                )
+            )
         )
-        
+
         results.append(
             f"### Index {idx}: [{finding.rule_id}] {finding.file_path}:{finding.line_start}\n"
             f"Description: {finding.description}\n"
@@ -335,8 +345,16 @@ def _compute_counts(decisions: list[TriagedViolation]) -> dict:
     """Compute summary counts from a list of triage decisions."""
     return {
         "new_count": sum(1 for d in decisions if d.decision == TriageDecision.NEW),
-        "recurrence_count": sum(1 for d in decisions if d.decision == TriageDecision.RECURRENCE),
-        "duplicate_count": sum(1 for d in decisions if d.decision == TriageDecision.DUPLICATE),
-        "escalated_count": sum(1 for d in decisions if d.decision == TriageDecision.ESCALATE),
-        "wontfix_count": sum(1 for d in decisions if d.decision == TriageDecision.WONTFIX),
+        "recurrence_count": sum(
+            1 for d in decisions if d.decision == TriageDecision.RECURRENCE
+        ),
+        "duplicate_count": sum(
+            1 for d in decisions if d.decision == TriageDecision.DUPLICATE
+        ),
+        "escalated_count": sum(
+            1 for d in decisions if d.decision == TriageDecision.ESCALATE
+        ),
+        "wontfix_count": sum(
+            1 for d in decisions if d.decision == TriageDecision.WONTFIX
+        ),
     }

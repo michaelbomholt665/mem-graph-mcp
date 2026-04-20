@@ -22,10 +22,14 @@ from typing import Any, cast
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
+from pydantic_ai.toolsets import FunctionToolset
+from pydantic_ai.usage import UsageLimits
 
 from ...config import DEFER_AGENT_MODEL_CHECK, ModelTier, config_get_model_for_tier
 from ...resources.personas import CHAT_PERSONA
 from ...services.search import rrf_fuse
+from ..tooling import require_choice, require_identifier
 
 ################
 #   CONSTANTS
@@ -68,6 +72,32 @@ class ChatAnswer(BaseModel):
     )
 
 
+class ChatTurnResult(BaseModel):
+    """Structured result for a single chat turn plus persisted conversation state."""
+
+    answer: ChatAnswer = Field(description="Structured answer produced for this turn.")
+    message_history_json: str = Field(
+        description="Serialized Pydantic AI message history to persist for the next turn."
+    )
+    message_count: int = Field(
+        ge=0,
+        description="Number of model messages present in the serialized history.",
+    )
+    requests: int = Field(
+        default=0, ge=0, description="Total model requests for this turn."
+    )
+    input_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Input tokens consumed during this turn.",
+    )
+    output_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Output tokens consumed during this turn.",
+    )
+
+
 ################
 #   DEPS
 ################
@@ -91,6 +121,16 @@ class ChatDependencies:
     extra_context: str = ""
 
 
+_CHAT_GRAPH_TOOLSET: FunctionToolset[ChatDependencies] = FunctionToolset(
+    id="memory-graph-search",
+    instructions=(
+        "These tools are read-only graph retrieval helpers. Start broad with memory recall, "
+        "then narrow to violations or decisions, and only traverse relationships once you have "
+        "a grounded node identifier."
+    ),
+)
+
+
 ################
 #   AGENT
 ################
@@ -100,6 +140,7 @@ chat_agent: Agent[ChatDependencies, ChatAnswer] = Agent(
     name="chat-assistant",
     deps_type=ChatDependencies,
     output_type=ChatAnswer,
+    toolsets=[_CHAT_GRAPH_TOOLSET],
     defer_model_check=DEFER_AGENT_MODEL_CHECK,
 )
 
@@ -154,7 +195,7 @@ history, decisions, violations, and codebase by retrieving from the graph.
 ################
 
 
-@chat_agent.tool
+@_CHAT_GRAPH_TOOLSET.tool
 async def chat_recall_memories(
     ctx: RunContext[ChatDependencies],
     query: str,
@@ -254,7 +295,7 @@ async def chat_recall_memories(
         return []
 
 
-@chat_agent.tool
+@_CHAT_GRAPH_TOOLSET.tool
 async def chat_search_violations(
     ctx: RunContext[ChatDependencies],
     query: str,
@@ -292,7 +333,11 @@ async def chat_search_violations(
             ORDER BY distance
             LIMIT $candidate_size
             """,
-            {"qvec": vec, "status_filter": status_filter, "candidate_size": candidate_size},
+            {
+                "qvec": vec,
+                "status_filter": status_filter,
+                "candidate_size": candidate_size,
+            },
         )
         if isinstance(vector_raw, list):
             vector_raw = vector_raw[0]
@@ -309,7 +354,11 @@ async def chat_search_violations(
             ORDER BY score DESC
             LIMIT $candidate_size
             """,
-            {"q": query, "status_filter": status_filter, "candidate_size": candidate_size},
+            {
+                "q": query,
+                "status_filter": status_filter,
+                "candidate_size": candidate_size,
+            },
         )
         if isinstance(fts_raw, list):
             fts_raw = fts_raw[0]
@@ -357,7 +406,7 @@ async def chat_search_violations(
         return []
 
 
-@chat_agent.tool
+@_CHAT_GRAPH_TOOLSET.tool
 async def chat_search_decisions(
     ctx: RunContext[ChatDependencies],
     query: str,
@@ -455,7 +504,7 @@ async def chat_search_decisions(
         return []
 
 
-@chat_agent.tool
+@_CHAT_GRAPH_TOOLSET.tool
 async def chat_traverse_relationship(
     ctx: RunContext[ChatDependencies],
     node_id: str,
@@ -479,17 +528,14 @@ async def chat_traverse_relationship(
     Returns:
         List of connected node dicts with id, labels, and key properties.
     """
+    require_identifier("node_type", node_type)
+    require_identifier("relationship", relationship)
+    require_choice("direction", direction, allowed=("outgoing", "incoming"))
+
     try:
         from ...db import db_get_connection
 
         conn = db_get_connection()
-
-        import re
-        identifier_pattern = r"^[a-zA-Z_][\w]*$"
-        if not re.match(identifier_pattern, relationship):
-            raise ValueError(f"Invalid relationship: {relationship}")
-        if not re.match(identifier_pattern, node_type):
-            raise ValueError(f"Invalid node_type: {node_type}")
 
         if direction == "incoming":
             pattern = f"(connected)-[:{relationship}]->(n:{node_type} {{id: $id}})"
@@ -512,3 +558,49 @@ async def chat_traverse_relationship(
     except Exception as exc:
         logger.warning("chat_traverse_relationship failed: %s", exc)
         return []
+
+
+def chat_load_message_history(
+    message_history_json: str | bytes | None,
+) -> list[ModelMessage] | None:
+    """Deserialize persisted message history for a continued chat session."""
+    if not message_history_json:
+        return None
+    payload = (
+        message_history_json.encode("utf-8")
+        if isinstance(message_history_json, str)
+        else message_history_json
+    )
+    return cast(list[ModelMessage], ModelMessagesTypeAdapter.validate_json(payload))
+
+
+def chat_dump_message_history(messages: list[ModelMessage]) -> str:
+    """Serialize chat history so callers can persist and resume sessions."""
+    return ModelMessagesTypeAdapter.dump_json(messages).decode("utf-8")
+
+
+async def run_chat_turn(
+    prompt: str,
+    deps: ChatDependencies,
+    *,
+    message_history_json: str | bytes | None = None,
+    usage_limits: UsageLimits | None = None,
+) -> ChatTurnResult:
+    """Run one chat turn and return both the answer and resumable message history."""
+    history = chat_load_message_history(message_history_json)
+    result = await chat_agent.run(
+        prompt,
+        deps=deps,
+        message_history=history,
+        usage_limits=usage_limits,
+    )
+    all_messages = list(result.all_messages())
+    usage = result.usage()
+    return ChatTurnResult(
+        answer=result.output,
+        message_history_json=chat_dump_message_history(all_messages),
+        message_count=len(all_messages),
+        requests=usage.requests,
+        input_tokens=usage.input_tokens or 0,
+        output_tokens=usage.output_tokens or 0,
+    )

@@ -20,6 +20,7 @@ from typing import Literal
 
 from pydantic_ai import Agent, RunContext
 
+from ..capabilities import ReasoningStrategyCapability
 from ..config import (
     DEFER_AGENT_MODEL_CHECK,
     ModelTier,
@@ -34,7 +35,6 @@ from ..models.agent_outputs import (
     WorkflowPlan as WorkflowPlan,
 )
 from ..resources.personas import ROUTER_PERSONA
-from ..resources.prompts import get_reasoning_mode_guidance
 
 ################
 #   CONSTANTS
@@ -86,6 +86,7 @@ router_agent: Agent[RouterDependencies, RouterDecision] = Agent(
     deps_type=RouterDependencies,
     output_type=RouterDecision,
     defer_model_check=DEFER_AGENT_MODEL_CHECK,
+    capabilities=[ReasoningStrategyCapability()],
 )
 
 
@@ -120,10 +121,6 @@ async def router_build_instructions(ctx: RunContext[RouterDependencies]) -> str:
             "and an ordered sub_tasks list."
         )
 
-    reasoning_hint = ""
-    if ctx.deps.reasoning_mode:
-        reasoning_hint = f"\n\n## Reasoning Strategy\n{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
-
     return f"""{ROUTER_PERSONA.get_system_instructions()}
 
 ## Your Task
@@ -148,7 +145,6 @@ project-specific helper agents could improve routing.
 ## Tier Selection
 Use `router_compute_tier_hint` for deterministic tier, concurrency, and
 solo-mode hints. Explain only intentional overrides.
-{reasoning_hint}
 
 {ctx.deps.skills_content}
 """

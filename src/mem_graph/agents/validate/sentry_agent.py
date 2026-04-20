@@ -20,13 +20,13 @@ from dataclasses import dataclass, field
 
 from pydantic_ai import Agent, RunContext
 
+from ...capabilities import ReasoningStrategyCapability
 from ...config import DEFER_AGENT_MODEL_CHECK, ModelTier, config_get_model_for_tier
 from ...models.agent_outputs import SentryReport, TestCaseProposal
 from ...resources.coding_standards import coding_standards_get_for_language
 from ...resources.personas import SENTRY_PERSONA
 from ...resources.prompts import (
     build_tool_names_for_prompt,
-    get_reasoning_mode_guidance,
 )
 
 ################
@@ -66,6 +66,7 @@ sentry_agent: Agent[SentryDependencies, SentryReport] = Agent(
     deps_type=SentryDependencies,
     output_type=SentryReport,
     defer_model_check=DEFER_AGENT_MODEL_CHECK,
+    capabilities=[ReasoningStrategyCapability()],
 )
 
 
@@ -76,13 +77,6 @@ async def sentry_build_instructions(ctx: RunContext[SentryDependencies]) -> str:
     manifest_block = "\n".join(
         f"- {path}:\n{content}" for path, content in ctx.deps.manifest_context.items()
     )
-
-    reasoning_hint = ""
-    if ctx.deps.reasoning_mode:
-        reasoning_hint = (
-            f"\n\n## Reasoning Strategy\n"
-            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
-        )
 
     tools_section = build_tool_names_for_prompt(
         ["sentry_read_file", "sentry_record_test", "sentry_finalize_plan"]
@@ -107,8 +101,7 @@ async def sentry_build_instructions(ctx: RunContext[SentryDependencies]) -> str:
 - Keep the tests deterministic and minimal.
 - Prefer existing framework conventions in the repository.
 - Focus on the bug or gap that must fail before the fix is applied.
-{tools_section}{reasoning_hint}
-
+{tools_section}
 {ctx.deps.skills_content}
 """
 

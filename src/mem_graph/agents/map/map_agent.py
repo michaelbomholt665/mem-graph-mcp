@@ -23,10 +23,11 @@ from pathlib import Path
 
 from pydantic_ai import Agent, RunContext
 
+from ...capabilities import ReasoningStrategyCapability
 from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
 from ...models.agent_outputs import FeatureLocation, FileRelationship, MapReport
 from ...resources.personas import MAPPER_PERSONA
-from ...resources.prompts import get_reasoning_mode_guidance
+from ..tooling import hide_tool_in_preloaded_mode, require_max_items
 
 ################
 #   CONSTANTS
@@ -78,6 +79,7 @@ map_agent: Agent[MapDependencies, MapReport] = Agent(
         top_p=MAPPER_PERSONA.params.top_p,
     ),
     defer_model_check=DEFER_AGENT_MODEL_CHECK,
+    capabilities=[ReasoningStrategyCapability()],
 )
 
 
@@ -98,13 +100,6 @@ async def build_instructions(ctx: RunContext[MapDependencies]) -> str:
         if ctx.deps.known_features
         else "No known subsystems provided — discover features from the code."
     )
-
-    reasoning_hint = ""
-    if ctx.deps.reasoning_mode:
-        reasoning_hint = (
-            f"\n\n## Reasoning Strategy\n"
-            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
-        )
 
     if ctx.deps.extra_file_context:
         file_section = (
@@ -154,7 +149,6 @@ Analyse {analysis_scope}.
 - Generated code (note it as generated, skip internal mapping)
 
 Be precise about file paths. Use the exact paths returned by list_files.
-{reasoning_hint}
 """
 
 
@@ -163,7 +157,7 @@ Be precise about file paths. Use the exact paths returned by list_files.
 ################
 
 
-@map_agent.tool  # Scope: agent-local only
+@map_agent.tool(prepare=hide_tool_in_preloaded_mode)  # Scope: agent-local only
 async def list_files(ctx: RunContext[MapDependencies]) -> list[str]:
     """
     List all source files in the package directory.
@@ -177,7 +171,7 @@ async def list_files(ctx: RunContext[MapDependencies]) -> list[str]:
     return glob.glob(pattern, recursive=True)
 
 
-@map_agent.tool  # Scope: agent-local only
+@map_agent.tool(prepare=hide_tool_in_preloaded_mode)  # Scope: agent-local only
 async def process_batch(
     ctx: RunContext[MapDependencies],
     file_paths: list[str],
@@ -191,12 +185,13 @@ async def process_batch(
     Request at most 5 files at a time. Returns the content. If no more files,
     pass an empty list for file_paths to just submit the findings.
     """
+    require_max_items("file_paths", file_paths, limit=5)
     state_dict = _get_state(ctx)
     state_dict["features"].extend(features)
     state_dict["relationships"].extend(relationships)
 
     results = []
-    for path in file_paths[:5]:  # hard cap
+    for path in file_paths:
         content = _read_file_internal(path)
         results.append(f"### {path}\n{content}")
 
@@ -223,7 +218,7 @@ def _read_file_internal(file_path: str) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-@map_agent.tool  # Scope: agent-local only
+@map_agent.tool(prepare=hide_tool_in_preloaded_mode)  # Scope: agent-local only
 async def finalize_map(
     ctx: RunContext[MapDependencies],
     entry_points: list[str],

@@ -18,13 +18,16 @@ from fastmcp import FastMCP
 from fastmcp.server.context import Context
 from mcp.types import Icon
 from pydantic import Field
+from pydantic_ai.usage import RunUsage
 
 from ...agents.orchestrator_agent import (
     OrchestratorDependencies,
+    list_source_files,
     run_orchestrator_batches,
 )
 from ...agents.router_agent import RouterDependencies, router_agent
 from ...app.registry import AgentEntry, register_agent
+from ...config import config_build_orchestrator_usage_limits
 from ...models.agent_outputs import BatchResult, WorkflowPlan
 from ...resources.workflows.selector import select_all
 from ...services.task_queue import task_queue
@@ -409,6 +412,8 @@ async def _orchestrate_codebase_worker(
     )
 
     skills_content = await _load_skills()
+    file_count = len(list_source_files(package_path, file_extension))
+    total_batches = max(1, (file_count + max(batch_size, 1) - 1) // max(batch_size, 1))
     deps = OrchestratorDependencies(
         package_path=package_path,
         project_id=project_id,
@@ -418,6 +423,7 @@ async def _orchestrate_codebase_worker(
         timeout=batch_timeout_seconds,
         skills_content=skills_content,
         extra_context=extra_context or {},
+        usage_limits=config_build_orchestrator_usage_limits(total_batches),
     )
 
     await report_step(
@@ -448,7 +454,10 @@ async def _orchestrate_codebase_worker(
                 ),
             )
 
-        report = await run_orchestrator_batches(deps, progress_callback=on_batch)
+        job_usage = RunUsage()
+        report = await run_orchestrator_batches(
+            deps, progress_callback=on_batch, usage=job_usage
+        )
     except Exception as exc:
         logger.error("Orchestrator execution failed: %s", exc)
         return {"error": f"Orchestration failed: {exc}"}
@@ -472,4 +481,9 @@ async def _orchestrate_codebase_worker(
         "total_batches": report.total_batches,
         "failed_batches": report.failed_batches,
         "aggregate": report.aggregate,
+        "usage": {
+            "requests": job_usage.requests,
+            "input_tokens": job_usage.input_tokens,
+            "output_tokens": job_usage.output_tokens,
+        },
     }

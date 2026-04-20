@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 
 from pydantic_ai import Agent, RunContext
 
+from ...capabilities import ReasoningStrategyCapability
 from ...config import DEFER_AGENT_MODEL_CHECK, ModelTier, config_get_model_for_tier
 from ...models.agent_outputs import (
     ValidationCheck,
@@ -30,7 +31,6 @@ from ...resources.coding_standards import coding_standards_get_for_language
 from ...resources.personas import GUARD_PERSONA
 from ...resources.prompts import (
     build_tool_names_for_prompt,
-    get_reasoning_mode_guidance,
 )
 
 ################
@@ -80,6 +80,7 @@ validation_agent: Agent[ValidationDependencies, ValidationReport] = Agent(
     deps_type=ValidationDependencies,
     output_type=ValidationReport,
     defer_model_check=DEFER_AGENT_MODEL_CHECK,
+    capabilities=[ReasoningStrategyCapability()],
 )
 
 
@@ -98,13 +99,6 @@ async def validation_build_instructions(ctx: RunContext[ValidationDependencies])
         Complete system prompt string.
     """
     standards = coding_standards_get_for_language(ctx.deps.language)
-
-    reasoning_hint = ""
-    if ctx.deps.reasoning_mode:
-        reasoning_hint = (
-            f"\n\n## Reasoning Strategy\n"
-            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
-        )
 
     tools_section = build_tool_names_for_prompt(
         [
@@ -128,8 +122,7 @@ async def validation_build_instructions(ctx: RunContext[ValidationDependencies])
 3. Required documentation (shebang, path header, docstrings) is missing.
 4. Naming convention violations exist (2-3 token rule, feature prefix).
 5. Scope was exceeded — functional code changed beyond the violation scope.
-{tools_section}{reasoning_hint}
-
+{tools_section}
 {ctx.deps.skills_content}
 """
 

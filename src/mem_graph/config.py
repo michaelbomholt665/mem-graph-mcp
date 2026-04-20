@@ -15,6 +15,7 @@ from enum import Enum
 from typing import Literal
 
 from pydantic_ai.settings import ModelSettings
+from pydantic_ai.usage import UsageLimits
 
 ################
 #   AGENT CONFIG
@@ -37,6 +38,33 @@ def config_model_settings(*, temperature: float, top_p: float) -> ModelSettings:
     return settings
 
 
+def config_build_usage_limits(
+    *,
+    request_limit: int = 50,
+    tool_calls_limit: int | None = None,
+    input_tokens_limit: int | None = None,
+    output_tokens_limit: int | None = None,
+    total_tokens_limit: int | None = None,
+) -> UsageLimits:
+    """Build a consistent UsageLimits object for bounded agent runs."""
+    return UsageLimits(
+        request_limit=request_limit,
+        tool_calls_limit=tool_calls_limit,
+        input_tokens_limit=input_tokens_limit,
+        output_tokens_limit=output_tokens_limit,
+        total_tokens_limit=total_tokens_limit,
+    )
+
+
+def config_build_orchestrator_usage_limits(total_batches: int) -> UsageLimits:
+    """Return a conservative usage budget for batched orchestration jobs."""
+    bounded_batches = max(1, total_batches)
+    return config_build_usage_limits(
+        request_limit=(bounded_batches * 2) + 4,
+        tool_calls_limit=(bounded_batches * 2) + 2,
+    )
+
+
 ################
 #   MODEL TIERS
 ################
@@ -51,9 +79,9 @@ class ModelTier(str, Enum):
     """
 
     AUTOPILOT = "autopilot"  # XHigh — large refactors, 10–30 edits, deep debugging
-    STANDARD = "standard"    # Medium — multi-file audits, standard decomposition
-    MICRO = "micro"          # Mini — single-file edits, typo fixes, simple queries
-    TURBO = "turbo"          # Fast — high-volume classification, pattern matching
+    STANDARD = "standard"  # Medium — multi-file audits, standard decomposition
+    MICRO = "micro"  # Mini — single-file edits, typo fixes, simple queries
+    TURBO = "turbo"  # Fast — high-volume classification, pattern matching
 
 
 GPT_5_4_XHIGH = "openai:gpt-5.4-xhigh"
@@ -64,7 +92,9 @@ MODEL_TIER_MAP: dict[str, str] = {
     ModelTier.AUTOPILOT: os.getenv("MEM_GRAPH_MODEL_AUTOPILOT", GPT_5_4_XHIGH),
     ModelTier.STANDARD: os.getenv("MEM_GRAPH_MODEL_STANDARD", "openai:gpt-5.4-medium"),
     ModelTier.MICRO: os.getenv("MEM_GRAPH_MODEL_MICRO", GPT_5_4_MINI),
-    ModelTier.TURBO: os.getenv("MEM_GRAPH_MODEL_TURBO", "x-ai/grok-code-fast-1:optimized:free"),
+    ModelTier.TURBO: os.getenv(
+        "MEM_GRAPH_MODEL_TURBO", "x-ai/grok-code-fast-1:optimized:free"
+    ),
 }
 
 
@@ -82,14 +112,17 @@ WorkflowStageName = Literal[
 WORKFLOW_STAGE_MODEL_MAP: dict[WorkflowStageName, str] = {
     "context_gather": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_CONTEXT", GPT_5_4_MINI),
     "planning": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_PLANNING", GPT_5_4_MINI),
-    "implementation": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_IMPLEMENTATION", GPT_5_4_XHIGH),
+    "implementation": os.getenv(
+        "MEM_GRAPH_WORKFLOW_MODEL_IMPLEMENTATION", GPT_5_4_XHIGH
+    ),
     "audit": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_AUDIT", GPT_5_4_XHIGH),
     "debug_validation": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_DEBUG", GPT_5_4_XHIGH),
     "documentation": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_DOCUMENTATION", GPT_5_4_MINI),
-    "context_map_update": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_CONTEXT_MAP", GPT_5_4_MINI),
+    "context_map_update": os.getenv(
+        "MEM_GRAPH_WORKFLOW_MODEL_CONTEXT_MAP", GPT_5_4_MINI
+    ),
     "memory_bank_sync": os.getenv("MEM_GRAPH_WORKFLOW_MODEL_MEMORY_BANK", GPT_5_4_MINI),
 }
-
 
 
 def config_get_model_for_workflow_stage(
@@ -119,9 +152,10 @@ def _normalize_model_name(model: str) -> str:
         return model.replace("x-ai/", "xai:", 1)
     return model
 
+
 # Concurrency scaling thresholds (file count → worker count)
-_SCALE_THRESHOLD_MED: int = 10   # ≥10 files → 2 workers
-_SCALE_THRESHOLD_MAX: int = 50   # ≥50 files → 3 workers
+_SCALE_THRESHOLD_MED: int = 10  # ≥10 files → 2 workers
+_SCALE_THRESHOLD_MAX: int = 50  # ≥50 files → 3 workers
 _SCALE_SOLO_THRESHOLD: int = 30  # ≥30+complex → Solo Mode (Autopilot, no batching)
 
 
@@ -193,7 +227,9 @@ CODE_EMBED_MODEL: str = os.getenv(
 TEXT_EMBED_MODEL: str = os.getenv(
     "OLLAMA_TEXT_EMBED_MODEL", "hf.co/nomic-ai/nomic-embed-text-v1.5-GGUF:F16"
 )
-TEXT_EMBED_DIM: int = int(os.getenv("OLLAMA_TEXT_EMBED_DIM", os.getenv("OLLAMA_EMBED_DIM", "768")))
+TEXT_EMBED_DIM: int = int(
+    os.getenv("OLLAMA_TEXT_EMBED_DIM", os.getenv("OLLAMA_EMBED_DIM", "768"))
+)
 CODE_EMBED_DIM: int = int(os.getenv("OLLAMA_CODE_EMBED_DIM", "2048"))
 EMBED_DIM: int = TEXT_EMBED_DIM
 EMBED_CACHE_SIZE: int = int(os.getenv("MEM_GRAPH_EMBED_CACHE_SIZE", "512"))
@@ -215,5 +251,9 @@ FILE_TREE_DEFAULT_ROOT: str = os.getenv("MEM_GRAPH_FILE_TREE_ROOT", "")
 
 # Feature flags for runtime path selection
 # When True, prefer FastMCP native task and confirmation features (if available)
-FASTMCP_USE_NATIVE_TASKS: bool = os.getenv("FASTMCP_USE_NATIVE_TASKS", "false").lower() == "true"
-FASTMCP_ENABLE_CONFIRMATIONS: bool = os.getenv("FASTMCP_ENABLE_CONFIRMATIONS", "true").lower() == "true"
+FASTMCP_USE_NATIVE_TASKS: bool = (
+    os.getenv("FASTMCP_USE_NATIVE_TASKS", "false").lower() == "true"
+)
+FASTMCP_ENABLE_CONFIRMATIONS: bool = (
+    os.getenv("FASTMCP_ENABLE_CONFIRMATIONS", "true").lower() == "true"
+)

@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any, Literal, Union
 
 from pydantic import BaseModel, Field
+from pydantic_ai.usage import RunUsage
 from pydantic_graph import BaseNode, End, Graph, GraphRunContext
 
 from ..config import ModelTier
@@ -110,6 +111,11 @@ class AutopilotState(BaseModel):
     sandbox_artifact: dict[str, Any] = Field(default_factory=dict)
     final_notes: str = ""
     success: bool = False
+
+    # Accumulated sub-agent usage (requests, tokens) across the full run.
+    usage_requests: int = 0
+    usage_input_tokens: int = 0
+    usage_output_tokens: int = 0
 
 
 ################
@@ -226,8 +232,16 @@ class SentryNode(BaseNode[AutopilotState, None, AutopilotState]):
                 "Use sentry_read_file for file context and sentry_record_test for each test. "
                 "Return a SentryReport."
             )
+            # Delegate handoff: sentry_agent receives pre-loaded file_contents and
+            # graph-context summaries (violations, decisions). Agent must NOT access
+            # disk — all content is injected via deps.
             result = await sentry_agent.run(prompt, deps=deps)
             report = result.output
+
+            u = result.usage()
+            ctx.state.usage_requests += u.requests
+            ctx.state.usage_input_tokens += u.input_tokens or 0
+            ctx.state.usage_output_tokens += u.output_tokens or 0
 
             ctx.state.sentry_tests = [
                 f"{test.file_path}::{test.test_name} — {test.failing_assertion}"
@@ -312,6 +326,8 @@ class LogicDraftNode(BaseNode[AutopilotState, None, AutopilotState]):
             batches = _split_into_batches(ctx.state.target_files, concurrency)
             all_patches: dict[str, str] = {}
             patches_lock = asyncio.Lock()
+            worker_usages: list[RunUsage] = []
+            worker_usages_lock = asyncio.Lock()
 
             import anyio
 
@@ -331,16 +347,27 @@ class LogicDraftNode(BaseNode[AutopilotState, None, AutopilotState]):
                     "Use fixer_read_file_context to inspect, fixer_record_patch for each fix. "
                     "Return your FixerReport."
                 )
-                res = await fixer_agent.run(prompt, deps=deps)
+                # Delegate handoff: fixer_agent receives subset of pre-read file_contents
+                # and the consolidated violations list. Agent must NOT read from disk —
+                # all context is injected via deps. Each worker uses its own RunUsage.
+                job_usage = RunUsage()
+                res = await fixer_agent.run(prompt, deps=deps, usage=job_usage)
                 worker_patches = {
                     p.file_path: p.proposed_snippet for p in res.output.patches
                 }
                 async with patches_lock:
                     all_patches.update(worker_patches)
+                async with worker_usages_lock:
+                    worker_usages.append(job_usage)
 
             async with anyio.create_task_group() as tg:
                 for batch in batches:
                     tg.start_soon(worker, batch)
+
+            for u in worker_usages:
+                ctx.state.usage_requests += u.requests
+                ctx.state.usage_input_tokens += u.input_tokens or 0
+                ctx.state.usage_output_tokens += u.output_tokens or 0
 
             ctx.state.fixer_patches = all_patches
             logger.info(
@@ -406,6 +433,8 @@ class StyleDraftNode(BaseNode[AutopilotState, None, AutopilotState]):
                 concurrency,
             )
             all_styled = {}
+            style_worker_usages: list[RunUsage] = []
+            style_worker_usages_lock = asyncio.Lock()
 
             import anyio
 
@@ -422,13 +451,24 @@ class StyleDraftNode(BaseNode[AutopilotState, None, AutopilotState]):
                     "Apply language coding standards to the provided file subset. "
                     "Return StyledFilePatches."
                 )
-                res = await scribe_agent.run(prompt, deps=deps)
+                # Delegate handoff: scribe_agent receives the fixer-produced content
+                # for a file subset. Agent must NOT modify logic — only headers,
+                # docstrings, type annotations, and naming. Each worker uses its own RunUsage.
+                job_usage = RunUsage()
+                res = await scribe_agent.run(prompt, deps=deps, usage=job_usage)
                 for p in res.output.styled_patches:
                     all_styled[p.file_path] = p.styled_content
+                async with style_worker_usages_lock:
+                    style_worker_usages.append(job_usage)
 
             async with anyio.create_task_group() as tg:
                 for batch in batches:
                     tg.start_soon(worker, batch)
+
+            for u in style_worker_usages:
+                ctx.state.usage_requests += u.requests
+                ctx.state.usage_input_tokens += u.input_tokens or 0
+                ctx.state.usage_output_tokens += u.output_tokens or 0
 
             ctx.state.styled_patches = all_styled
             if not ctx.state.styled_patches:
@@ -569,7 +609,13 @@ class MemorySyncNode(BaseNode[AutopilotState, None, AutopilotState]):
             ctx.state.final_notes = note_content
             _state_write_note(ctx.state.project_id, note_content)
 
-            logger.info("[SYNC] Note written to graph. Autopilot complete.")
+            logger.info(
+                "[SYNC] Note written to graph. Autopilot complete. "
+                "usage: requests=%d input_tokens=%d output_tokens=%d",
+                ctx.state.usage_requests,
+                ctx.state.usage_input_tokens,
+                ctx.state.usage_output_tokens,
+            )
             span.set_attribute("autopilot.success", ctx.state.success)
             span.set_attribute(_NEXT_NODE_ATTR, "End")
             return End(ctx.state)

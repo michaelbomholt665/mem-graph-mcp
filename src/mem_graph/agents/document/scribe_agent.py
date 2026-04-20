@@ -20,10 +20,11 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
+from ...capabilities import ReasoningStrategyCapability
 from ...config import DEFER_AGENT_MODEL_CHECK, ModelTier, config_get_model_for_tier
 from ...resources.coding_standards import coding_standards_get_for_language
 from ...resources.personas import SCRIBE_PERSONA
-from ...resources.prompts import build_tool_names_for_prompt, get_reasoning_mode_guidance
+from ...resources.prompts import build_tool_names_for_prompt
 
 ################
 #   CONSTANTS
@@ -111,6 +112,7 @@ scribe_agent: Agent[ScribeDependencies, ScribeReport] = Agent(
     deps_type=ScribeDependencies,
     output_type=ScribeReport,
     defer_model_check=DEFER_AGENT_MODEL_CHECK,
+    capabilities=[ReasoningStrategyCapability()],
 )
 
 
@@ -130,13 +132,6 @@ async def scribe_build_instructions(ctx: RunContext[ScribeDependencies]) -> str:
     """
     standards = coding_standards_get_for_language(ctx.deps.language)
 
-    reasoning_hint = ""
-    if ctx.deps.reasoning_mode:
-        reasoning_hint = (
-            f"\n\n## Reasoning Strategy\n"
-            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
-        )
-
     tools_section = build_tool_names_for_prompt(
         ["scribe_read_file", "scribe_apply_standards"]
     )
@@ -154,8 +149,7 @@ async def scribe_build_instructions(ctx: RunContext[ScribeDependencies]) -> str:
 - ONLY add or fix: shebang line, path header comment, module docstring,
   function/class docstrings, type annotations, and variable naming.
 - If a file already has correct headers and docstrings, return it unchanged.
-{tools_section}{reasoning_hint}
-
+{tools_section}
 {ctx.deps.skills_content}
 """
 

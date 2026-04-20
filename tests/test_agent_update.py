@@ -6,8 +6,11 @@ import os
 os.environ.setdefault("OPENAI_API_KEY", "test")
 
 import asyncio
+
 import pytest
 
+from mem_graph.agents.audit.factory import build_audit_agent_bundle
+from mem_graph.agents.audit.rules import audit_rules_get
 from mem_graph.agents.builder.agent_builder import (
     HelperAgentSpec,
     discover_helper_agent_specs,
@@ -16,8 +19,6 @@ from mem_graph.agents.builder.agent_builder import (
     update_helper_agent_spec,
     write_helper_agent_spec,
 )
-from mem_graph.agents.audit.factory import build_audit_agent_bundle
-from mem_graph.agents.audit.rules import audit_rules_get
 from mem_graph.agents.orchestrator_agent import (
     BatchFileContent,
     OrchestratorDependencies,
@@ -40,6 +41,7 @@ async def test_deterministic_orchestrator_batches_and_aggregates(tmp_path):
     async def fake_runner(
         deps: OrchestratorDependencies,
         files: list[BatchFileContent],
+        job_usage: object = None,
     ) -> object:
         await asyncio.sleep(0)
         return {"count": len(files), "project_id": deps.project_id}
