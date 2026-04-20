@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from mem_graph.sandbox.errors import SandboxNotFoundError
-from mem_graph.sandbox.models import SandboxExecutionResult
+from mem_graph.sandbox.models.errors import SandboxNotFoundError
+from mem_graph.sandbox.models.models import SandboxExecutionResult
 from mem_graph.sandbox.provider import SessionSandboxProvider
 
 

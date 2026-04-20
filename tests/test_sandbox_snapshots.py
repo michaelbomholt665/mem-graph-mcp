@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mem_graph.sandbox.snapshots import (
+from mem_graph.sandbox.filesystem.snapshots import (
     create_repo_snapshot,
     create_session_layout,
     initialize_workspace,

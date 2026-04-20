@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mem_graph.sandbox.config import SandboxSettings
+from mem_graph.sandbox.models.config import SandboxSettings
 
 
 def test_sandbox_settings_defaults(monkeypatch):

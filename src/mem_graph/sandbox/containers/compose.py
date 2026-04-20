@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .errors import SandboxPolicyError
-from .models import SandboxSession
+from ..models.errors import SandboxPolicyError
+from ..models.models import SandboxSession
 
 _SESSION_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 

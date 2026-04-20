@@ -3,9 +3,9 @@ from __future__ import annotations
 import anyio
 import pytest
 
-from mem_graph.sandbox.config import SandboxSettings
+from mem_graph.sandbox.models.config import SandboxSettings
 from mem_graph.sandbox.manager import SessionSandboxManager
-from mem_graph.sandbox.models import (
+from mem_graph.sandbox.models.models import (
     SandboxExecutionRequest,
     SandboxExecutionResult,
     SandboxStatus,

@@ -8,17 +8,17 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
-from .config import SandboxSettings, get_sandbox_settings
-from .errors import SandboxDisabledError, SandboxNotFoundError
-from .models import (
+from .models.config import SandboxSettings, get_sandbox_settings
+from .models.errors import SandboxDisabledError, SandboxNotFoundError
+from .models.models import (
     SandboxExecutionRequest,
     SandboxExecutionResult,
     SandboxPolicy,
     SandboxSession,
     SandboxStatus,
 )
-from .podman import PodmanAdapter
-from .snapshots import (
+from .containers.podman import PodmanAdapter
+from .filesystem.snapshots import (
     cleanup_session_paths,
     create_repo_snapshot,
     create_session_layout,

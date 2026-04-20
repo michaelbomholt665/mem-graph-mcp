@@ -7,8 +7,8 @@ import os
 import shutil
 from pathlib import Path
 
-from .errors import SandboxMergeConflictError, SandboxPolicyError
-from .models import SandboxMergeResult
+from ..models.errors import SandboxMergeConflictError, SandboxPolicyError
+from ..models.models import SandboxMergeResult
 
 EXCLUDED_DIRS = {
     ".git",

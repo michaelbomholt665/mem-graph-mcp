@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..sandbox.config import SandboxSettings, get_sandbox_settings
+from ..sandbox.models.config import SandboxSettings, get_sandbox_settings
 from ..sandbox.manager import SessionSandboxManager, get_sandbox_manager, set_sandbox_manager
 
 

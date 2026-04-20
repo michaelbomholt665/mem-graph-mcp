@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from mem_graph.sandbox.compose import compose_down_argv, compose_project_name, compose_up_argv
-from mem_graph.sandbox.config import SandboxSettings
-from mem_graph.sandbox.errors import SandboxPolicyError
-from mem_graph.sandbox.podman import PodmanAdapter
+from mem_graph.sandbox.containers.compose import compose_down_argv, compose_project_name, compose_up_argv
+from mem_graph.sandbox.models.config import SandboxSettings
+from mem_graph.sandbox.models.errors import SandboxPolicyError
+from mem_graph.sandbox.containers.podman import PodmanAdapter
 
 
 def test_compose_project_name_validates_session_id():

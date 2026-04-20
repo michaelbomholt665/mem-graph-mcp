@@ -9,10 +9,10 @@ from uuid import uuid4
 
 from ...resources.workflows.models import WorkflowSandboxPolicy
 from ...resources.workflows.selector import WorkflowSelection
-from ...sandbox.config import get_sandbox_settings
-from ...sandbox.errors import SandboxDisabledError
+from ...sandbox.models.config import get_sandbox_settings
+from ...sandbox.models.errors import SandboxDisabledError
 from ...sandbox.manager import SessionSandboxManager
-from ...sandbox.models import SandboxPolicy, SandboxResourceLimits, SandboxSession
+from ...sandbox.models.models import SandboxPolicy, SandboxResourceLimits, SandboxSession
 from ...services.sandbox_sessions import sandbox_manager
 
 
