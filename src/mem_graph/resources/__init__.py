@@ -1,0 +1,1 @@
+"""Typed Python resource definitions."""

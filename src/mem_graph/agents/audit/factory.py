@@ -11,7 +11,7 @@ from ...config import ModelTier, config_get_model_for_tier
 from ...models.audit import AuditReport, AuditRule
 from ...resources.personas import AUDITOR_PERSONA, Persona
 from .audit_agent import AuditDependencies, audit_agent
-from .rules import audit_rules_get
+from ...providers.skills import load_skill
 
 AuditToolMode = Literal["standalone", "preloaded"]
 
@@ -45,12 +45,24 @@ def build_audit_agent_bundle(
     and tool surface mode in one place. The single audit_agent instance is
     used for all modes; mode branching is driven by deps.mode at runtime.
     """
-    rules = audit_rules_get(rule_set)
+    skill_name = {
+        "default": "python_quality",
+        "security": "security",
+        "bug": "python_quality", # fallback for missing bug skill right now
+        "smell": "python_quality", # fallback
+        "python": "python_quality",
+        "go": "go_quality",
+    }.get(rule_set, "python_quality")
+
+    skill = load_skill(skill_name)
+    rules = skill.audit_rules
+    effective_skills_content = skills_content or skill.prompt_fragment
+
     deps = AuditDependencies(
         package_path=package_path,
         rules=rules,
         file_extension=file_extension,
-        skills_content=skills_content,
+        skills_content=effective_skills_content,
         extra_file_context=extra_file_context,
         mode=tool_mode,
     )

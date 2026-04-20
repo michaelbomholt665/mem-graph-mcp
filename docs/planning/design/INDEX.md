@@ -61,6 +61,8 @@ This directory contains comprehensive design documents for implementing the "202
 │  - Slim: Lightweight dispatcher (openai, google)                 │
 │  - Graph: Type-safe ReAct workflows                              │
 │  - Deep: Planning & self-correction                              │
+│  - Multi-Agent: Patterns for delegation and hand-off            │
+│  - Evaluators: Native LLM judges and concurrency                │
 │  - Skills: Python-native tool organization                       │
 │  - Hindsight: Long-term memory (Ladybug)                         │
 └─────────────────────────────────────────────────────────────────┘
@@ -83,6 +85,8 @@ This directory contains comprehensive design documents for implementing the "202
 - [x] **003:** Pydantic-Deep (Planning)
 - [x] **004:** Pydantic-AI-Skills (Python skills)
 - [x] **005:** Hindsight (Memory)
+- [x] **011:** Multi-Agent Patterns (Delegation & Hand-off)
+- [x] **012:** Native Evaluators (LLM Judges & Concurrency)
 
 **Outcome:** Core Five agents run on upgraded Pydantic stack with memory.
 

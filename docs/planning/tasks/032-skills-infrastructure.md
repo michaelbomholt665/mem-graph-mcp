@@ -12,7 +12,7 @@ Skills are currently read-only SKILL.md files passed as raw strings. The interfa
 
 The goal is to establish a code-based skill system where:
 1. **Skills are structured objects** (`SkillBundle` dataclass) with prompt fragments, audit rules, and metadata.
-2. **Named skills live in `resources/skills/`** alongside personas and prompts.
+2. **Named skills live in `providers/skills/`** alongside personas and prompts.
 3. **Skills are discoverable and composable** via `load_skill(name)` and `skills_match(language, intent)`.
 4. **Skills have their own eval suite** measuring precision/recall of findings.
 5. **Skill resolution is explicit** in agent calls, not magic imports.
@@ -81,35 +81,37 @@ Four rule sets in `agents/audit/rules/`:
 ### New Files
 
 ```
-src/mem_graph/resources/skills/__init__.py
+src/mem_graph/providers/skills/__init__.py
   - Export SkillBundle, SkillRegistry, load_skill(), skills_match()
 
-src/mem_graph/resources/skills/base.py
+src/mem_graph/providers/skills/base.py
   - Define SkillBundle dataclass
+
+src/mem_graph/providers/skills/registry.py
   - Define SkillRegistry class
   - Define load_skill() and skills_match() functions
 
-src/mem_graph/resources/skills/python_quality.py
+src/mem_graph/providers/skills/python_quality.py
   - Python-specific audit rules + prompt fragment
   - SkillBundle: python_quality
 
-src/mem_graph/resources/skills/security.py
+src/mem_graph/providers/skills/security.py
   - Cross-language security rules + prompt fragment
   - SkillBundle: security
 
-src/mem_graph/resources/skills/go_quality.py
+src/mem_graph/providers/skills/go_quality.py
   - Go-specific naming conventions + rules
   - SkillBundle: go_quality
 
-src/mem_graph/resources/skills/typescript_quality.py
+src/mem_graph/providers/skills/typescript_quality.py
   - TypeScript-specific patterns + rules
   - SkillBundle: typescript_quality
 
-src/mem_graph/resources/skills/documentation.py
+src/mem_graph/providers/skills/documentation.py
   - Documentation best practices
   - SkillBundle: documentation
 
-src/mem_graph/resources/skills/performance.py
+src/mem_graph/providers/skills/performance.py
   - Performance optimization patterns
   - SkillBundle: performance
 
@@ -147,7 +149,7 @@ tests/test_skills.py
 ### Phase 1: Define SkillBundle and Registry (Sprint 1)
 
 **Create `base.py`:**
-- [ ] Define `SkillBundle` dataclass:
+[x] Define `SkillBundle` dataclass:
   ```python
   from dataclasses import dataclass, field
   from typing import Literal
@@ -177,8 +179,10 @@ tests/test_skills.py
           return (lang_match + intent_match) / 2.0 * confidence_mult
   ```
 
-- [ ] Define `SkillRegistry` class:
+[x] Create `registry.py`:
   ```python
+  from .base import SkillBundle
+
   class SkillRegistry:
       def __init__(self):
           self.skills: dict[str, SkillBundle] = {}
@@ -187,7 +191,9 @@ tests/test_skills.py
           self.skills[skill.name] = skill
 
       def get(self, name: str) -> SkillBundle:
-          return self.skills.get(name) or raise ValueError(f"Skill {name} not found")
+          if name not in self.skills:
+              raise ValueError(f"Skill {name} not found")
+          return self.skills[name]
 
       def list_all(self) -> list[str]:
           return list(self.skills.keys())
@@ -215,7 +221,7 @@ tests/test_skills.py
 ### Phase 2: Migrate Audit Rules to Skills (Sprint 1–2)
 
 **Convert rule sets to SkillBundle objects:**
-- [ ] Create `python_quality.py`:
+[x] Create `python_quality.py`:
   ```python
   from .base import SkillBundle
   from src.mem_graph.models.audit import AuditRule, FindingCategory, Severity
@@ -249,7 +255,7 @@ tests/test_skills.py
   )
   ```
 
-- [ ] Create `security.py`:
+[x] Create `security.py`:
   ```python
   security = SkillBundle(
       name="security",
@@ -269,9 +275,9 @@ tests/test_skills.py
   )
   ```
 
-- [ ] Create `go_quality.py`, `typescript_quality.py`.
+[x] Create `go_quality.py`, `typescript_quality.py`.
 
-- [ ] Update `agents/audit/factory.py`:
+[x] Update `agents/audit/factory.py`:
   ```python
   async def build_audit_agent_bundle(rule_set: str = "default") -> AuditBundle:
       skill_name = {
@@ -289,10 +295,11 @@ tests/test_skills.py
       )
   ```
 
-- [ ] Register all skills on module load:
+[x] Register all skills on module load:
   ```python
-  # src/mem_graph/resources/skills/__init__.py
-  from .base import SkillBundle, SkillRegistry, load_skill, skills_match
+  # src/mem_graph/providers/skills/__init__.py
+  from .base import SkillBundle
+  from .registry import SkillRegistry, load_skill, skills_match, SKILL_REGISTRY
   from .python_quality import python_quality
   from .security import security
   from .go_quality import go_quality
@@ -309,7 +316,7 @@ tests/test_skills.py
 ### Phase 3: Update Agent Call Patterns (Sprint 2)
 
 **Update agent tools and callers:**
-- [ ] Audit package tool:
+[x] Audit package tool:
   ```python
   @mcp.tool()
   async def audit_package(package_path: str, skill_name: str = "python_quality") -> dict:
@@ -329,7 +336,7 @@ tests/test_skills.py
       return report.model_dump(mode="json")
   ```
 
-- [ ] Orchestrator agent:
+[x] Orchestrator agent:
   ```python
   async def orchestrator_agent.run(...):
       # Auto-select skill based on language
@@ -345,7 +352,7 @@ tests/test_skills.py
 ### Phase 4: Create Skill Evals (Sprint 2–3)
 
 **Define skill test suites:**
-- [ ] Create `evals/suites/skill_evals.py`:
+[x] Create `evals/suites/skill_evals.py`:
   ```python
   from pydantic_evals import Evaluator, EvaluatorContext
 
@@ -405,7 +412,7 @@ tests/test_skills.py
   ]
   ```
 
-- [ ] Add fixture cases:
+[x] Add fixture cases:
   ```python
   SKILL_FIXTURES = {
       "python_quality": PYTHON_QUALITY_CASES,
@@ -414,14 +421,14 @@ tests/test_skills.py
   }
   ```
 
-- [ ] Create eval suite in test files:
+[x] Create eval suite in test files:
   ```bash
   uv run mem-graph-evals skill_python_quality skill_security --mode fixture
   ```
 
 ### Phase 5: Documentation and Skill Authoring Guide (Sprint 3)
 
-- [ ] Create `docs/planning/design/skills/skill-authoring-guide.md`:
+[x] Create `docs/planning/design/skills/skill-authoring-guide.md`:
   ```markdown
   # Skill Authoring Guide
 
@@ -464,13 +471,13 @@ tests/test_skills.py
   4. Then: Live test suite with hosted datasets
   ```
 
-- [ ] Add checklist for new skills:
-  - [ ] Skill name is unique and descriptive
-  - [ ] Prompt fragment is clear and concise (< 300 words)
-  - [ ] At least 5 audit rules with examples
-  - [ ] Fixture test cases cover happy path + edge cases
-  - [ ] Confidence score is honest (not all "high")
-  - [ ] Skill is registered in `__init__.py`
+[x] Add checklist for new skills:
+  [x] Skill name is unique and descriptive
+  [x] Prompt fragment is clear and concise (< 300 words)
+  [x] At least 5 audit rules with examples
+  [x] Fixture test cases cover happy path + edge cases
+  [x] Confidence score is honest (not all "high")
+  [x] Skill is registered in `__init__.py`
 
 ## Acceptance Criteria
 

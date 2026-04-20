@@ -19,15 +19,15 @@ import logging
 import os
 from typing import Annotated
 
-import anyio
 from fastmcp import FastMCP
 from fastmcp.server.context import Context
 from mcp.types import Icon
 from pydantic import Field
 
 from ...app.registry import AgentEntry, register_agent
-from ...agents.audit.audit_agent import DEFAULT_RULES, AuditDependencies, audit_agent
+from ...agents.audit.audit_agent import AuditDependencies, audit_agent
 from ...models.audit import AuditReport
+from ...providers.skills import load_skill
 from ...observability import traced_tool
 from ...services.task_queue import task_queue
 from ...services.report_writer import write_report
@@ -54,7 +54,6 @@ register_agent(
     )
 )
 
-_SKILLS_PATH = os.path.join(os.getcwd(), "skills", "audit_agent", "SKILL.md")
 
 
 @mcp.tool(
@@ -88,6 +87,10 @@ async def audit_package(
         str,
         Field(description="Source file extension to analyse. Defaults to '.py'."),
     ] = ".py",
+    skill_name: Annotated[
+        str,
+        Field(description="The domain or language skill to use. Defaults to 'python_quality'."),
+    ] = "python_quality",
     peer_review: Annotated[
         bool,
         Field(description="Request an LLM peer review of the findings summary before returning. Defaults to False."),
@@ -103,6 +106,7 @@ async def audit_package(
             report_output_path=report_output_path,
             persist_violations=persist_violations,
             file_extension=file_extension,
+            skill_name=skill_name,
             peer_review=peer_review,
             reporter=reporter,
             ctx=ctx,
@@ -116,6 +120,7 @@ async def audit_package(
             "report_output_path": report_output_path,
             "persist_violations": persist_violations,
             "file_extension": file_extension,
+            "skill_name": skill_name,
             "peer_review": peer_review,
         },
         session_id=ctx.session_id if ctx is not None else None,
@@ -125,6 +130,7 @@ async def audit_package(
             report_output_path=report_output_path,
             persist_violations=persist_violations,
             file_extension=file_extension,
+            skill_name=skill_name,
             peer_review=peer_review,
             reporter=reporter,
             ctx=ctx,
@@ -139,6 +145,7 @@ async def _audit_package_worker(
     report_output_path: str | None,
     persist_violations: bool,
     file_extension: str,
+    skill_name: str,
     peer_review: bool,
     reporter: ProgressReporter,
     ctx: Context | None,
@@ -154,8 +161,13 @@ async def _audit_package_worker(
         f"Validating inputs and loading audit skills for {package_path}.",
     )
 
-    skills_content = await _load_skills()
-    deps = _build_deps(package_path, file_extension, skills_content)
+    skill = load_skill(skill_name)
+    deps = AuditDependencies(
+        package_path=package_path,
+        rules=skill.audit_rules,
+        file_extension=file_extension,
+        skills_content=skill.prompt_fragment,
+    )
 
     await report_step(
         reporter,
@@ -284,25 +296,7 @@ async def _handle_peer_review(
         return None
 
 
-async def _load_skills() -> str:
-    if not os.path.exists(_SKILLS_PATH):
-        return ""
 
-    try:
-        async with await anyio.open_file(_SKILLS_PATH, "r", encoding="utf-8") as f:
-            return await f.read()
-    except Exception as exc:
-        logger.warning("Failed to load skills from %s: %s", _SKILLS_PATH, exc)
-        return ""
-
-
-def _build_deps(package_path: str, file_extension: str, skills_content: str) -> AuditDependencies:
-    return AuditDependencies(
-        package_path=package_path,
-        file_extension=file_extension,
-        skills_content=skills_content,
-        rules=DEFAULT_RULES,
-    )
 
 
 async def _run_agent(deps: AuditDependencies) -> AuditReport | None:

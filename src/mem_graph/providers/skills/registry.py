@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from .base import SkillBundle
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,3 +59,38 @@ def task_type_map() -> dict[str, list[str]]:
         category: sorted(types)
         for category, types in sorted(task_types.items(), key=lambda item: item[0])
     }
+
+class SkillRegistry:
+    def __init__(self) -> None:
+        self.skills: dict[str, SkillBundle] = {}
+
+    def register(self, skill: SkillBundle) -> None:
+        self.skills[skill.name] = skill
+
+    def get(self, name: str) -> SkillBundle:
+        if name not in self.skills:
+            raise ValueError(f"Skill {name} not found")
+        return self.skills[name]
+
+    def list_all(self) -> list[str]:
+        return list(self.skills.keys())
+
+    def filter(self, language: str, intent: str) -> list[tuple[SkillBundle, float]]:
+        """Return skills matching language/intent, sorted by match score."""
+        matches = []
+        for skill in self.skills.values():
+            score = skill.matches(language, intent)
+            if score > 0.0:
+                matches.append((skill, score))
+        return sorted(matches, key=lambda x: x[1], reverse=True)
+
+SKILL_REGISTRY = SkillRegistry()
+
+def load_skill(name: str) -> SkillBundle:
+    """Load a specific skill by name."""
+    return SKILL_REGISTRY.get(name)
+
+def skills_match(language: str, intent: str) -> SkillBundle | None:
+    """Return the best-matching skill for language/intent."""
+    matches = SKILL_REGISTRY.filter(language, intent)
+    return matches[0][0] if matches else None

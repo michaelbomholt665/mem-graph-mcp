@@ -503,14 +503,9 @@ def _ensure_vector_indexes(conn: lb.Connection) -> None:
             and re.match(_IDENTIFIER_PATTERN, prop)
         ):
             continue
-        conn.execute(f"""
-            CALL CREATE_VECTOR_INDEX(
-                '{table}',
-                '{index_name}',
-                '{prop}',
-                metric := 'cosine'
-            );
-        """)  # nosemgrep
+        conn.execute(  # nosemgrep
+            f"CALL CREATE_VECTOR_INDEX('{table}', '{index_name}', '{prop}', metric := 'cosine');"
+        )
 
 
 def _ensure_fts_indexes(conn: lb.Connection) -> None:
