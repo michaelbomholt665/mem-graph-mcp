@@ -24,7 +24,7 @@ def test_logfire_setup_uses_safe_defaults(monkeypatch) -> None:
             ) as instrument_pydantic_ai,
             patch.object(logfire_setup.logfire, "instrument_mcp") as instrument_mcp,
             patch.object(logfire_setup.logfire, "instrument_httpx") as instrument_httpx,
-            patch.object(logfire_setup, "_LOGFIRE") as logfire_logger,
+            patch.object(logfire_setup.logging.getLogger(logfire_setup.__name__), "info") as logger_info,
         ):
             state = logfire_setup.setup_logfire(
                 service_name="syntx-memory",
@@ -41,7 +41,7 @@ def test_logfire_setup_uses_safe_defaults(monkeypatch) -> None:
         assert instrument_pydantic_ai.call_args.kwargs["include_content"] is False
         assert instrument_pydantic_ai.call_args.kwargs["version"] == 3
         instrument_httpx.assert_called_once_with(capture_all=False)
-        logfire_logger.info.assert_called_once()
+        logger_info.assert_called_once_with("Logfire bootstrap ready (via stderr)")
     finally:
         logfire_setup._STATE = None
 

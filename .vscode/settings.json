@@ -5,7 +5,6 @@
     "connectionId": "michaelbomholt665",
     "projectKey": "michaelbomholt665_mem-graph-mcp"
   },
-
   // --- Ruff Integration ---
   // Tells VS Code to use Ruff for formatting and organizing imports
   "[python]": {
@@ -18,7 +17,6 @@
   },
   "ruff.importStrategy": "fromEnvironment",
   "ruff.configurationPreference": "filesystemFirst", // Prioritizes your ruff.toml/pyproject.toml
-
   // --- File Exclusions (UI) ---
   // This hides files from the Explorer sidebar to keep it clean
   "files.exclude": {
@@ -36,7 +34,6 @@
     ".sonarlint/": true,
     "**/dist/**": true,
   },
-
   // --- Search & Watcher Exclusions ---
   // Prevents VS Code from indexing/searching inside these folders (Performance boost)
   "search.exclude": {
@@ -51,12 +48,13 @@
     "**/build/**": true,
     "**/dist/**": true,
   },
-
   // --- Pylance (Analysis) Settings ---
   // Optimized for src-layout and strict type checking
   "python.analysis.typeCheckingMode": "strict",
   "python.analysis.autoImportCompletions": true,
-  "python.analysis.include": ["src"],
+  "python.analysis.include": [
+    "src"
+  ],
   "python.analysis.exclude": [
     "**/node_modules",
     "**/__pycache__",
@@ -65,10 +63,17 @@
     "**/build",
     "**/dist"
   ],
-
   // --- General Editor Polish ---
-  "editor.ruleIndex": [88, 120], // Visual vertical lines for line length limits
+  "editor.ruleIndex": [
+    88,
+    120
+  ], // Visual vertical lines for line length limits
   "editor.renderWhitespace": "boundary",
   "files.trimTrailingWhitespace": true,
-  "files.insertFinalNewline": true
+  "files.insertFinalNewline": true,
+  "python.testing.pytestArgs": [
+    "tests"
+  ],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true
 }

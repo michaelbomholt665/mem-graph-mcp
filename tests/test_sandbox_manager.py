@@ -48,7 +48,7 @@ async def test_manager_lifecycle_lazy_start(tmp_path):
         podman=fake,
     )
     await manager.startup()
-    session = await manager.create_session("s1")
+    session = manager.create_session("s1")
 
     assert session.status == SandboxStatus.CREATED
     result = await manager.run_in_session("s1", SandboxExecutionRequest(command=["true"]))
@@ -73,7 +73,7 @@ async def test_manager_concurrent_first_use_starts_once(tmp_path):
         podman=fake,
     )
     await manager.startup()
-    await manager.create_session("s1")
+    manager.create_session("s1")
 
     async with anyio.create_task_group() as tg:
         for _ in range(5):

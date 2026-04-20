@@ -195,6 +195,8 @@ def setup_logfire(
         # 5. Instrument and Silent Ready Log
         logfire.instrument_pydantic_ai(include_content=state.capture_content, version=3)
         logfire.instrument_mcp()
+        if state.instrument_httpx:
+            logfire.instrument_httpx(capture_all=state.capture_httpx)
 
         # Log only to stderr to keep the MCP handshake clean.
         logging.getLogger(__name__).info("Logfire bootstrap ready (via stderr)")
