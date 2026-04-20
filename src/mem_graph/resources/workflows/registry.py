@@ -15,6 +15,7 @@ from .models import (
     WorkflowResource,
     WorkflowStageDefinition,
 )
+from .workflow_definitions import GROUP_A_WORKFLOWS
 
 ################
 #   BUILT-IN WORKFLOWS
@@ -240,6 +241,7 @@ _WORKFLOW_REGISTRY: dict[str, WorkflowResource] = {
         _AUTOPILOT_WORKFLOW,
         _MANAGED_WORKFLOW,
         _PACKAGE_AUDIT_WORKFLOW,
+        *GROUP_A_WORKFLOWS,
     ]
 }
 

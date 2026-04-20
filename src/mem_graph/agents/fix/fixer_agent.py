@@ -7,6 +7,8 @@ The Mechanic. Receives a list of violations and their corresponding file
 contents, proposes minimal functional logic changes to resolve each
 violation, and returns the proposed diffs keyed by file path. Operates
 at the caller-specified model tier for cost/intelligence scaling.
+
+Agent-local tools: fixer_read_file_context, fixer_record_patch, fixer_mark_unresolvable
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from pydantic_ai import Agent, RunContext
 
 from ...config import DEFER_AGENT_MODEL_CHECK, ModelTier, config_get_model_for_tier
 from ...resources.personas import MECHANIC_PERSONA
+from ...resources.prompts import build_tool_names_for_prompt, get_reasoning_mode_guidance
 
 ################
 #   CONSTANTS
@@ -95,6 +98,10 @@ class FixerDependencies:
         tier: Model tier to use for this fix (from Router decision).
         project_id: Project ID for graph context.
         skills_content: Optional SKILL.md content for extra guidance.
+        _fixer_patches: Accumulated FilePatch objects recorded during the run;
+            never monkey-patched onto RunContext.
+        _fixer_unresolved: Violation IDs that could not be auto-fixed;
+            never monkey-patched onto RunContext.
     """
 
     violations: list[str]
@@ -102,6 +109,9 @@ class FixerDependencies:
     tier: str = ModelTier.STANDARD.value
     project_id: str = ""
     skills_content: str = ""
+    _fixer_patches: list[FilePatch] = field(default_factory=list)
+    _fixer_unresolved: list[str] = field(default_factory=list)
+    reasoning_mode: str = ""
 
 
 ################
@@ -131,6 +141,17 @@ async def fixer_build_system_prompt(ctx: RunContext[FixerDependencies]) -> str:
     Returns:
         Complete system prompt string.
     """
+    reasoning_hint = ""
+    if ctx.deps.reasoning_mode:
+        reasoning_hint = (
+            f"\n\n## Reasoning Strategy\n"
+            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
+        )
+
+    tools_section = build_tool_names_for_prompt(
+        ["fixer_read_file_context", "fixer_record_patch", "fixer_mark_unresolvable"]
+    )
+
     return f"""{MECHANIC_PERSONA.get_system_instructions()}
 
 ## Scope Rules (MANDATORY)
@@ -144,17 +165,13 @@ async def fixer_build_system_prompt(ctx: RunContext[FixerDependencies]) -> str:
 
 ## Model Tier
 Operating at tier: {ctx.deps.tier}
-
-## Tools
-- Call `fixer_read_file_context` to inspect a specific file.
-- Call `fixer_record_patch` for each proposed fix.
-- Call `fixer_mark_unresolvable` for violations that require human review.
+{tools_section}{reasoning_hint}
 
 {ctx.deps.skills_content}
 """
 
 
-@fixer_agent.tool
+@fixer_agent.tool  # Scope: agent-local only
 async def fixer_read_file_context(
     ctx: RunContext[FixerDependencies],
     file_path: str,
@@ -172,7 +189,7 @@ async def fixer_read_file_context(
     return ctx.deps.file_contents.get(file_path, f"ERROR: {file_path} not in provided context.")
 
 
-@fixer_agent.tool
+@fixer_agent.tool  # Scope: agent-local only
 async def fixer_record_patch(
     ctx: RunContext[FixerDependencies],
     file_path: str,
@@ -195,9 +212,6 @@ async def fixer_record_patch(
     Returns:
         Confirmation message with patch index.
     """
-    if not hasattr(ctx, "_fixer_patches"):
-        ctx._fixer_patches = []  # type: ignore[attr-defined]
-
     patch = FilePatch(
         file_path=file_path,
         original_snippet=original_snippet,
@@ -205,12 +219,12 @@ async def fixer_record_patch(
         violation_ids=violation_ids,
         rationale=rationale,
     )
-    ctx._fixer_patches.append(patch)  # type: ignore[attr-defined]
-    logger.debug("Recorded patch %d for %s", len(ctx._fixer_patches), file_path)  # type: ignore[attr-defined]
-    return f"Patch {len(ctx._fixer_patches)} recorded for `{file_path}`."  # type: ignore[attr-defined]
+    ctx.deps._fixer_patches.append(patch)
+    logger.debug("Recorded patch %d for %s", len(ctx.deps._fixer_patches), file_path)
+    return f"Patch {len(ctx.deps._fixer_patches)} recorded for `{file_path}`."
 
 
-@fixer_agent.tool
+@fixer_agent.tool  # Scope: agent-local only
 async def fixer_mark_unresolvable(
     ctx: RunContext[FixerDependencies],
     violation_id: str,
@@ -230,7 +244,5 @@ async def fixer_mark_unresolvable(
     Returns:
         Confirmation that the violation was marked unresolvable.
     """
-    if not hasattr(ctx, "_fixer_unresolved"):
-        ctx._fixer_unresolved = []  # type: ignore[attr-defined]
-    ctx._fixer_unresolved.append(f"{violation_id}: {reason}")  # type: ignore[attr-defined]
+    ctx.deps._fixer_unresolved.append(f"{violation_id}: {reason}")
     return f"Violation {violation_id} marked as requiring human review: {reason}"

@@ -184,11 +184,12 @@ def test_task_type_categories_returns_dict():
 ################
 
 
-def test_workflow_registry_has_three_builtin_workflows():
+def test_workflow_registry_has_builtin_workflows():
     from mem_graph.resources.workflows.registry import all_workflows
 
     workflows = all_workflows()
-    assert len(workflows) == 3
+    # 3 built-in + 24 Group A = 27 minimum; additional registrations are also valid.
+    assert len(workflows) >= 27
 
 
 def test_workflow_registry_contains_expected_keys():

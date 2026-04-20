@@ -6,6 +6,8 @@ Sentry Agent — test architect for red-first validation.
 The Sentry writes failing tests before the Mechanic changes production code.
 It focuses on minimal, deterministic test coverage that proves the bug or
 missing behavior before any fix is attempted.
+
+Agent-local tools: sentry_read_file, sentry_record_test, sentry_finalize_plan
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from pydantic_ai import Agent, RunContext
 from ...config import DEFER_AGENT_MODEL_CHECK, ModelTier, config_get_model_for_tier
 from ...resources.coding_standards import coding_standards_get_for_language
 from ...resources.personas import SENTRY_PERSONA
+from ...resources.prompts import build_tool_names_for_prompt, get_reasoning_mode_guidance
 
 ################
 #   CONSTANTS
@@ -69,6 +72,8 @@ class SentryDependencies:
     context_violations: list[str] = field(default_factory=list)
     context_decisions: list[str] = field(default_factory=list)
     skills_content: str = ""
+    _sentry_tests: list[TestCaseProposal] = field(default_factory=list)
+    reasoning_mode: str = ""
 
 
 ################
@@ -91,6 +96,18 @@ async def sentry_build_system_prompt(ctx: RunContext[SentryDependencies]) -> str
     manifest_block = "\n".join(
         f"- {path}:\n{content}" for path, content in ctx.deps.manifest_context.items()
     )
+
+    reasoning_hint = ""
+    if ctx.deps.reasoning_mode:
+        reasoning_hint = (
+            f"\n\n## Reasoning Strategy\n"
+            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
+        )
+
+    tools_section = build_tool_names_for_prompt(
+        ["sentry_read_file", "sentry_record_test", "sentry_finalize_plan"]
+    )
+
     return f"""{SENTRY_PERSONA.get_system_instructions()}
 
 ## Language Standards Being Enforced
@@ -110,12 +127,13 @@ async def sentry_build_system_prompt(ctx: RunContext[SentryDependencies]) -> str
 - Keep the tests deterministic and minimal.
 - Prefer existing framework conventions in the repository.
 - Focus on the bug or gap that must fail before the fix is applied.
+{tools_section}{reasoning_hint}
 
 {ctx.deps.skills_content}
 """
 
 
-@sentry_agent.tool
+@sentry_agent.tool  # Scope: agent-local only
 async def sentry_read_file(
     ctx: RunContext[SentryDependencies],
     file_path: str,
@@ -124,7 +142,7 @@ async def sentry_read_file(
     return ctx.deps.file_contents.get(file_path, f"ERROR: {file_path} not in provided context.")
 
 
-@sentry_agent.tool
+@sentry_agent.tool  # Scope: agent-local only
 async def sentry_record_test(
     ctx: RunContext[SentryDependencies],
     file_path: str,
@@ -133,28 +151,25 @@ async def sentry_record_test(
     rationale: str,
 ) -> str:
     """Record a proposed failing test in the run state."""
-    if not hasattr(ctx, "_sentry_tests"):
-        ctx._sentry_tests = []  # type: ignore[attr-defined]
-
     proposal = TestCaseProposal(
         file_path=file_path,
         test_name=test_name,
         failing_assertion=failing_assertion,
         rationale=rationale,
     )
-    ctx._sentry_tests.append(proposal)  # type: ignore[attr-defined]
+    ctx.deps._sentry_tests.append(proposal)
     logger.debug("Recorded Sentry test %s for %s", test_name, file_path)
     return f"Test proposal recorded for `{file_path}`: {test_name}."
 
 
-@sentry_agent.tool
+@sentry_agent.tool  # Scope: agent-local only
 async def sentry_finalize_plan(
     ctx: RunContext[SentryDependencies],
     summary: str,
     framework: str,
 ) -> SentryReport:
     """Finalize the failing-test plan and produce the SentryReport."""
-    test_cases = getattr(ctx, "_sentry_tests", [])
+    test_cases = ctx.deps._sentry_tests
     logger.info("Sentry planned %d test case(s) for %d file(s).", len(test_cases), len(ctx.deps.file_contents))
 
     return SentryReport(

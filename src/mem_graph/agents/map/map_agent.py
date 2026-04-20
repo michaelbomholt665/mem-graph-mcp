@@ -26,6 +26,7 @@ from pydantic_ai import Agent, RunContext
 
 from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
 from ...resources.personas import MAPPER_PERSONA
+from ...resources.prompts import get_reasoning_mode_guidance
 
 ################
 #   CONSTANTS
@@ -126,6 +127,9 @@ class MapDependencies:
 
     Pass domain hints to guide feature identification — e.g. known
     subsystem names for the lakehouse agent variant.
+
+    _map_features and _map_relationships accumulate identified features
+    and relationships across tool calls; never monkey-patched onto RunContext.
     """
 
     package_path: str
@@ -133,6 +137,9 @@ class MapDependencies:
     known_features: list[str] = field(default_factory=list)
     skills_content: str = ""
     extra_file_context: str = ""
+    _map_features: list[FeatureLocation] = field(default_factory=list)
+    _map_relationships: list[FileRelationship] = field(default_factory=list)
+    reasoning_mode: str = ""
 
 ################
 #   AGENT
@@ -168,6 +175,14 @@ async def build_system_prompt(ctx: RunContext[MapDependencies]) -> str:
         if ctx.deps.known_features
         else "No known subsystems provided — discover features from the code."
     )
+
+    reasoning_hint = ""
+    if ctx.deps.reasoning_mode:
+        reasoning_hint = (
+            f"\n\n## Reasoning Strategy\n"
+            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
+        )
+
     if ctx.deps.extra_file_context:
         file_section = (
             "## Pre-loaded Files\n"
@@ -216,6 +231,7 @@ Analyse {analysis_scope}.
 - Generated code (note it as generated, skip internal mapping)
 
 Be precise about file paths. Use the exact paths returned by list_files.
+{reasoning_hint}
 """
 
 
@@ -224,7 +240,7 @@ Be precise about file paths. Use the exact paths returned by list_files.
 ################
 
 
-@map_agent.tool
+@map_agent.tool  # Scope: agent-local only
 async def list_files(ctx: RunContext[MapDependencies]) -> list[str]:
     """
     List all source files in the package directory.
@@ -238,7 +254,7 @@ async def list_files(ctx: RunContext[MapDependencies]) -> list[str]:
     return glob.glob(pattern, recursive=True)
 
 
-@map_agent.tool
+@map_agent.tool  # Scope: agent-local only
 async def process_batch(
     ctx: RunContext[MapDependencies],
     file_paths: list[str],
@@ -284,7 +300,7 @@ def _read_file_internal(file_path: str) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-@map_agent.tool
+@map_agent.tool  # Scope: agent-local only
 async def finalize_map(
     ctx: RunContext[MapDependencies],
     entry_points: list[str],
@@ -316,11 +332,9 @@ async def finalize_map(
 
 def _get_state(ctx: RunContext[MapDependencies]) -> dict:
     """
-    Retrieve or initialise the per-run accumulator dict.
+    Return the per-run accumulator dict from deps.
 
-    Stores features and relationships across tool calls within
-    a single agent run.
+    Uses deps._map_features and deps._map_relationships instead of
+    monkey-patching onto RunContext.
     """
-    if not hasattr(ctx, "_map_state"):
-        ctx._map_state = {"features": [], "relationships": []}  # type: ignore[attr-defined]
-    return ctx._map_state  # type: ignore[attr-defined]
+    return {"features": ctx.deps._map_features, "relationships": ctx.deps._map_relationships}

@@ -24,6 +24,7 @@ from pydantic_ai import Agent, RunContext
 from ...config import DEFER_AGENT_MODEL_CHECK, ModelTier, config_get_model_for_tier
 from ...resources.coding_standards import coding_standards_get_for_language
 from ...resources.personas import GUARD_PERSONA
+from ...resources.prompts import build_tool_names_for_prompt, get_reasoning_mode_guidance
 
 ################
 #   CONSTANTS
@@ -105,6 +106,8 @@ class ValidationDependencies:
         proposed_patches: File content after Fixer + Scribe passes, keyed by path.
         original_file_contents: File content before any changes, keyed by path.
         skills_content: Optional SKILL.md content for extra guidance.
+        _validation_violations: Accumulated ValidationViolation objects;
+            never monkey-patched onto RunContext.
     """
 
     language: str
@@ -112,6 +115,8 @@ class ValidationDependencies:
     proposed_patches: dict[str, str] = field(default_factory=dict)
     original_file_contents: dict[str, str] = field(default_factory=dict)
     skills_content: str = ""
+    _validation_violations: list[ValidationViolation] = field(default_factory=list)
+    reasoning_mode: str = ""
 
 
 ################
@@ -142,6 +147,18 @@ async def validation_build_system_prompt(ctx: RunContext[ValidationDependencies]
         Complete system prompt string.
     """
     standards = coding_standards_get_for_language(ctx.deps.language)
+
+    reasoning_hint = ""
+    if ctx.deps.reasoning_mode:
+        reasoning_hint = (
+            f"\n\n## Reasoning Strategy\n"
+            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
+        )
+
+    tools_section = build_tool_names_for_prompt(
+        ["validation_inspect_patch", "validation_record_violation", "validation_finalize_decision"]
+    )
+
     return f"""{GUARD_PERSONA.get_system_instructions()}
 
 ## Language Standards Being Enforced
@@ -156,17 +173,13 @@ async def validation_build_system_prompt(ctx: RunContext[ValidationDependencies]
 3. Required documentation (shebang, path header, docstrings) is missing.
 4. Naming convention violations exist (2-3 token rule, feature prefix).
 5. Scope was exceeded — functional code changed beyond the violation scope.
-
-## Tools
-- Call `validation_inspect_patch` to compare original vs proposed content.
-- Call `validation_record_violation` for each issue found.
-- Call `validation_finalize_decision` to issue the approve/reject verdict.
+{tools_section}{reasoning_hint}
 
 {ctx.deps.skills_content}
 """
 
 
-@validation_agent.tool
+@validation_agent.tool  # Scope: agent-local only
 async def validation_inspect_patch(
     ctx: RunContext[ValidationDependencies],
     file_path: str,
@@ -190,7 +203,7 @@ async def validation_inspect_patch(
     }
 
 
-@validation_agent.tool
+@validation_agent.tool  # Scope: agent-local only
 async def validation_record_violation(
     ctx: RunContext[ValidationDependencies],
     file_path: str,
@@ -211,18 +224,15 @@ async def validation_record_violation(
     Returns:
         Confirmation that the violation was recorded.
     """
-    if not hasattr(ctx, "_validation_violations"):
-        ctx._validation_violations = []  # type: ignore[attr-defined]
-
     v = ValidationViolation(
         file_path=file_path, check=check, description=description, severity=severity
     )
-    ctx._validation_violations.append(v)  # type: ignore[attr-defined]
+    ctx.deps._validation_violations.append(v)
     logger.debug("Validation issue recorded: [%s] %s — %s", check, file_path, description)
     return f"Issue recorded ({check}/{severity}) for `{file_path}`."
 
 
-@validation_agent.tool
+@validation_agent.tool  # Scope: agent-local only
 async def validation_finalize_decision(
     ctx: RunContext[ValidationDependencies],
     rationale: str,
@@ -240,7 +250,7 @@ async def validation_finalize_decision(
     Returns:
         The completed ValidationReport with status and violations.
     """
-    recorded = getattr(ctx, "_validation_violations", [])
+    recorded = ctx.deps._validation_violations
     status = (
         ValidationStatus.APPROVED if not recorded else ValidationStatus.REJECTED
     )

@@ -7,6 +7,8 @@ Periodically checks architectural decisions stored in the graph against
 the current codebase and flags decisions that have drifted from reality.
 Accepts injected decisions and file snapshots — does not read the graph
 directly, keeping it testable and transport-agnostic.
+
+Agent-local tools: list_files, process_batch, finalize_review
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from pydantic_ai import Agent, RunContext
 
 from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
 from ...resources.personas import ARCHITECT_PERSONA
+from ...resources.prompts import get_reasoning_mode_guidance
 
 ################
 #   CONSTANTS
@@ -118,6 +121,8 @@ class DecisionDependencies:
     package_path: root directory to read source files from.
     project_id: for output linkage.
     skills_content: optional domain knowledge.
+    _decision_state: accumulated DecisionReview objects across tool calls;
+        never monkey-patched onto RunContext.
     """
 
     project_id: str
@@ -125,6 +130,8 @@ class DecisionDependencies:
     decisions: list[dict] = field(default_factory=list)
     skills_content: str = ""
     extra_file_context: str = ""
+    _decision_state: list["DecisionReview"] = field(default_factory=list)
+    reasoning_mode: str = ""
 
 ################
 #   AGENT
@@ -156,6 +163,14 @@ async def build_system_prompt(ctx: RunContext[DecisionDependencies]) -> str:
     persona_instr = ARCHITECT_PERSONA.get_system_instructions()
     skills_block = ctx.deps.skills_content or "No additional domain knowledge provided."
     decisions_block = _format_decisions(ctx.deps.decisions)
+
+    reasoning_hint = ""
+    if ctx.deps.reasoning_mode:
+        reasoning_hint = (
+            f"\n\n## Reasoning Strategy\n"
+            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
+        )
+
     if ctx.deps.extra_file_context:
         file_section = (
             "## Pre-loaded Files\n"
@@ -203,6 +218,7 @@ async def build_system_prompt(ctx: RunContext[DecisionDependencies]) -> str:
 - Do not mark DRIFTED without naming the file and what the violation is.
 - Do not mark HONOURED just because you found no violations — look for positive evidence.
 - Trivial drift (naming, style) is 'minor'. Architectural violations are 'major' or 'critical'.
+{reasoning_hint}
 """
 
 
@@ -227,7 +243,7 @@ def _format_decisions(decisions: list[dict]) -> str:
 ################
 
 
-@decision_agent.tool
+@decision_agent.tool  # Scope: agent-local only
 async def list_files(
     ctx: RunContext[DecisionDependencies],
     extension: str = ".py",
@@ -244,7 +260,7 @@ async def list_files(
     return glob.glob(pattern, recursive=True)
 
 
-@decision_agent.tool
+@decision_agent.tool  # Scope: agent-local only
 async def process_batch(
     ctx: RunContext[DecisionDependencies],
     file_paths: list[str],
@@ -287,7 +303,7 @@ def _read_file_internal(file_path: str) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-@decision_agent.tool
+@decision_agent.tool  # Scope: agent-local only
 async def finalize_review(
     ctx: RunContext[DecisionDependencies],
     summary: str,
@@ -317,10 +333,8 @@ async def finalize_review(
 
 
 def _get_state(ctx: RunContext[DecisionDependencies]) -> list[DecisionReview]:
-    """Retrieve or initialise the per-run review accumulator."""
-    if not hasattr(ctx, "_decision_state"):
-        ctx._decision_state = []  # type: ignore[attr-defined]
-    return ctx._decision_state  # type: ignore[attr-defined]
+    """Retrieve the per-run review accumulator from deps (never monkey-patched)."""
+    return ctx.deps._decision_state
 
 
 def _compute_counts(reviews: list[DecisionReview]) -> dict:

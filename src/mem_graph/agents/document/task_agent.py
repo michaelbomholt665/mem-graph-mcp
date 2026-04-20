@@ -7,6 +7,8 @@ Takes a feature description, queries injected graph context for relevant
 codebase knowledge (file locations, open violations, prior decisions),
 and produces a sequenced task list with explicit dependencies. Designed
 to be fed MapReport output from the map agent for codebase awareness.
+
+Agent-local tools: process_batch, finalize_decomposition
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from pydantic_ai import Agent, RunContext
 
 from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
 from ...resources.personas import ARCHITECT_PERSONA
+from ...resources.prompts import get_reasoning_mode_guidance
 
 ################
 #   CONSTANTS
@@ -125,6 +128,8 @@ class TaskDependencies:
     open_violations: relevant open violations from the graph.
     prior_decisions: decisions from the graph that constrain the work.
     skills_content: optional domain knowledge.
+    _task_state: accumulated Task objects across tool calls;
+        never monkey-patched onto RunContext.
     """
 
     feature_description: str
@@ -133,6 +138,8 @@ class TaskDependencies:
     open_violations: list[dict] = field(default_factory=list)
     prior_decisions: list[dict] = field(default_factory=list)
     skills_content: str = ""
+    _task_state: list["Task"] = field(default_factory=list)
+    reasoning_mode: str = ""
 
 ################
 #   AGENT
@@ -167,6 +174,13 @@ async def build_system_prompt(ctx: RunContext[TaskDependencies]) -> str:
     violations_block = _format_violations(ctx.deps.open_violations)
     decisions_block = _format_decisions(ctx.deps.prior_decisions)
 
+    reasoning_hint = ""
+    if ctx.deps.reasoning_mode:
+        reasoning_hint = (
+            f"\n\n## Reasoning Strategy\n"
+            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
+        )
+
     return f"""{persona_instr}
 
 ## Domain Knowledge
@@ -199,6 +213,7 @@ async def build_system_prompt(ctx: RunContext[TaskDependencies]) -> str:
 - If a prior decision constrains the implementation, reference it and honour it.
 - Do not create tasks that contradict prior decisions without flagging the conflict.
 - Phase ordering: planning tasks before red, red before green, green before refactor.
+{reasoning_hint}
 """
 
 
@@ -251,7 +266,7 @@ def _format_decisions(decisions: list[dict]) -> str:
 ################
 
 
-@task_agent.tool
+@task_agent.tool  # Scope: agent-local only
 async def process_batch(
     ctx: RunContext[TaskDependencies],
     context_queries: list[str],
@@ -280,7 +295,7 @@ async def process_batch(
     return "\n\n".join(results)
 
 
-@task_agent.tool
+@task_agent.tool  # Scope: agent-local only
 async def finalize_decomposition(
     ctx: RunContext[TaskDependencies],
     summary: str,
@@ -310,7 +325,5 @@ async def finalize_decomposition(
 
 
 def _get_state(ctx: RunContext[TaskDependencies]) -> list[Task]:
-    """Retrieve or initialise the per-run task accumulator."""
-    if not hasattr(ctx, "_task_state"):
-        ctx._task_state = []  # type: ignore[attr-defined]
-    return ctx._task_state  # type: ignore[attr-defined]
+    """Retrieve the per-run task accumulator from deps (never monkey-patched)."""
+    return ctx.deps._task_state

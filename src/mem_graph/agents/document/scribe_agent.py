@@ -23,6 +23,7 @@ from pydantic_ai import Agent, RunContext
 from ...config import DEFER_AGENT_MODEL_CHECK, ModelTier, config_get_model_for_tier
 from ...resources.coding_standards import coding_standards_get_for_language
 from ...resources.personas import SCRIBE_PERSONA
+from ...resources.prompts import build_tool_names_for_prompt, get_reasoning_mode_guidance
 
 ################
 #   CONSTANTS
@@ -88,12 +89,16 @@ class ScribeDependencies:
         file_contents: File content to style-check, keyed by file path.
         architecture_guardrails: Optional guardrails block for naming conventions.
         skills_content: Optional SKILL.md content for extra guidance.
+        _scribe_patches: Accumulated StyledFilePatch objects;
+            never monkey-patched onto RunContext.
     """
 
     language: str
     file_contents: dict[str, str] = field(default_factory=dict)
     architecture_guardrails: str = ""
     skills_content: str = ""
+    _scribe_patches: list[StyledFilePatch] = field(default_factory=list)
+    reasoning_mode: str = ""
 
 
 ################
@@ -124,6 +129,18 @@ async def scribe_build_system_prompt(ctx: RunContext[ScribeDependencies]) -> str
         Complete system prompt string.
     """
     standards = coding_standards_get_for_language(ctx.deps.language)
+
+    reasoning_hint = ""
+    if ctx.deps.reasoning_mode:
+        reasoning_hint = (
+            f"\n\n## Reasoning Strategy\n"
+            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
+        )
+
+    tools_section = build_tool_names_for_prompt(
+        ["scribe_read_file", "scribe_apply_standards"]
+    )
+
     return f"""{SCRIBE_PERSONA.get_system_instructions()}
 
 ## Language: {ctx.deps.language}
@@ -137,16 +154,13 @@ async def scribe_build_system_prompt(ctx: RunContext[ScribeDependencies]) -> str
 - ONLY add or fix: shebang line, path header comment, module docstring,
   function/class docstrings, type annotations, and variable naming.
 - If a file already has correct headers and docstrings, return it unchanged.
-
-## Tools
-- Call `scribe_read_file` to retrieve a file's current content.
-- Call `scribe_apply_standards` to record your style-corrected version.
+{tools_section}{reasoning_hint}
 
 {ctx.deps.skills_content}
 """
 
 
-@scribe_agent.tool
+@scribe_agent.tool  # Scope: agent-local only
 async def scribe_read_file(
     ctx: RunContext[ScribeDependencies],
     file_path: str,
@@ -164,7 +178,7 @@ async def scribe_read_file(
     return ctx.deps.file_contents.get(file_path, f"ERROR: {file_path} not in provided context.")
 
 
-@scribe_agent.tool
+@scribe_agent.tool  # Scope: agent-local only
 async def scribe_apply_standards(
     ctx: RunContext[ScribeDependencies],
     file_path: str,
@@ -185,15 +199,12 @@ async def scribe_apply_standards(
     Returns:
         Confirmation message with patch index.
     """
-    if not hasattr(ctx, "_scribe_patches"):
-        ctx._scribe_patches = []  # type: ignore[attr-defined]
-
     patch = StyledFilePatch(
         file_path=file_path,
         original_content=original_content,
         styled_content=styled_content,
         changes_made=changes_made,
     )
-    ctx._scribe_patches.append(patch)  # type: ignore[attr-defined]
+    ctx.deps._scribe_patches.append(patch)
     logger.debug("Scribe styled %s (%d changes)", file_path, len(changes_made))
     return f"Standards applied to `{file_path}` — {len(changes_made)} change(s)."

@@ -131,13 +131,14 @@ class AuditNode(BaseNode[ManagedWorkflowState, None, ManagedWorkflowState]):
     ) -> "DebugOrValidationNode":
         if ctx.state.execute_agents:
             try:
-                from .audit.audit_agent import AuditDependencies, preloaded_audit_agent
+                from .audit.audit_agent import AuditDependencies, audit_agent
 
                 deps = AuditDependencies(
                     package_path=".",
                     extra_file_context=_format_file_context(ctx.state.file_contents),
+                    mode="preloaded",
                 )
-                result = await preloaded_audit_agent.run(
+                result = await audit_agent.run(
                     "Audit the current workflow file context and return an AuditReport.",
                     deps=deps,
                 )

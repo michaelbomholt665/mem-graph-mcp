@@ -22,7 +22,9 @@ class ReasoningMode(str, Enum):
     """Reasoning policy mode for the main AI before final action choice."""
 
     REACT_CHALLENGE = "react_challenge"
+    REACT_2 = "react_2"
     BOUNDED_TOT = "bounded_tot"
+    COT = "cot"
 
 
 class StagePolicy(BaseModel):

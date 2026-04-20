@@ -10,6 +10,8 @@ a specific domain (e.g. lakehouse invariants) without subclassing.
 
 Produces a structured AuditReport consumed by report_writer and
 violation_writer downstream.
+
+Agent-local tools: list_files, process_batch, finalize_report
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ from dataclasses import dataclass, field
 import logging
 import os
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 from pydantic_ai import Agent, RunContext
 
@@ -37,6 +39,7 @@ from ...models.audit import (
     Severity,
 )
 from ...resources.personas import AUDITOR_PERSONA
+from ...resources.prompts import build_tool_names_for_prompt, get_reasoning_mode_guidance
 from .rules import DEFAULT_RULES
 
 ################
@@ -60,6 +63,11 @@ class AuditDependencies:
 
     Separates configuration from agent logic. Pass domain-specific
     rules to specialise the agent without modifying it.
+
+    mode="standalone": agent owns file discovery/batching via tools.
+    mode="preloaded": orchestrator pre-reads files and injects via
+        extra_file_context; agent should return AuditReport directly
+        without calling list_files or process_batch.
     """
 
     package_path: str
@@ -68,6 +76,8 @@ class AuditDependencies:
     skills_content: str = ""
     extra_file_context: str = ""
     file_results: list[FileAuditResult] = field(default_factory=list)
+    mode: Literal["standalone", "preloaded"] = "standalone"
+    reasoning_mode: str = ""
 
 ################
 #   AGENT
@@ -85,19 +95,6 @@ audit_agent: Agent[AuditDependencies, AuditReport] = Agent(
     defer_model_check=DEFER_AGENT_MODEL_CHECK,
 )
 
-preloaded_audit_agent: Agent[AuditDependencies, AuditReport] = Agent(
-    AGENT_MODEL,
-    name="audit_preloaded",
-    deps_type=AuditDependencies,
-    output_type=AuditReport,
-    model_settings=config_model_settings(
-        temperature=AUDITOR_PERSONA.params.temperature,
-        top_p=AUDITOR_PERSONA.params.top_p,
-    ),
-    defer_model_check=DEFER_AGENT_MODEL_CHECK,
-)
-
-
 
 ################
 #   PROMPTS
@@ -107,55 +104,27 @@ preloaded_audit_agent: Agent[AuditDependencies, AuditReport] = Agent(
 @audit_agent.system_prompt
 async def build_system_prompt(ctx: RunContext[AuditDependencies]) -> str:
     """
-    Build the standalone audit system prompt from deps and the Auditor persona.
-    """
-    persona_instr = AUDITOR_PERSONA.get_system_instructions()
-    rules_block = _format_rules_for_prompt(ctx.deps.rules)
-    skills_block = ctx.deps.skills_content or "No additional domain knowledge provided."
-    workflow = """1. Call `list_files` to discover what needs auditing.
-2. Call `process_batch` iteratively. Pass up to 5 `file_paths` to read, along with `findings_from_previous_batch` (empty on the first call).
-3. The tool will return the file contents. Examine them carefully against each rule in the checklist below.
-4. Call `process_batch` again with the findings from your current batch, requesting the next batch.
-5. After reading all files, call `process_batch` one final time with an empty `file_paths` list to submit the last batch of findings.
-6. Call `finalize_report` to produce the final output."""
+    Build the audit system prompt from deps and the Auditor persona.
 
-    return f"""{persona_instr}
-
-## Domain Knowledge
-{skills_block}
-
-## Your Task
-Analyse every source file in {ctx.deps.package_path}.
-
-{workflow}
-
-## Rules Checklist
-{rules_block}
-
-## Analysis Standards
-- Report only confirmed issues — do not flag uncertain or speculative problems.
-- Every finding MUST have a file_path, line_start, line_end, rule_id, and suggested_fix.
-- line numbers are 1-indexed. If you cannot determine exact lines, use the nearest function boundary.
-- code_snippet should be the literal offending lines, not paraphrased.
-- severity may be escalated from the rule default if context warrants it — explain in description.
-- Do NOT report the same issue twice in the same file.
-- Missing implementation stubs are findings — do not give benefit of the doubt to empty function bodies.
-"""
-
-
-@preloaded_audit_agent.system_prompt
-async def build_preloaded_system_prompt(ctx: RunContext[AuditDependencies]) -> str:
-    """
-    Build the orchestrated audit prompt for pre-read file batches.
-
-    This agent has no file discovery or batching tools. The Python
-    orchestrator owns workflow control and injects the exact file content.
+    Branches on ctx.deps.mode:
+      - "standalone": agent owns discovery and batching via tools.
+      - "preloaded": orchestrator has pre-loaded files into extra_file_context;
+        agent should return output directly without calling tools.
     """
     persona_instr = AUDITOR_PERSONA.get_system_instructions()
     rules_block = _format_rules_for_prompt(ctx.deps.rules)
     skills_block = ctx.deps.skills_content or "No additional domain knowledge provided."
 
-    return f"""{persona_instr}
+    # Reasoning-mode guidance injected when available
+    reasoning_hint = ""
+    if ctx.deps.reasoning_mode:
+        reasoning_hint = (
+            f"\n\n## Reasoning Strategy\n"
+            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
+        )
+
+    if ctx.deps.mode == "preloaded":
+        return f"""{persona_instr}
 
 ## Domain Knowledge
 {skills_block}
@@ -179,6 +148,42 @@ workflow steps.
 - severity may be escalated from the rule default if context warrants it — explain in description.
 - Do NOT report the same issue twice in the same file.
 - Missing implementation stubs are findings — do not give benefit of the doubt to empty function bodies.
+{reasoning_hint}
+"""
+
+    # standalone mode — agent owns the discovery/batching workflow
+    tools_section = build_tool_names_for_prompt(
+        ["list_files", "process_batch", "finalize_report"]
+    )
+    workflow = """1. Call `list_files` to discover what needs auditing.
+2. Call `process_batch` iteratively. Pass up to 5 `file_paths` to read, along with `findings_from_previous_batch` (empty on the first call).
+3. The tool will return the file contents. Examine them carefully against each rule in the checklist below.
+4. Call `process_batch` again with the findings from your current batch, requesting the next batch.
+5. After reading all files, call `process_batch` one final time with an empty `file_paths` list to submit the last batch of findings.
+6. Call `finalize_report` to produce the final output."""
+
+    return f"""{persona_instr}
+
+## Domain Knowledge
+{skills_block}
+{tools_section}
+## Your Task
+Analyse every source file in {ctx.deps.package_path}.
+
+{workflow}
+
+## Rules Checklist
+{rules_block}
+
+## Analysis Standards
+- Report only confirmed issues — do not flag uncertain or speculative problems.
+- Every finding MUST have a file_path, line_start, line_end, rule_id, and suggested_fix.
+- line numbers are 1-indexed. If you cannot determine exact lines, use the nearest function boundary.
+- code_snippet should be the literal offending lines, not paraphrased.
+- severity may be escalated from the rule default if context warrants it — explain in description.
+- Do NOT report the same issue twice in the same file.
+- Missing implementation stubs are findings — do not give benefit of the doubt to empty function bodies.
+{reasoning_hint}
 """
 
 
@@ -207,7 +212,7 @@ def _format_rules_for_prompt(rules: list[AuditRule]) -> str:
 ################
 
 
-@audit_agent.tool
+@audit_agent.tool  # Scope: agent-local only
 async def list_files(ctx: RunContext[AuditDependencies]) -> list[str]:
     """
     List all source files in the package directory.
@@ -221,7 +226,7 @@ async def list_files(ctx: RunContext[AuditDependencies]) -> list[str]:
     return glob.glob(pattern, recursive=True)
 
 
-@audit_agent.tool
+@audit_agent.tool  # Scope: agent-local only
 async def process_batch(
     ctx: RunContext[AuditDependencies],
     file_paths: list[str],
@@ -264,7 +269,7 @@ def _read_file_internal(file_path: str) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-@audit_agent.tool
+@audit_agent.tool  # Scope: agent-local only
 async def finalize_report(
     ctx: RunContext[AuditDependencies],
     summary: str,
@@ -298,10 +303,10 @@ async def finalize_report(
 
 def _get_state(ctx: RunContext[AuditDependencies]) -> list[FileAuditResult]:
     """
-    Retrieve or initialise the per-run file result accumulator.
+    Retrieve the per-run file result accumulator from deps.
 
-    Uses the RunContext's state dict as working memory across tool
-    calls within a single agent run.
+    State lives in deps.file_results — injected at run time and never
+    monkey-patched onto the RunContext.
     """
     return ctx.deps.file_results
 

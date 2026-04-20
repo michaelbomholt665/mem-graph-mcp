@@ -25,6 +25,7 @@ from pydantic_ai import Agent, RunContext
 
 from ...config import AGENT_MODEL, DEFER_AGENT_MODEL_CHECK, config_model_settings
 from ...resources.personas import TRIAGE_PERSONA
+from ...resources.prompts import get_reasoning_mode_guidance
 
 ################
 #   CONSTANTS
@@ -133,12 +134,16 @@ class TriageDependencies:
     existing_violations: serialised graph violations for re-assessment.
     Either or both may be populated — the agent handles both paths.
     project_id is required for graph context queries.
+    _triage_state: accumulated TriagedViolation objects;
+        never monkey-patched onto RunContext.
     """
 
     project_id: str
     raw_findings: list[RawFinding] = field(default_factory=list)
     existing_violations: list[dict] = field(default_factory=list)
     skills_content: str = ""
+    _triage_state: list["TriagedViolation"] = field(default_factory=list)
+    reasoning_mode: str = ""
 
 ################
 #   AGENT
@@ -172,6 +177,13 @@ async def build_system_prompt(ctx: RunContext[TriageDependencies]) -> str:
     raw_block = _format_raw_findings(ctx.deps.raw_findings)
     existing_block = _format_existing_violations(ctx.deps.existing_violations)
 
+    reasoning_hint = ""
+    if ctx.deps.reasoning_mode:
+        reasoning_hint = (
+            f"\n\n## Reasoning Strategy\n"
+            f"{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
+        )
+
     return f"""{persona_instr}
 
 ## Domain Knowledge
@@ -201,6 +213,7 @@ After all findings are triaged, call `finalize_triage` with a summary.
 
 Be precise. Do not mark something WONTFIX without a specific rationale.
 Do not mark something DUPLICATE unless it is genuinely the same finding in the same file and lines.
+{reasoning_hint}
 """
 
 
@@ -238,7 +251,7 @@ def _format_existing_violations(violations: list[dict]) -> str:
 ################
 
 
-@triage_agent.tool
+@triage_agent.tool  # Scope: agent-local only
 async def process_batch(
     ctx: RunContext[TriageDependencies],
     finding_indices: list[int],
@@ -283,7 +296,7 @@ async def process_batch(
     return "\n\n".join(results)
 
 
-@triage_agent.tool
+@triage_agent.tool  # Scope: agent-local only
 async def finalize_triage(
     ctx: RunContext[TriageDependencies],
     summary: str,
@@ -314,10 +327,8 @@ async def finalize_triage(
 
 
 def _get_state(ctx: RunContext[TriageDependencies]) -> list[TriagedViolation]:
-    """Retrieve or initialise the per-run decision accumulator."""
-    if not hasattr(ctx, "_triage_state"):
-        ctx._triage_state = []  # type: ignore[attr-defined]
-    return ctx._triage_state  # type: ignore[attr-defined]
+    """Retrieve the per-run decision accumulator from deps (never monkey-patched)."""
+    return ctx.deps._triage_state
 
 
 def _compute_counts(decisions: list[TriagedViolation]) -> dict:

@@ -1,6 +1,6 @@
 # Task 030: Workflow Infrastructure — FSM-Based Orchestration with Typed State
 
-**Status:** Planning
+**Status:** Complete
 **Priority:** High
 **Blocked by:** Task 029 (Base Agent Architecture)
 **Blocks:** Task 031 (Prompts), Tasks 032–036, Task 027 Phase 8 (workflow start)

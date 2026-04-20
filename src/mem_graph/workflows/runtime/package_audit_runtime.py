@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 # src/mem_graph/workflows/runtime/package_audit_runtime.py
 """
-Iterative Package Audit Runtime.
+Iterative Package Audit Runtime — FSM-based graph execution.
 
-Processes a codebase package-by-package, reading 4-5 files per chunk.
-For each chunk: read/analyze files, produce findings, update a running
-report. Continues until all packages are covered, then deduplicates
-findings and re-ranks severity globally.
+Implements a five-node pydantic-graph FSM:
+
+    DiscoverNode → ChunkNode → AnalyzeNode → AggregateNode → End
+
+Each node operates on typed PackageAuditState. The existing async entry-point
+``run_package_audit(deps)`` is preserved for backward compatibility.
+
+Previous raw async loop behaviour is maintained via the graph execution path:
+package discovery, file chunking, per-chunk analysis, and global deduplication.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
+from pydantic_graph import BaseNode, End, Graph, GraphRunContext
 
 from ...resources.workflows.selector import select_all
 from .workflow_sandbox import (
@@ -114,6 +120,51 @@ class PackageAuditDeps:
 
 
 ################
+#   FSM STATE
+################
+
+
+class PackageAuditState(BaseModel):
+    """Typed shared state for the package audit FSM graph.
+
+    Passed through every node of the graph. Each node reads what it
+    needs and writes its results back before returning the next node.
+    """
+
+    package_paths: list[str] = Field(default_factory=list)
+    file_extensions: list[str] = Field(default_factory=lambda: [".py"])
+    chunk_size: int = _DEFAULT_CHUNK_SIZE
+    exclude_patterns: list[str] = Field(
+        default_factory=lambda: ["__pycache__", ".pyc", "test_", "_test.py"]
+    )
+    execute_agents: bool = False
+
+    # DiscoverNode output
+    discovered_files: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="Mapping of package_path → list of in-scope file paths.",
+    )
+
+    # ChunkNode output
+    chunks: dict[str, list[list[str]]] = Field(
+        default_factory=dict,
+        description="Mapping of package_path → list of file-path chunks.",
+    )
+    current_package_index: int = 0
+    current_chunk_index: int = 0
+
+    # AnalyzeNode output (accumulated)
+    package_findings: dict[str, list[ChunkFinding]] = Field(
+        default_factory=dict,
+        description="Accumulated findings per package.",
+    )
+    total_chunks_processed: int = 0
+
+    # AggregateNode output
+    report: PackageAuditReport | None = None
+
+
+################
 #   FILE DISCOVERY
 ################
 
@@ -187,7 +238,7 @@ async def _analyze_chunk(
         return []
 
     try:
-        from ...agents.audit.audit_agent import AuditDependencies, preloaded_audit_agent
+        from ...agents.audit.audit_agent import AuditDependencies, audit_agent
 
         formatted = "\n\n".join(
             f"### {path}\n```\n{content}\n```"
@@ -196,8 +247,9 @@ async def _analyze_chunk(
         deps = AuditDependencies(
             package_path=package,
             extra_file_context=formatted,
+            mode="preloaded",
         )
-        result = await preloaded_audit_agent.run(
+        result = await audit_agent.run(
             f"Audit this chunk of {len(chunk)} file(s) from package '{package}'. "
             "Return an AuditReport with all findings.",
             deps=deps,
@@ -247,6 +299,176 @@ def _rank_findings(findings: list[ChunkFinding]) -> list[ChunkFinding]:
 
 
 ################
+#   FSM NODES
+################
+
+
+class DiscoverNode(BaseNode[PackageAuditState, None, PackageAuditReport]):
+    """Step 1: Discover all in-scope files grouped by package."""
+
+    async def run(
+        self,
+        ctx: GraphRunContext[PackageAuditState],
+    ) -> "ChunkNode":
+        """Enumerate in-scope files for every package path."""
+        for pkg_path in ctx.state.package_paths:
+            files = _discover_package_files(
+                pkg_path,
+                ctx.state.file_extensions,
+                ctx.state.exclude_patterns,
+            )
+            if files:
+                ctx.state.discovered_files[pkg_path] = files
+                logger.info(
+                    "[DISCOVER] %s: %d file(s) found.", pkg_path, len(files)
+                )
+            else:
+                logger.info(
+                    "[DISCOVER] %s: no files found — skipping.", pkg_path
+                )
+        return ChunkNode()
+
+
+class ChunkNode(BaseNode[PackageAuditState, None, PackageAuditReport]):
+    """Step 2: Split each package's file list into chunks."""
+
+    async def run(
+        self,
+        ctx: GraphRunContext[PackageAuditState],
+    ) -> "AnalyzeNode":
+        """Partition all discovered files into chunks of chunk_size."""
+        for pkg_path, files in ctx.state.discovered_files.items():
+            ctx.state.chunks[pkg_path] = _chunk_files(files, ctx.state.chunk_size)
+            logger.info(
+                "[CHUNK] %s: %d chunk(s) of ≤%d file(s).",
+                pkg_path,
+                len(ctx.state.chunks[pkg_path]),
+                ctx.state.chunk_size,
+            )
+        return AnalyzeNode()
+
+
+class AnalyzeNode(BaseNode[PackageAuditState, None, PackageAuditReport]):
+    """Step 3: Read and analyze every chunk, accumulating findings per package."""
+
+    async def run(
+        self,
+        ctx: GraphRunContext[PackageAuditState],
+    ) -> "AggregateNode":
+        """Iterate all packages and chunks, invoking the audit agent per chunk."""
+        for pkg_path, pkg_chunks in ctx.state.chunks.items():
+            pkg_findings: list[ChunkFinding] = []
+            for chunk_idx, chunk in enumerate(pkg_chunks):
+                logger.info(
+                    "[ANALYZE] %s chunk %d/%d (%d file(s)).",
+                    pkg_path,
+                    chunk_idx + 1,
+                    len(pkg_chunks),
+                    len(chunk),
+                )
+                file_contents = _read_files_async(chunk)
+                chunk_findings = await _analyze_chunk(
+                    chunk,
+                    file_contents,
+                    pkg_path,
+                    execute_agents=ctx.state.execute_agents,
+                )
+                pkg_findings.extend(chunk_findings)
+                ctx.state.total_chunks_processed += 1
+
+            ctx.state.package_findings[pkg_path] = pkg_findings
+        return AggregateNode()
+
+
+class AggregateNode(BaseNode[PackageAuditState, None, PackageAuditReport]):
+    """Step 4: Deduplicate and re-rank findings globally, produce final report."""
+
+    async def run(
+        self,
+        ctx: GraphRunContext[PackageAuditState],
+    ) -> End[PackageAuditReport]:
+        """Produce the final PackageAuditReport from accumulated per-package findings."""
+        all_findings: list[ChunkFinding] = []
+        package_summaries: list[PackageSummary] = []
+        total_files = 0
+
+        for pkg_path, pkg_findings in ctx.state.package_findings.items():
+            discovered = ctx.state.discovered_files.get(pkg_path, [])
+            pkg_chunks = ctx.state.chunks.get(pkg_path, [])
+            total_files += len(discovered)
+            all_findings.extend(pkg_findings)
+            package_summaries.append(
+                PackageSummary(
+                    package=pkg_path,
+                    file_count=len(discovered),
+                    chunk_count=len(pkg_chunks),
+                    findings=pkg_findings,
+                )
+            )
+
+        deduped = _deduplicate_findings(all_findings)
+        ranked = _rank_findings(deduped)
+
+        by_severity: dict[str, list[ChunkFinding]] = {
+            "critical": [],
+            "high": [],
+            "medium": [],
+            "low": [],
+        }
+        follow_up: list[str] = []
+        for finding in ranked:
+            sev = finding.severity
+            if sev in by_severity:
+                by_severity[sev].append(finding)
+            if sev in {"critical", "high"}:
+                follow_up.append(
+                    f"{sev.upper()}: {finding.rule} in {finding.file_path} — "
+                    f"{finding.description[:120]}"
+                )
+
+        pkg_count = len(package_summaries)
+        critical_count = len(by_severity["critical"])
+        high_count = len(by_severity["high"])
+        total_issues = len(ranked)
+        total_chunks = ctx.state.total_chunks_processed
+        summary = (
+            f"Audited {pkg_count} package(s), {total_files} file(s) "
+            f"in {total_chunks} chunk(s). "
+            f"Found {total_issues} unique issue(s): "
+            f"{critical_count} critical, {high_count} high."
+        )
+
+        report = PackageAuditReport(
+            total_packages=pkg_count,
+            total_files=total_files,
+            total_chunks=total_chunks,
+            packages=package_summaries,
+            critical_findings=by_severity["critical"],
+            high_findings=by_severity["high"],
+            medium_findings=by_severity["medium"],
+            low_findings=by_severity["low"],
+            follow_up_items=follow_up[:50],
+            summary=summary,
+        )
+        ctx.state.report = report
+        logger.info("[AGGREGATE] %s", summary)
+        return End(report)
+
+
+################
+#   GRAPH
+################
+
+package_audit_graph = Graph[PackageAuditState, None, PackageAuditReport](
+    nodes=[
+        DiscoverNode,
+        ChunkNode,
+        AnalyzeNode,
+        AggregateNode,
+    ]
+)
+
+################
 #   MAIN RUNTIME
 ################
 
@@ -255,16 +477,18 @@ async def run_package_audit(deps: PackageAuditDeps) -> PackageAuditReport:
     """
     Run the iterative package audit across all given package paths.
 
+    Entry-point preserved for backward compatibility. Now executes the
+    ``DiscoverNode → ChunkNode → AnalyzeNode → AggregateNode`` FSM graph,
+    optionally wrapping execution in a workflow sandbox when execute_agents
+    is True.
+
     For each package:
     1. Discover in-scope files.
     2. Split into chunks of deps.chunk_size.
     3. For each chunk: read files, analyze, accumulate findings.
-    4. Close package summary.
-
-    After all packages:
-    5. Deduplicate findings across packages.
-    6. Re-rank severity globally.
-    7. Produce the final PackageAuditReport.
+    4. Deduplicate findings across packages.
+    5. Re-rank severity globally.
+    6. Produce the final PackageAuditReport.
 
     Args:
         deps: PackageAuditDeps with package paths and configuration.
@@ -282,11 +506,17 @@ async def run_package_audit(deps: PackageAuditDeps) -> PackageAuditReport:
         else None
     )
 
+    initial_state = PackageAuditState(
+        package_paths=deps.package_paths,
+        file_extensions=deps.file_extensions,
+        chunk_size=deps.chunk_size,
+        exclude_patterns=deps.exclude_patterns,
+        execute_agents=deps.execute_agents,
+    )
+
     try:
-        return await _run_package_audit_inner(
-            deps,
-            sandbox_artifact=sandbox.artifact() if sandbox else {},
-        )
+        result = await package_audit_graph.run(DiscoverNode(), state=initial_state)
+        report: PackageAuditReport = result.output  # type: ignore[assignment]
     except Exception:
         if sandbox is not None:
             await abort_workflow_sandbox(sandbox)
@@ -295,101 +525,4 @@ async def run_package_audit(deps: PackageAuditDeps) -> PackageAuditReport:
         if sandbox is not None:
             await finalize_workflow_sandbox(sandbox, validation_passed=False)
 
-
-async def _run_package_audit_inner(
-    deps: PackageAuditDeps,
-    *,
-    sandbox_artifact: dict[str, Any],
-) -> PackageAuditReport:
-    del sandbox_artifact
-    all_findings: list[ChunkFinding] = []
-    package_summaries: list[PackageSummary] = []
-    total_files = 0
-    total_chunks = 0
-
-    for pkg_path in deps.package_paths:
-        logger.info("[PACKAGE AUDIT] Processing package: %s", pkg_path)
-        pkg_files = _discover_package_files(
-            pkg_path,
-            deps.file_extensions,
-            deps.exclude_patterns,
-        )
-        if not pkg_files:
-            logger.info("[PACKAGE AUDIT] No files found in %s — skipping.", pkg_path)
-            continue
-
-        chunks = _chunk_files(pkg_files, deps.chunk_size)
-        pkg_findings: list[ChunkFinding] = []
-
-        for chunk_idx, chunk in enumerate(chunks):
-            logger.info(
-                "[PACKAGE AUDIT] %s chunk %d/%d (%d file(s))",
-                pkg_path,
-                chunk_idx + 1,
-                len(chunks),
-                len(chunk),
-            )
-            file_contents = _read_files_async(chunk)
-            chunk_findings = await _analyze_chunk(
-                chunk,
-                file_contents,
-                pkg_path,
-                execute_agents=deps.execute_agents,
-            )
-            pkg_findings.extend(chunk_findings)
-            total_chunks += 1
-
-        total_files += len(pkg_files)
-        all_findings.extend(pkg_findings)
-        package_summaries.append(
-            PackageSummary(
-                package=pkg_path,
-                file_count=len(pkg_files),
-                chunk_count=len(chunks),
-                findings=pkg_findings,
-            )
-        )
-
-    # Finalize: deduplicate and re-rank globally
-    deduped = _deduplicate_findings(all_findings)
-    ranked = _rank_findings(deduped)
-
-    by_severity: dict[str, list[ChunkFinding]] = {
-        "critical": [],
-        "high": [],
-        "medium": [],
-        "low": [],
-    }
-    follow_up: list[str] = []
-    for finding in ranked:
-        sev = finding.severity
-        if sev in by_severity:
-            by_severity[sev].append(finding)
-        if sev in {"critical", "high"}:
-            follow_up.append(
-                f"{sev.upper()}: {finding.rule} in {finding.file_path} — "
-                f"{finding.description[:120]}"
-            )
-
-    pkg_count = len(package_summaries)
-    critical_count = len(by_severity["critical"])
-    high_count = len(by_severity["high"])
-    total_issues = len(ranked)
-    summary = (
-        f"Audited {pkg_count} package(s), {total_files} file(s) in {total_chunks} chunk(s). "
-        f"Found {total_issues} unique issue(s): "
-        f"{critical_count} critical, {high_count} high."
-    )
-
-    return PackageAuditReport(
-        total_packages=pkg_count,
-        total_files=total_files,
-        total_chunks=total_chunks,
-        packages=package_summaries,
-        critical_findings=by_severity["critical"],
-        high_findings=by_severity["high"],
-        medium_findings=by_severity["medium"],
-        low_findings=by_severity["low"],
-        follow_up_items=follow_up[:50],
-        summary=summary,
-    )
+    return report

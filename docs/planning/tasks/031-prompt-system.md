@@ -1,6 +1,6 @@
 # Task 031: Prompt System — Dynamic Context Injection and Cache Optimization
 
-**Status:** Planning
+**Status:** Complete
 **Priority:** High
 **Blocked by:** Task 029 (Base Agent Architecture), Task 030 (Workflow Infrastructure)
 **Blocks:** Task 032 (Skills)
@@ -196,7 +196,7 @@ docs/planning/design/prompts/prompt-caching-strategy.md
 ### Phase 1: Refactor Personas for Natural Language (Sprint 1)
 
 **Add OCEAN descriptor renderer:**
-- [ ] Create helper in `personas.py`:
+- [x] Create helper in `personas.py`:
   ```python
   OCEAN_DESCRIPTORS = {
       (0.0, 0.2): ("close-minded", "closed-minded", "resistant to change"),
@@ -220,7 +220,7 @@ docs/planning/design/prompts/prompt-caching-strategy.md
       return descriptors[0]  # First descriptor; could randomize for variety
   ```
 
-- [ ] Update `Persona.get_system_instructions()` to use natural language:
+- [x] Update `Persona.get_system_instructions()` to use natural language:
   ```python
   def get_system_instructions(self) -> str:
       ocean_traits = (
@@ -240,12 +240,12 @@ docs/planning/design/prompts/prompt-caching-strategy.md
   """
   ```
 
-- [ ] Test that persona preambles are identical across runs (reproducible randomization if needed).
+- [x] Test that persona preambles are identical across runs (reproducible randomization if needed).
 
 ### Phase 2: Expand PROMPT_REGISTRY with Workflow-Specific Entries (Sprint 1–2)
 
 **Add reasoning-mode templates:**
-- [ ] Create named entries in `prompts.py`:
+- [x] Create named entries in `prompts.py`:
   ```python
   REASONING_REACT_CHALLENGE = """
   Use the ReAct-Challenge pattern:
@@ -301,7 +301,7 @@ docs/planning/design/prompts/prompt-caching-strategy.md
   }
   ```
 
-- [ ] Define all 29 workflow-stage templates:
+- [x] Define all 29 workflow-stage templates:
   ```python
   # For each workflow in WorkflowRegistry:
   FEATURE_IMPLEMENTATION_SENTRY_PROMPT = """You are the Sentry — test architect. Your task: propose failing test cases that would fail before the feature is implemented."""
@@ -312,7 +312,7 @@ docs/planning/design/prompts/prompt-caching-strategy.md
 ### Phase 3: Formalize Conditional Branching (Sprint 2)
 
 **Update agent system_prompt functions to use explicit if/else:**
-- [ ] Audit agent example:
+- [x] Audit agent example:
   ```python
   @audit_agent.system_prompt
   async def build_system_prompt(ctx: RunContext[AuditDependencies]) -> str:
@@ -354,12 +354,12 @@ docs/planning/design/prompts/prompt-caching-strategy.md
   """
   ```
 
-- [ ] Apply same pattern to all 12 agents.
+- [x] Apply same pattern to all 12 agents.
 
 ### Phase 4: Dynamic Tool List Injection (Sprint 2–3)
 
 **Add helper function:**
-- [ ] Create `prompts.py`:
+- [x] Create `prompts.py`:
   ```python
   def build_tool_names_for_prompt(
       tool_names: list[str],
@@ -374,7 +374,7 @@ docs/planning/design/prompts/prompt-caching-strategy.md
   """
   ```
 
-- [ ] Update agents to call this helper:
+- [x] Update agents to call this helper:
   ```python
   @audit_agent.system_prompt
   async def build_system_prompt(ctx: RunContext[AuditDependencies]) -> str:
@@ -395,7 +395,7 @@ docs/planning/design/prompts/prompt-caching-strategy.md
 ### Phase 5: Workflow-Specific Stage Prompt Injection (Sprint 3)
 
 **Update workflow runtimes to inject stage-specific prompts:**
-- [ ] Modify workflow nodes to use PROMPT_REGISTRY:
+- [x] Modify workflow nodes to use PROMPT_REGISTRY:
   ```python
   class LogicDraftNode(BaseNode[...]):
       async def run(self, ctx: GraphRunContext[...]) -> ...:
@@ -422,11 +422,11 @@ docs/planning/design/prompts/prompt-caching-strategy.md
           )
   ```
 
-- [ ] Add `stage_instructions` and `reasoning_mode` fields to all agent deps dataclasses.
+- [x] Add `stage_instructions` and `reasoning_mode` fields to all agent deps dataclasses.
 
 ### Phase 6: Documentation and Validation (Sprint 3–4)
 
-- [ ] Create `docs/planning/design/prompts/prompt-caching-strategy.md`:
+- [x] Create `docs/planning/design/prompts/prompt-caching-strategy.md`:
   ```markdown
   # Prompt Caching Strategy
 
@@ -454,7 +454,7 @@ docs/planning/design/prompts/prompt-caching-strategy.md
   - High-volume same-agent calls: 80%+ hit rate
   ```
 
-- [ ] Add validation script `scripts/validate_prompt_caching.py`:
+- [x] Add validation script `scripts/validate_prompt_caching.py`:
   ```python
   def check_prompt_caching():
       """Validate that prompts follow three-layer pattern."""
@@ -464,7 +464,7 @@ docs/planning/design/prompts/prompt-caching-strategy.md
       # Check: All hardcoded tool names are gone
   ```
 
-- [ ] Run validation on all agent files.
+- [x] Run validation on all agent files.
 
 ## Acceptance Criteria
 

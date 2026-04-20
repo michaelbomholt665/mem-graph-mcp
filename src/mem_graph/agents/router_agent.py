@@ -30,6 +30,7 @@ from ..config import (
     config_is_solo_mode,
 )
 from ..resources.personas import ROUTER_PERSONA
+from ..resources.prompts import get_reasoning_mode_guidance
 
 ################
 #   CONSTANTS
@@ -156,6 +157,7 @@ class RouterDependencies:
     workflow_mode: Literal["route_only", "subagent_workflow"] = "route_only"
     model_overrides: dict[str, str] = field(default_factory=dict)
     max_retries: int = 3
+    reasoning_mode: str = ""
 
 
 ################
@@ -187,12 +189,24 @@ async def router_build_system_prompt(ctx: RunContext[RouterDependencies]) -> str
     """
     file_count = len(ctx.deps.file_paths)
     concurrency = config_get_concurrency_for_files(file_count)
-    mode_note = (
-        "Default mode is route_only. Produce workflow_plan only because the "
-        "caller explicitly requested subagent_workflow."
-        if ctx.deps.workflow_mode == "subagent_workflow"
-        else "Default mode is route_only. Do not produce a workflow_plan."
-    )
+
+    if ctx.deps.workflow_mode == "subagent_workflow":
+        mode_note = (
+            "Produce a workflow_plan because the caller explicitly requested "
+            "subagent_workflow mode. The plan must include required_stages, "
+            "stage dependencies, model overrides, allowed tools per stage, "
+            "max_retries, and ask-user policy."
+        )
+    else:
+        mode_note = (
+            "Default route_only mode. Do not produce a workflow_plan. "
+            "Return tier, file_count, concurrency, solo_mode, intent, summary, "
+            "and an ordered sub_tasks list."
+        )
+
+    reasoning_hint = ""
+    if ctx.deps.reasoning_mode:
+        reasoning_hint = f"\n\n## Reasoning Strategy\n{get_reasoning_mode_guidance(ctx.deps.reasoning_mode)}"
 
     return f"""{ROUTER_PERSONA.get_system_instructions()}
 
@@ -218,13 +232,7 @@ project-specific helper agents could improve routing.
 ## Tier Selection
 Use `router_compute_tier_hint` for deterministic tier, concurrency, and
 solo-mode hints. Explain only intentional overrides.
-
-## Output Requirements
-Return a RouterDecision with tier, file_count, concurrency, solo_mode,
-intent, summary, workflow_mode, and a sub_tasks list ordered by execution
-dependency. If workflow_mode is subagent_workflow, also return a WorkflowPlan
-with objective, project_id, target_files, required_stages, stage dependencies,
-model overrides, allowed tools per stage, max_retries, and ask-user policy.
+{reasoning_hint}
 
 {ctx.deps.skills_content}
 """

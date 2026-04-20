@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # src/mem_graph/resources/workflows/reasoning.py
-"""Typed reasoning policies: ReAct self-challenge and bounded Tree-of-Thought."""
+"""Typed reasoning policies: ReAct self-challenge, REACT_2, bounded Tree-of-Thought, and CoT."""
 
 from __future__ import annotations
 
@@ -22,6 +22,26 @@ REACT_CHALLENGE_POLICY = ReasoningPolicy(
         "challenge: Ask what could be wrong with the draft. "
         "Check for missing evidence. Evaluate at least one alternative approach.",
         "decide: Make the final choice informed by the challenge step and execute.",
+    ],
+)
+
+################
+#   REACT_2 POLICY
+################
+
+REACT_2_POLICY = ReasoningPolicy(
+    mode=ReasoningMode.REACT_2,
+    description=(
+        "ReAct iteration policy for refining prior work. "
+        "Used when an earlier version of the output already exists "
+        "and the agent must decide whether to confirm, improve, or drop it."
+    ),
+    required_steps=[
+        "observe: Review the prior output and the current objective.",
+        "plan: Draft a minimal change set to address outstanding gaps.",
+        "evaluate: For each planned change decide: confirm (keep as-is), "
+        "improve (needs adjustment), or drop (no longer relevant).",
+        "execute: Apply only confirmed and improved items.",
     ],
 )
 
@@ -55,12 +75,36 @@ BOUNDED_TOT_POLICY = ReasoningPolicy(
 )
 
 ################
+#   CHAIN-OF-THOUGHT POLICY
+################
+
+COT_POLICY = ReasoningPolicy(
+    mode=ReasoningMode.COT,
+    description=(
+        "Chain-of-Thought for multi-step reasoning where each step reframes the next. "
+        "Runs N parallel paths per step and carries the best-scoring path forward."
+    ),
+    required_steps=[
+        "decompose: Break the objective into an ordered sequence of reasoning steps.",
+        "generate: For each step, produce at least two candidate continuations.",
+        "score: Rank continuations by correctness, completeness, and consistency.",
+        "carry: Select the top-scoring continuation and use it as the input to the next step.",
+        "conclude: Synthesize the final answer from the last carried step.",
+    ],
+    tree_width=2,
+    tree_depth=4,
+    budget_cap=300,
+)
+
+################
 #   POLICY MAP
 ################
 
 REASONING_POLICY_MAP: dict[ReasoningMode, ReasoningPolicy] = {
     ReasoningMode.REACT_CHALLENGE: REACT_CHALLENGE_POLICY,
+    ReasoningMode.REACT_2: REACT_2_POLICY,
     ReasoningMode.BOUNDED_TOT: BOUNDED_TOT_POLICY,
+    ReasoningMode.COT: COT_POLICY,
 }
 
 
@@ -100,6 +144,17 @@ def reasoning_policy_prompt(policy: ReasoningPolicy) -> str:
         for criterion in policy.pruning_criteria:
             lines.append(f"- {criterion}")
 
+    if policy.mode == ReasoningMode.COT:
+        lines.extend(
+            [
+                "",
+                "### Chain Constraints",
+                f"- Candidates per step: {policy.tree_width} minimum",
+                f"- Max chain depth: {policy.tree_depth} steps",
+                f"- Budget cap: {policy.budget_cap} reasoning tokens",
+            ]
+        )
+
     lines.extend(
         [
             "",
@@ -108,3 +163,12 @@ def reasoning_policy_prompt(policy: ReasoningPolicy) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def reasoning_mode_prompt(mode: ReasoningMode) -> str:
+    """Return a prompt injection string for the given reasoning mode.
+
+    Convenience wrapper around get_reasoning_policy + reasoning_policy_prompt.
+    """
+    policy = get_reasoning_policy(mode)
+    return reasoning_policy_prompt(policy)

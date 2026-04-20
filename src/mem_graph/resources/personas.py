@@ -27,6 +27,92 @@ class BigFiveTraits:
     agreeableness: float = 0.5
     neuroticism: float = 0.5
 
+    def to_natural_language(self) -> str:
+        """Render OCEAN scores as a natural language description."""
+        def describe(val: float, high: str, low: str) -> str:
+            if val > 0.6:
+                return high
+            if val < 0.4:
+                return low
+            return "moderately balanced"
+
+        return (
+            f"{describe(self.openness, 'highly curious and imaginative', 'pragmatic and conventional')}, "
+            f"{describe(self.conscientiousness, 'extremely disciplined and organized', 'flexible and spontaneous')}, "
+            f"{describe(self.extraversion, 'highly outgoing and energetic', 'reserved and introspective')}, "
+            f"{describe(self.agreeableness, 'highly cooperative and empathetic', 'critically analytical and objective')}, "
+            f"and {describe(self.neuroticism, 'highly sensitive and reactive', 'emotionally stable and calm')}."
+        )
+
+
+################
+#   OCEAN TRAIT HELPER
+################
+
+
+# Descriptor buckets per trait — (low, high) → primary descriptor.
+_TRAIT_BUCKETS: dict[str, list[tuple[tuple[float, float], str]]] = {
+    "openness": [
+        ((0.0, 0.2), "resistant to change"),
+        ((0.2, 0.4), "practical"),
+        ((0.4, 0.6), "balanced"),
+        ((0.6, 0.8), "curious"),
+        ((0.8, 1.0), "intellectually curious"),
+    ],
+    "conscientiousness": [
+        ((0.0, 0.2), "spontaneous"),
+        ((0.2, 0.4), "easygoing"),
+        ((0.4, 0.6), "reliable"),
+        ((0.6, 0.8), "methodical"),
+        ((0.8, 1.0), "highly disciplined"),
+    ],
+    "extraversion": [
+        ((0.0, 0.2), "deeply introverted"),
+        ((0.2, 0.4), "introverted"),
+        ((0.4, 0.6), "ambivert"),
+        ((0.6, 0.8), "sociable"),
+        ((0.8, 1.0), "highly extroverted"),
+    ],
+    "agreeableness": [
+        ((0.0, 0.2), "direct and challenging"),
+        ((0.2, 0.4), "pragmatic"),
+        ((0.4, 0.6), "cooperative"),
+        ((0.6, 0.8), "warm"),
+        ((0.8, 1.0), "highly empathetic"),
+    ],
+    "neuroticism": [
+        ((0.0, 0.2), "emotionally stable"),
+        ((0.2, 0.4), "composed"),
+        ((0.4, 0.6), "moderately sensitive"),
+        ((0.6, 0.8), "emotionally reactive"),
+        ((0.8, 1.0), "highly sensitive"),
+    ],
+}
+
+
+def render_ocean_trait(value: float, trait: str) -> str:
+    """
+    Convert an OCEAN float score (0.0–1.0) to a natural-language descriptor.
+
+    Uses a deterministic bucket lookup so the result is stable across runs
+    and eligible for provider-side prompt caching.
+
+    Args:
+        value: OCEAN score in [0.0, 1.0].
+        trait: One of 'openness', 'conscientiousness', 'extraversion',
+               'agreeableness', 'neuroticism' (case-insensitive).
+
+    Returns:
+        Primary descriptor string, e.g. ``"methodical"``.
+    """
+    buckets = _TRAIT_BUCKETS.get(trait.lower(), _TRAIT_BUCKETS["openness"])
+    for (low, high), descriptor in buckets:
+        if low <= value <= high:
+            return descriptor
+    # Fallback for values exactly at boundary edge (e.g. 1.0 > 0.8)
+    return buckets[-1][1]
+
+
 
 @dataclass
 class LLMParams:
@@ -62,22 +148,19 @@ class Persona:
         """
         Render the complete system prompt preamble for this persona.
 
+        OCEAN trait scores are rendered as natural-language descriptors
+        rather than raw floats, producing a stable, cacheable prefix that
+        is more token-efficient and better for model calibration.
+
         Returns:
-            Multi-line string combining identity, description, OCEAN scores,
-            and base instructions.
+            Multi-line string combining identity, description, natural-language
+            personality description, and base instructions.
         """
-        trait_desc = (
-            f"Your personality is characterized by: "
-            f"Openness={self.traits.openness}, "
-            f"Conscientiousness={self.traits.conscientiousness}, "
-            f"Extraversion={self.traits.extraversion}, "
-            f"Agreeableness={self.traits.agreeableness}, "
-            f"Neuroticism={self.traits.neuroticism}."
-        )
+        ocean_line = self.traits.to_natural_language()
         return (
             f"You are {self.name}, {self.role}.\n"
             f"{self.description}\n"
-            f"{trait_desc}\n"
+            f"Your personality is characterized by being: {ocean_line}\n"
             f"{self.base_instructions}"
         )
 

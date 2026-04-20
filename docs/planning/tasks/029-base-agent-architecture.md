@@ -1,6 +1,6 @@
 # Task 029: Base Agent Architecture — Stateless Global Instances with RunContext Injection
 
-**Status:** Planning
+**Status:** Completed
 **Priority:** High
 **Blocked by:** None (foundational)
 **Blocks:** Tasks 030 (Workflows), 031 (Prompts), 033 (Tools), 034 (Services)
@@ -115,8 +115,8 @@ src/mem_graph/agents/__init__.py
 
 ### Phase 1: Consolidate and Audit (Sprint 1)
 
-- [ ] Merge `preloaded_audit_agent` into `audit_agent` with `mode` field in `AuditDependencies`.
-- [ ] Update `AuditDependencies` dataclass:
+- [x] Merge `preloaded_audit_agent` into `audit_agent` with `mode` field in `AuditDependencies`.
+- [x] Update `AuditDependencies` dataclass:
   ```python
   @dataclass
   class AuditDependencies:
@@ -126,48 +126,48 @@ src/mem_graph/agents/__init__.py
       extra_file_context: str = ""
       # ... rest of fields
   ```
-- [ ] Update `build_system_prompt` to branch on `ctx.deps.mode` instead of presence of `extra_file_context`.
-- [ ] Remove `preloaded_audit_agent` from exports.
-- [ ] Verify no callers reference the removed agent.
+- [x] Update `build_system_prompt` to branch on `ctx.deps.mode` instead of presence of `extra_file_context`.
+- [x] Remove `preloaded_audit_agent` from exports.
+- [x] Verify no callers reference the removed agent.
 
 ### Phase 2: Move Accumulated State to Deps (Sprint 1–2)
 
 **`decision_agent`:**
-- [ ] Add `_decision_state: DecisionAccumulator = field(default_factory=...)` to `DecisionDependencies`.
+- [x] Add `_decision_state: DecisionAccumulator = field(default_factory=...)` to `DecisionDependencies`.
   ```python
   @dataclass
   class DecisionAccumulator:
       reviews: list[DecisionReview] = field(default_factory=list)
       summary: str = ""
   ```
-- [ ] Replace all `ctx._decision_state` assignments with `ctx.deps._decision_state`.
-- [ ] Update agent-local tools to read/write through `ctx.deps._decision_state`.
+- [x] Replace all `ctx._decision_state` assignments with `ctx.deps._decision_state`.
+- [x] Update agent-local tools to read/write through `ctx.deps._decision_state`.
 
 **`task_agent`:**
-- [ ] Add `_task_state: TaskAccumulator` to `TaskDependencies`.
+- [x] Add `_task_state: TaskAccumulator` to `TaskDependencies`.
   ```python
   @dataclass
   class TaskAccumulator:
       tasks: list[Task] = field(default_factory=list)
       identified_blockers: list[str] = field(default_factory=list)
   ```
-- [ ] Replace all `ctx._task_state` with `ctx.deps._task_state`.
+- [x] Replace all `ctx._task_state` with `ctx.deps._task_state`.
 
 **`fixer_agent`:**
-- [ ] Add `_fixer_patches: list[FilePatch] = field(default_factory=list)` to `FixerDependencies`.
-- [ ] Replace all `ctx._fixer_patches` with `ctx.deps._fixer_patches`.
+- [x] Add `_fixer_patches: list[FilePatch] = field(default_factory=list)` to `FixerDependencies`.
+- [x] Replace all `ctx._fixer_patches` with `ctx.deps._fixer_patches`.
 
 ### Phase 3: Verify Agent-Local Tool Scope (Sprint 2)
 
 For each agent with `@agent.tool` decorators (audit_agent, decision_agent, task_agent, fixer_agent, sentry_agent, map_agent):
-- [ ] Confirm tool is NOT exported in `tools/__init__.py` or listed in MCP registry.
-- [ ] Confirm tool is only called from within the agent's `@agent.run()` callback.
-- [ ] Document tool in agent's docstring: `# Agent-local tools: list_files, process_batch, finalize_report`.
-- [ ] Add a type hint comment: `@agent.tool  # Scope: agent-local only`.
+- [x] Confirm tool is NOT exported in `tools/__init__.py` or listed in MCP registry.
+- [x] Confirm tool is only called from within the agent's `@agent.run()` callback.
+- [x] Document tool in agent's docstring: `# Agent-local tools: list_files, process_batch, finalize_report`.
+- [x] Add a type hint comment: `@agent.tool  # Scope: agent-local only`.
 
 ### Phase 4: Establish Agent Factory and Inventory (Sprint 2)
 
-- [ ] Create `src/mem_graph/agents/base.py`:
+- [x] Create `src/mem_graph/agents/base.py`:
   ```python
   from dataclasses import dataclass
   from typing import Literal
@@ -192,7 +192,7 @@ For each agent with `@agent.tool` decorators (audit_agent, decision_agent, task_
   }
   ```
 
-- [ ] Update `src/mem_graph/agents/__init__.py` to export all 12 agents:
+- [x] Update `src/mem_graph/agents/__init__.py` to export all 12 agents:
   ```python
   from .orchestrator_agent import orchestrator_agent
   from .router_agent import router_agent
@@ -214,7 +214,7 @@ For each agent with `@agent.tool` decorators (audit_agent, decision_agent, task_
   ]
   ```
 
-- [ ] Create `docs/planning/design/agents/00-agent-inventory.md`:
+- [x] Create `docs/planning/design/agents/00-agent-inventory.md`:
   ```markdown
   # Agent Inventory (Verified Q2 2026)
 
@@ -227,25 +227,25 @@ For each agent with `@agent.tool` decorators (audit_agent, decision_agent, task_
 ### Phase 5: Complete Missing Agents (Sprint 3)
 
 **`chat_agent`:**
-- [ ] Implement interactive discovery loop for conversational queries.
-- [ ] Add `ChatDependencies` with `graph_context: str`, `memory_history: list[Turn]`.
-- [ ] Integrate with `memory_recall` tool for graph-grounded answers.
-- [ ] Add eval case: grounds answer in at least one node ID.
+- [x] Implement interactive discovery loop for conversational queries.
+- [x] Add `ChatDependencies` with `graph_context: str`, `memory_history: list[Turn]`.
+- [x] Integrate with `memory_recall` tool for graph-grounded answers.
+- [x] Add eval case: grounds answer in at least one node ID.
 
 **`diagram_agent`:**
-- [ ] Implement Mermaid C4 diagram generation from codebase structure.
-- [ ] Add `DiagramDependencies` with `target_feature: str`, `scope: Literal["system", "container", "component"]`.
-- [ ] Integrate output with `decision_agent` and `task_agent` for architecture decisions.
-- [ ] Add eval case: produces valid Mermaid syntax.
+- [x] Implement Mermaid C4 diagram generation from codebase structure.
+- [x] Add `DiagramDependencies` with `target_feature: str`, `scope: Literal["system", "container", "component"]`.
+- [x] Integrate output with `decision_agent` and `task_agent` for architecture decisions.
+- [x] Add eval case: produces valid Mermaid syntax.
 
 **`triage_agent`:**
-- [ ] Verify deduplication logic (identical `rule + file_path` → merge).
-- [ ] Verify severity promotion logic (wide blast-radius → escalate).
-- [ ] Add eval cases: dedup two violations, promote severity.
+- [x] Verify deduplication logic (identical `rule + file_path` → merge).
+- [x] Verify severity promotion logic (wide blast-radius → escalate).
+- [x] Add eval cases: dedup two violations, promote severity.
 
 ### Phase 6: Documentation and Validation (Sprint 3–4)
 
-- [ ] Write `docs/planning/design/agents/01-agent-initialization-guide.md`:
+- [x] Write `docs/planning/design/agents/01-agent-initialization-guide.md`:
   ```markdown
   # Agent Initialization Guide
 
@@ -274,7 +274,7 @@ For each agent with `@agent.tool` decorators (audit_agent, decision_agent, task_
   ```
   ```
 
-- [ ] Add a validation script to check that no `ctx.__dict__` assignments occur in any agent file.
+- [x] Add a validation script to check that no `ctx.__dict__` assignments occur in any agent file.
   ```python
   # scripts/validate_agent_statelessness.py
   def check_no_ctx_dict_mutation(agent_files):
