@@ -1,9 +1,9 @@
 # Task 027: Curated CLI Commands via CodeMode Execute
 
-**Status:** Planning  
-**Priority:** High  
-**Blocked by:** CodeMode `execute` wiring; Task 026 for final `workflow start` implementation  
-**Blocks:** oh-my-pi/custom CLI command rollout  
+**Status:** Implemented
+**Priority:** High
+**Blocked by:** Task 026 for final `workflow start` implementation details
+**Blocks:** oh-my-pi/custom CLI command rollout
 
 ## Problem Statement
 
@@ -62,11 +62,13 @@ Add a curated command layer for custom CLIs, including oh-my-pi, where commands 
 Likely additions:
 
 ```text
-src/mem_graph/services/command_db.py
-src/mem_graph/services/command_shell.py
-src/mem_graph/services/command_evals.py
-src/mem_graph/services/command_parse_stage.py
-src/mem_graph/services/command_embed.py
+src/mem_graph/services/commands/command_db.py
+src/mem_graph/services/commands/command_shell.py
+src/mem_graph/services/commands/command_evals.py
+src/mem_graph/services/commands/command_parse_stage.py
+src/mem_graph/services/commands/command_embed.py
+src/mem_graph/services/commands/base.py
+src/mem_graph/services/commands/catalog.py
 ```
 
 Likely modifications:
@@ -77,120 +79,122 @@ src/mem_graph/db.py
 src/mem_graph/evals/evaluator.py
 src/mem_graph/app/parsers/pipeline.py
 src/mem_graph/app/parsers/ingest.py
-docs/planning/design/16-commands-codemode.md
+src/mem_graph/sandbox/provider.py
+docs/planning/design/016-commands-codemode.md
 ```
 
 Optional reference adapter:
 
 ```text
 scripts/mem_graph_commands/
+tests/commands/
 ```
 
 ## Implementation Phases
 
 ### Phase 1: CodeMode Execute Wiring
 
-- [ ] Add or verify FastMCP CodeMode transform in `src/mem_graph/server.py`.
-- [ ] Confirm `execute` can call `get_server_info`.
-- [ ] Confirm `execute` can activate lazy namespaces with `tools_activate`.
-- [ ] Confirm `execute` can call existing parser and agent tools.
-- [ ] Document the exact MCP request shape expected by external CLIs.
+- [x] DONE: Add or verify FastMCP CodeMode transform in `src/mem_graph/server.py`.
+- [x] DONE: Confirm `execute` can call `get_server_info`.
+- [x] DONE: Confirm `execute` can activate lazy namespaces with `tools_activate`.
+- [x] DONE: Confirm `execute` can call existing parser and agent tools.
+- [x] DONE: Document the exact MCP request shape expected by external CLIs.
 
 ### Phase 2: Command Result Contract
 
-- [ ] Define the JSON result envelope for all CLI command snippets.
-- [ ] Add reference snippet templates for common success and error responses.
-- [ ] Ensure task-returning commands preserve `task_id`, `poll_with`, and `cancel_with`.
+- [x] DONE: Define the JSON result envelope for all CLI command snippets.
+- [x] DONE: Add reference snippet templates for common success and error responses.
+- [x] DONE: Ensure task-returning commands preserve `task_id`, `poll_with`, and `cancel_with`.
 
 ### Phase 3: DB Command Support
 
-- [ ] Add `command_db.py`.
-- [ ] Add named DB query templates for common graph inspection.
-- [ ] Add typed parameter validation for templates.
-- [ ] Add `db inspect` template set, including schema counts and index status.
-- [ ] Add `db query-template` support.
-- [ ] Add gated `db cypher` raw-debug support.
-- [ ] Add idempotent `db migrate`/schema status helpers in `db.py` or `command_db.py`.
+- [x] DONE: Add `command_db.py`.
+- [x] DONE: Add named DB query templates for common graph inspection.
+- [x] DONE: Add typed parameter validation for templates.
+- [x] DONE: Add `db inspect` template set, including schema counts and index status.
+- [x] DONE: Add `db query-template` support.
+- [x] DONE: Add gated `db cypher` raw-debug support.
+- [x] DONE: Add idempotent `db migrate`/schema status helpers in `db.py` or `command_db.py`.
 
 Initial DB templates:
 
-- [ ] `schema.counts`
-- [ ] `schema.indexes`
-- [ ] `projects.list`
-- [ ] `projects.detail`
-- [ ] `tasks.open`
-- [ ] `tasks.by_project`
-- [ ] `decisions.recent`
-- [ ] `violations.open`
-- [ ] `violations.by_file`
-- [ ] `notes.recent`
-- [ ] `code.symbols_by_file`
-- [ ] `code.callers`
-- [ ] `code.callees`
-- [ ] `evals.recent`
+- [x] DONE: `schema.counts`
+- [x] DONE: `schema.indexes`
+- [x] DONE: `projects.list`
+- [x] DONE: `projects.detail`
+- [x] DONE: `tasks.open`
+- [x] DONE: `tasks.by_project`
+- [x] DONE: `decisions.recent`
+- [x] DONE: `violations.open`
+- [x] DONE: `violations.by_file`
+- [x] DONE: `notes.recent`
+- [x] DONE: `code.symbols_by_file`
+- [x] DONE: `code.callers`
+- [x] DONE: `code.callees`
+- [x] DONE: `evals.recent`
 
 ### Phase 4: Toolchain Command Support
 
-- [ ] Add `command_shell.py` with allowlisted argv execution.
-- [ ] Forbid `shell=True`.
-- [ ] Add output caps and timeouts.
-- [ ] Implement `toolchain python`.
-- [ ] Implement `toolchain go`.
-- [ ] Implement `toolchain security`.
-- [ ] Implement `lint fix` as the Python lint subset.
+- [x] DONE: Add `command_shell.py` with allowlisted argv execution.
+- [x] DONE: Forbid `shell=True`.
+- [x] DONE: Add output caps and timeouts.
+- [x] DONE: Implement `toolchain python`.
+- [x] DONE: Implement `toolchain go`.
+- [x] DONE: Implement `toolchain security`.
+- [x] DONE: Implement `lint fix` as the Python lint subset.
 
 Initial allowlist:
 
-- [ ] `uv run ruff check src tests --fix`
-- [ ] `uv run mypy src`
-- [ ] `uv run pytest -q`
-- [ ] `semgrep scan`
-- [ ] `trivy fs .`
-- [ ] `gofumpt -w .`
-- [ ] `go fmt ./...`
-- [ ] `go test ./...`
-- [ ] `govulncheck ./...`
+- [x] DONE: `uv run ruff check src tests --fix`
+- [x] DONE: `uv run mypy src`
+- [x] DONE: `uv run pytest -q`
+- [x] DONE: `semgrep scan`
+- [x] DONE: `trivy fs .`
+- [x] DONE: `gofumpt -w .`
+- [x] DONE: `go fmt ./...`
+- [x] DONE: `go test ./...`
+- [x] DONE: `govulncheck ./...`
 
 ### Phase 5: Parser Staging and Watcher
 
-- [ ] Design parser staging storage: files, temp DB, or in-memory queue.
-- [ ] Add `command_parse_stage.py`.
-- [ ] Implement `code parse` against existing tree-sitter pipeline.
-- [ ] Implement `code stage` without graph DB ingest.
-- [ ] Implement `code commit-index` through existing ingest boundary.
-- [ ] Prototype `code watch` with watchdog.
-- [ ] Ensure watcher never pushes to graph DB without explicit commit.
+- [x] DONE: Design parser staging storage: files, temp DB, or in-memory queue.
+- [x] DONE: Add `command_parse_stage.py`.
+- [x] DONE: Implement `code parse` against existing tree-sitter pipeline.
+- [x] DONE: Implement `code stage` without graph DB ingest.
+- [x] DONE: Implement `code commit-index` through existing ingest boundary.
+- [x] DONE: Prototype `code watch` with watchdog.
+- [x] DONE: Ensure watcher never pushes to graph DB without explicit commit.
 
 ### Phase 6: Embedding Commands
 
-- [ ] Add `command_embed.py`.
-- [ ] Implement `embed documents` using text embedding services.
-- [ ] Implement `embed code` using code embedding services.
-- [ ] Validate embedding dimensions before writes.
-- [ ] Reuse existing model/config paths.
+- [x] DONE: Add `command_embed.py`.
+- [x] DONE: Implement `embed documents` using text embedding services.
+- [x] DONE: Implement `embed code` using code embedding services.
+- [x] DONE: Validate embedding dimensions before writes.
+- [x] DONE: Reuse existing model/config paths.
 
 ### Phase 7: Agent Category Commands
 
-- [ ] Add CLI templates for `agent audit`.
-- [ ] Add CLI templates for `agent map`.
-- [ ] Add CLI templates for `agent fix`.
-- [ ] Add CLI templates for `agent validate`.
-- [ ] Add CLI templates for `agent document`.
-- [ ] Route through existing agent tools where available.
-- [ ] Return task IDs for long-running agent work.
+- [x] DONE: Add CLI templates for `agent audit`.
+- [x] DONE: Add CLI templates for `agent map`.
+- [x] DONE: Add CLI templates for `agent fix`.
+- [x] DONE: Add CLI templates for `agent validate`.
+- [x] DONE: Add CLI templates for `agent document`.
+- [x] DONE: Route through existing agent tools where available.
+- [x] DONE: Return task IDs for long-running agent work.
 
 ### Phase 8: Workflow Command
 
-- [ ] Keep a compatibility path to current `run_subagent_workflow`.
+- [x] DONE: Keep a compatibility path to current `run_subagent_workflow`.
 - [ ] After Task 026, route `workflow start` through profile-selected workflow runtime.
 - [ ] Support task type/profile selection.
 - [ ] Support polling via existing background task status tools.
 
 ### Phase 9: Reference CLI Adapter
 
-- [ ] Decide whether this repo should include a reference adapter or only docs/snippets.
-- [ ] If included, add a tiny adapter that sends snippets to `execute`.
-- [ ] Keep oh-my-pi-specific configuration outside server internals unless requested.
+- [x] DONE: Decide whether this repo should include a reference adapter or only docs/snippets.
+- [x] DONE: If included, add a tiny adapter that sends snippets to `execute`.
+- [x] DONE: Keep oh-my-pi-specific configuration outside server internals unless requested.
 
 ## Acceptance Criteria
 
@@ -213,7 +217,7 @@ Focused unit tests:
 MEM_GRAPH_LOGFIRE_SEND_TO_LOGFIRE=if-token-present \
 MEM_GRAPH_LOGFIRE_ENABLED=false \
 OTEL_SDK_DISABLED=true \
-uv run pytest tests/test_command_db.py tests/test_command_shell.py tests/test_command_parse_stage.py tests/test_command_embed.py -q
+uv run pytest tests/commands -q
 ```
 
 Parser/DB regression:
@@ -228,9 +232,9 @@ uv run pytest tests/test_parsers.py tests/test_db.py -q
 Broad gate:
 
 ```bash
-uv run ruff check src tests
-uv run mypy src
-MEM_GRAPH_LOGFIRE_SEND_TO_LOGFIRE=if-token-present MEM_GRAPH_LOGFIRE_ENABLED=false OTEL_SDK_DISABLED=true uv run pytest -q
+uv run ruff check .
+uv run mypy .
+MEM_GRAPH_LOGFIRE_SEND_TO_LOGFIRE=if-token-present MEM_GRAPH_LOGFIRE_ENABLED=false OTEL_SDK_DISABLED=true uv run pytest
 make evals-ci
 ```
 

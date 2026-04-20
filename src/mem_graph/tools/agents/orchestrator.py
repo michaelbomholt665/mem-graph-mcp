@@ -29,7 +29,7 @@ from ...agents.router_agent import RouterDependencies, router_agent
 from ...app.registry import AgentEntry, register_agent
 from ...config import config_build_orchestrator_usage_limits
 from ...models.agent_outputs import BatchResult, WorkflowPlan
-from ...resources.workflows.selector import select_all
+from ...resources.workflows.selection.selector import select_all
 from ...services.task_queue import task_queue
 from ...workflows.runtime.managed_workflow_runtime import (
     run_managed_workflow_with_selection,

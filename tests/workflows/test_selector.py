@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from mem_graph.resources.workflows.models import ProfileSize, ReasoningMode
-from mem_graph.resources.workflows.selector import (
+from mem_graph.resources.workflows.selection.selector import (
     WorkflowSelection,
     select_all,
     select_profile,

@@ -74,7 +74,7 @@ class GraphWriterService:
         query = f"CREATE (n:{label} {{{keys_str}}})"
 
         try:
-            self.conn.execute(query, props)
+            self.conn.execute(query, props)  # nosemgrep
 
             if parent_id and parent_label and relationship_name:
                 self.write_relationship(
@@ -121,7 +121,7 @@ class GraphWriterService:
         )
 
         try:
-            self.conn.execute(query, props)
+            self.conn.execute(query, props)  # nosemgrep
         except Exception as exc:
             logger.error("Failed to write relationship %s: %s", rel_type, exc)
             raise

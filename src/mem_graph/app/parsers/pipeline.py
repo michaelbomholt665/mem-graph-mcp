@@ -4,8 +4,10 @@ pipeline.py — Orchestration of parse → extract → resolve → ingest.
 Public APIs:
   parse_file(path, language=None, limits=None) → ParseResult
   extract_file(path, language=None, limits=None) → (ParseResult, list[ExtractedNode], list[ExtractedEdge])
-  index_file(root, path, project_id=None, backend_id=None, limits=None) → PersistenceResult
-  index_tree(root, include=None, exclude=None, project_id=None, backend_id=None, limits=None) → list[PersistenceResult]
+  prepare_index_file(root, path, limits=None) → PreparedIndexBatch
+  prepare_index_tree(root, include=None, exclude=None, limits=None) → list[PreparedIndexBatch]
+  index_file(root, path, limits=None) → PersistenceResult
+  index_tree(root, include=None, exclude=None, limits=None) → list[PersistenceResult]
 
 Rules:
 - Calls ingest.py for all persistence at the end of index APIs.
@@ -19,6 +21,7 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import logging
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -50,14 +53,11 @@ from .types import (
     ParseLimits,
     ParseResult,
     PersistenceResult,
+    PreparedIndexBatch,
     ResolutionResult,
 )
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Extractor registry
-# ---------------------------------------------------------------------------
 
 _CUSTOM_EXTRACTORS: dict[str, Any] = {
     "python": PythonExtractor(),
@@ -68,19 +68,13 @@ _CUSTOM_EXTRACTORS: dict[str, Any] = {
     "sql": SqlExtractor(),
 }
 
-# Universal extractors for config/simple grammars
 _UNIVERSAL_EXTRACTORS: dict[str, UniversalExtractor] = {
     lang: UniversalExtractor(lang) for lang in UNIVERSAL_LANGUAGES
 }
 
-# ---------------------------------------------------------------------------
-# Resolver registry
-# ---------------------------------------------------------------------------
-
 _CALL_RESOLVER = CallResolver()
 _ANON_RESOLVER = AnonymousSymbolResolver()
 _SYMBOL_RESOLVER = SymbolResolver()
-_IMPORT_RESOLVER = ImportResolver()
 
 
 def _build_resolvers(language_key: str, project_root: str | None = None) -> list[Any]:
@@ -99,11 +93,6 @@ def _build_resolvers(language_key: str, project_root: str | None = None) -> list
     elif language_key in ("sql", "cypher"):
         resolvers.append(QueryLineageResolver())
     return resolvers
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 
 def parse_file(
@@ -151,7 +140,7 @@ def extract_file(
     limits = limits or DEFAULT_LIMITS
     lang = language or language_for_path(path)
     if not lang:
-        pr = ParseResult(
+        result = ParseResult(
             language_key="unknown",
             path=path,
             root_node_type="",
@@ -161,11 +150,11 @@ def extract_file(
             error_node_count=0,
             warnings=[f"Unsupported file type: {path}"],
         )
-        return pr, [], []
+        return result, [], []
 
     content = _read_file(path)
     if content is None:
-        pr = ParseResult(
+        result = ParseResult(
             language_key=lang,
             path=path,
             root_node_type="",
@@ -175,17 +164,71 @@ def extract_file(
             error_node_count=0,
             warnings=[f"Cannot read file: {path}"],
         )
-        return pr, [], []
+        return result, [], []
 
     parse_result, parsed_file = parse_bytes(lang, content, limits)
     parse_result.path = path
-
     if parsed_file is None:
         return parse_result, [], []
 
     parsed_file.path = path
     nodes, edges = _run_extractor(parsed_file, lang, limits)
     return parse_result, nodes, edges
+
+
+def prepare_index_file(
+    root: str,
+    path: str,
+    limits: ParseLimits | None = None,
+) -> PreparedIndexBatch:
+    """Parse, resolve, and serialize a file batch without DB ingest."""
+    limits = limits or DEFAULT_LIMITS
+    parse_result, nodes, edges = extract_file(path, limits=limits)
+    relative_path = _relative_path(root, path)
+    warnings = list(parse_result.warnings)
+
+    if not nodes:
+        return PreparedIndexBatch(
+            root=root,
+            path=path,
+            relative_path=relative_path,
+            language_key=parse_result.language_key,
+            parse_result=parse_result,
+            warnings=warnings,
+            limit_hit=parse_result.limit_hit,
+        )
+
+    language_key = parse_result.language_key
+    resolved_edges = _run_resolvers(nodes, edges, path, language_key, root)
+    all_edges = edges + resolved_edges
+    content = _read_file(path) or b""
+    file_size = len(content)
+    content_hash = hashlib.sha256(content).hexdigest()
+    batch = build_batch(
+        file_path=relative_path,
+        language_key=language_key,
+        nodes=nodes,
+        edges=all_edges,
+        file_size=file_size,
+        content_hash=content_hash,
+        max_batch=limits.max_batch_size,
+    )
+
+    return PreparedIndexBatch(
+        root=root,
+        path=path,
+        relative_path=relative_path,
+        language_key=language_key,
+        parse_result=parse_result,
+        node_count=len(nodes),
+        edge_count=len(all_edges),
+        resolved_edge_count=len(resolved_edges),
+        file_size=file_size,
+        content_hash=content_hash,
+        batch_data=asdict(batch),
+        warnings=warnings,
+        limit_hit=parse_result.limit_hit,
+    )
 
 
 def index_file(
@@ -195,44 +238,63 @@ def index_file(
     db: Any = None,
 ) -> PersistenceResult:
     """Parse, extract, resolve, and persist one file into Ladybug."""
-    limits = limits or DEFAULT_LIMITS
-
-    pr, nodes, edges = extract_file(path, limits=limits)
-    if not nodes:
+    prepared = prepare_index_file(root=root, path=path, limits=limits)
+    if not prepared.batch_data:
         result = PersistenceResult()
-        if pr.warnings:
-            result.errors.extend(pr.warnings)
-        if pr.limit_hit:
-            result.limit_hits.append(pr.limit_hit)
+        if prepared.warnings:
+            result.errors.extend(prepared.warnings)
+        if prepared.limit_hit:
+            result.limit_hits.append(prepared.limit_hit)
         return result
-
-    lang = pr.language_key
-    resolved_edges = _run_resolvers(nodes, edges, path, lang, root)
-    all_edges = edges + resolved_edges
-
-    content = _read_file(path) or b""
-    file_size = len(content)
-    content_hash = hashlib.sha256(content).hexdigest()
-
-    rel_path = _relative_path(root, path)
-    batch = build_batch(
-        file_path=rel_path,
-        language_key=lang,
-        nodes=nodes,
-        edges=all_edges,
-        file_size=file_size,
-        content_hash=content_hash,
-        max_batch=limits.max_batch_size,
-    )
 
     if db is None:
         result = PersistenceResult()
         result.errors.append("No DB provided — persistence skipped")
         return result
 
-    from .ingest import ingest_batch
+    from .ingest import ingest_batch_data
 
-    return ingest_batch(db, batch)
+    result = ingest_batch_data(db, prepared.batch_data)
+    if prepared.limit_hit:
+        result.limit_hits.append(prepared.limit_hit)
+    return result
+
+
+def prepare_index_tree(
+    root: str,
+    include: list[str] | None = None,
+    exclude: list[str] | None = None,
+    limits: ParseLimits | None = None,
+    max_files: int = 500,
+) -> list[PreparedIndexBatch]:
+    """Prepare serialized parser batches for a bounded file tree."""
+    root_path = Path(root)
+    if not root_path.is_dir():
+        return [
+            PreparedIndexBatch(
+                root=root,
+                path=root,
+                relative_path=root,
+                language_key="unknown",
+                parse_result=ParseResult(
+                    language_key="unknown",
+                    path=root,
+                    root_node_type="",
+                    parse_duration_ms=0.0,
+                    nodes_visited=0,
+                    has_errors=False,
+                    error_node_count=0,
+                    warnings=[f"Root directory not found: {root}"],
+                ),
+                warnings=[f"Root directory not found: {root}"],
+            )
+        ]
+
+    files = _gather_files(root_path, include, exclude, max_files)
+    return [
+        prepare_index_file(root=root, path=str(file_path), limits=limits)
+        for file_path in files
+    ]
 
 
 def index_tree(
@@ -245,29 +307,38 @@ def index_tree(
 ) -> list[PersistenceResult]:
     """Index all supported files under root."""
     results: list[PersistenceResult] = []
-    root_path = Path(root)
+    prepared_batches = prepare_index_tree(
+        root=root,
+        include=include,
+        exclude=exclude,
+        limits=limits,
+        max_files=max_files,
+    )
 
-    if not root_path.is_dir():
-        r = PersistenceResult()
-        r.errors.append(f"Root directory not found: {root}")
-        return [r]
+    from .ingest import ingest_batch_data
 
-    files = _gather_files(root_path, include, exclude, max_files)
-    for file_path in files:
-        r = index_file(
-            root=root,
-            path=str(file_path),
-            limits=limits,
-            db=db,
-        )
-        results.append(r)
+    for prepared in prepared_batches:
+        if not prepared.batch_data:
+            result = PersistenceResult()
+            if prepared.warnings:
+                result.errors.extend(prepared.warnings)
+            if prepared.limit_hit:
+                result.limit_hits.append(prepared.limit_hit)
+            results.append(result)
+            continue
+
+        if db is None:
+            result = PersistenceResult()
+            result.errors.append("No DB provided — persistence skipped")
+            results.append(result)
+            continue
+
+        result = ingest_batch_data(db, prepared.batch_data)
+        if prepared.limit_hit:
+            result.limit_hits.append(prepared.limit_hit)
+        results.append(result)
 
     return results
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
 
 
 def _run_extractor(
@@ -276,7 +347,6 @@ def _run_extractor(
     limits: ParseLimits,
 ) -> tuple[list[ExtractedNode], list[ExtractedEdge]]:
     ctx = SafetyContext(limits)
-
     extractor = _CUSTOM_EXTRACTORS.get(lang)
     if extractor is None:
         extractor = _UNIVERSAL_EXTRACTORS.get(lang, UniversalExtractor(lang))
@@ -294,8 +364,7 @@ def _run_resolvers(
     lang: str,
     project_root: str,
 ) -> list[ExtractedEdge]:
-    limits = DEFAULT_LIMITS
-    ctx = SafetyContext(limits)
+    ctx = SafetyContext(DEFAULT_LIMITS)
     index = build_index(nodes)
     resolvers = _build_resolvers(lang, project_root)
 
@@ -303,7 +372,7 @@ def _run_resolvers(
     for resolver in resolvers:
         if not ctx.check_deadline():
             break
-        res: ResolutionResult = resolver.resolve(
+        result: ResolutionResult = resolver.resolve(
             nodes,
             edges,
             ctx,
@@ -312,8 +381,8 @@ def _run_resolvers(
             language_key=lang,
             index=index,
         )
-        all_new_edges.extend(res.resolved_edges)
-        if res.limit_hit:
+        all_new_edges.extend(result.resolved_edges)
+        if result.limit_hit:
             break
 
     return all_new_edges
@@ -341,19 +410,18 @@ def _should_include_file(
     include: list[str] | None,
     exclude: list[str] | None,
 ) -> bool:
-    """Check if a file should be included based on extension and filters."""
     name = path.name
     if path.suffix.lower() not in all_extensions and name not in exact_names:
         return False
 
     if include:
         rel = str(path.relative_to(root))
-        if not any(fnmatch.fnmatch(rel, pat) for pat in include):
+        if not any(fnmatch.fnmatch(rel, pattern) for pattern in include):
             return False
 
     if exclude:
         rel = str(path.relative_to(root))
-        if any(fnmatch.fnmatch(rel, pat) for pat in exclude):
+        if any(fnmatch.fnmatch(rel, pattern) for pattern in exclude):
             return False
 
     return True
@@ -371,12 +439,19 @@ def _gather_files(
     all_extensions = set(EXTENSION_TO_LANGUAGE.keys())
     exact_names = set(_FILENAME_TO_LANGUAGE.keys())
 
-    for p in root.rglob("*"):
+    for candidate in root.rglob("*"):
         if len(results) >= max_files:
             break
-        if not p.is_file():
+        if not candidate.is_file():
             continue
-        if _should_include_file(p, root, all_extensions, exact_names, include, exclude):
-            results.append(p)
+        if _should_include_file(
+            candidate,
+            root,
+            all_extensions,
+            exact_names,
+            include,
+            exclude,
+        ):
+            results.append(candidate)
 
     return results

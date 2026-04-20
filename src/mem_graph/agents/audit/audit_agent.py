@@ -38,8 +38,8 @@ from ...models.audit import (
     FindingCategory,
     Severity,
 )
-from ...resources.personas import AUDITOR_PERSONA
 from ...resources.prompts import build_tool_names_for_prompt
+from ...resources.prompts.personas import AUDITOR_PERSONA
 from ..tooling import hide_tool_in_preloaded_mode, require_max_items
 from .rules import DEFAULT_RULES
 

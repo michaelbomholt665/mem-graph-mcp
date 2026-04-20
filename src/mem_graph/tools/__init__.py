@@ -7,11 +7,12 @@ knowing the internal sub-package structure.
 
 from .filesystem import filesystem
 from .memory import conversation, memory, notes
-from . import background, graph, integrations
+from . import agents, background, graph, integrations
 from .work import decisions, projects, tasks, violations
 
 __all__ = [
     "background",
+    "agents",
     "conversation",
     "decisions",
     "filesystem",

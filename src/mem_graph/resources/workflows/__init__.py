@@ -20,15 +20,20 @@ from .reasoning import (
     reasoning_mode_prompt,
     reasoning_policy_prompt,
 )
-from .registry import all_workflows, get_workflow, register_workflow, workflow_registry
-from .selector import (
+from .registry import (
+    WORKFLOWS,
+    WorkflowRegistry,
+    get_workflow,
+    register_workflow,
+    unregister_workflow,
+)
+from .selection.selector import (
     WorkflowSelection,
     select_all,
     select_profile,
     select_reasoning_policy,
     select_workflow,
 )
-from .workflow_definitions import GROUP_A_WORKFLOWS
 
 __all__ = [
     # Models
@@ -50,10 +55,11 @@ __all__ = [
     "reasoning_policy_prompt",
     "reasoning_mode_prompt",
     # Registry
-    "workflow_registry",
-    "all_workflows",
+    "WorkflowRegistry",
+    "WORKFLOWS",
     "get_workflow",
     "register_workflow",
+    "unregister_workflow",
     # Selector
     "select_workflow",
     "select_profile",
@@ -61,5 +67,5 @@ __all__ = [
     "select_all",
     "WorkflowSelection",
     # Definitions
-    "GROUP_A_WORKFLOWS",
+    "WORKFLOWS",
 ]

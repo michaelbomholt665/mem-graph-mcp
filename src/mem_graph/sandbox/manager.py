@@ -6,6 +6,7 @@ import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Protocol
 from uuid import uuid4
 
 from .models.config import SandboxSettings, get_sandbox_settings
@@ -30,6 +31,18 @@ logger = logging.getLogger(__name__)
 _MANAGER: "SessionSandboxManager | None" = None
 
 
+class SandboxPodmanAdapter(Protocol):
+    async def start(self, session: SandboxSession, *, repo_root: Path) -> SandboxSession: ...
+
+    async def exec(
+        self,
+        session: SandboxSession,
+        request: SandboxExecutionRequest,
+    ) -> SandboxExecutionResult: ...
+
+    async def stop(self, session: SandboxSession, *, repo_root: Path) -> None: ...
+
+
 class SessionSandboxManager:
     """Owns per-session metadata, workspace layout, and container lifecycle."""
 
@@ -38,7 +51,7 @@ class SessionSandboxManager:
         settings: SandboxSettings | None = None,
         *,
         repo_root: Path | None = None,
-        podman: PodmanAdapter | None = None,
+        podman: SandboxPodmanAdapter | None = None,
     ) -> None:
         self.settings = settings or get_sandbox_settings()
         self.repo_root = (repo_root or Path.cwd()).expanduser().resolve()

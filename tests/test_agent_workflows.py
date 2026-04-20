@@ -151,7 +151,7 @@ def test_tot_prompt_contains_constraints():
 
 
 def test_task_type_profile_map_covers_all_categories():
-    from mem_graph.resources.workflows.task_types import (
+    from mem_graph.resources.workflows.selection.task_types import (
         TASK_TYPE_CATEGORIES,
         TASK_TYPE_PROFILE_MAP,
     )
@@ -162,7 +162,7 @@ def test_task_type_profile_map_covers_all_categories():
 
 
 def test_profile_for_task_type_fallback():
-    from mem_graph.resources.workflows.task_types import (
+    from mem_graph.resources.workflows.selection.task_types import (
         ProfileSize,
         profile_for_task_type,
     )
@@ -171,7 +171,9 @@ def test_profile_for_task_type_fallback():
 
 
 def test_task_type_categories_returns_dict():
-    from mem_graph.resources.workflows.task_types import all_task_type_categories
+    from mem_graph.resources.workflows.selection.task_types import (
+        all_task_type_categories,
+    )
 
     cats = all_task_type_categories()
     assert "small" in cats
@@ -212,6 +214,7 @@ def test_register_workflow_adds_to_registry():
     from mem_graph.resources.workflows.registry import (
         get_workflow,
         register_workflow,
+        unregister_workflow,
         workflow_registry,
     )
 
@@ -225,9 +228,7 @@ def test_register_workflow_adds_to_registry():
     assert get_workflow("test_registration") is wf
     assert "test_registration" in workflow_registry()
     # cleanup
-    from mem_graph.resources.workflows import registry as _reg
-
-    _reg._WORKFLOW_REGISTRY.pop("test_registration", None)
+    unregister_workflow("test_registration")
 
 
 ################
@@ -236,21 +237,21 @@ def test_register_workflow_adds_to_registry():
 
 
 def test_select_workflow_by_task_type():
-    from mem_graph.resources.workflows.selector import select_workflow
+    from mem_graph.resources.workflows.selection.selector import select_workflow
 
     wf = select_workflow("remediation")
     assert wf.key == "autopilot_graph"
 
 
 def test_select_workflow_prefers_explicit_key():
-    from mem_graph.resources.workflows.selector import select_workflow
+    from mem_graph.resources.workflows.selection.selector import select_workflow
 
     wf = select_workflow("bug_fix", preferred_key="managed_workflow_graph")
     assert wf.key == "managed_workflow_graph"
 
 
 def test_select_workflow_falls_back_for_unknown_type():
-    from mem_graph.resources.workflows.selector import select_workflow
+    from mem_graph.resources.workflows.selection.selector import select_workflow
 
     wf = select_workflow("totally_unknown_type_xyz")
     assert wf is not None
@@ -258,7 +259,7 @@ def test_select_workflow_falls_back_for_unknown_type():
 
 def test_select_profile_upgrades_small_to_medium_for_many_files():
     from mem_graph.resources.workflows.models import ProfileSize
-    from mem_graph.resources.workflows.selector import select_profile
+    from mem_graph.resources.workflows.selection.selector import select_profile
 
     profile = select_profile("bug_fix", file_count=10)
     assert profile.size == ProfileSize.MEDIUM
@@ -266,7 +267,7 @@ def test_select_profile_upgrades_small_to_medium_for_many_files():
 
 def test_select_profile_upgrades_to_large_for_20_plus_files():
     from mem_graph.resources.workflows.models import ProfileSize
-    from mem_graph.resources.workflows.selector import select_profile
+    from mem_graph.resources.workflows.selection.selector import select_profile
 
     profile = select_profile("bug_fix", file_count=25)
     assert profile.size == ProfileSize.LARGE
@@ -274,7 +275,7 @@ def test_select_profile_upgrades_to_large_for_20_plus_files():
 
 def test_select_profile_respects_size_override():
     from mem_graph.resources.workflows.models import ProfileSize
-    from mem_graph.resources.workflows.selector import select_profile
+    from mem_graph.resources.workflows.selection.selector import select_profile
 
     profile = select_profile(
         "remediation", file_count=1, size_override=ProfileSize.SMALL
@@ -284,7 +285,7 @@ def test_select_profile_respects_size_override():
 
 def test_select_reasoning_policy_defaults_to_react():
     from mem_graph.resources.workflows.models import ReasoningMode
-    from mem_graph.resources.workflows.selector import select_reasoning_policy
+    from mem_graph.resources.workflows.selection.selector import select_reasoning_policy
 
     policy = select_reasoning_policy()
     assert policy.mode == ReasoningMode.REACT_CHALLENGE
@@ -292,7 +293,7 @@ def test_select_reasoning_policy_defaults_to_react():
 
 def test_select_reasoning_policy_tot_requires_both_flags():
     from mem_graph.resources.workflows.models import ReasoningMode
-    from mem_graph.resources.workflows.selector import select_reasoning_policy
+    from mem_graph.resources.workflows.selection.selector import select_reasoning_policy
 
     # Only high_ambiguity → still REACT
     p1 = select_reasoning_policy(high_ambiguity=True, tot_allowed=False)
@@ -304,7 +305,7 @@ def test_select_reasoning_policy_tot_requires_both_flags():
 
 
 def test_select_all_returns_complete_selection():
-    from mem_graph.resources.workflows.selector import select_all
+    from mem_graph.resources.workflows.selection.selector import select_all
 
     sel = select_all("bug_fix", file_count=3)
     assert sel.workflow is not None
@@ -317,7 +318,7 @@ def test_select_all_returns_complete_selection():
 
 def test_profile_sandbox_policy_defaults_propagate():
     from mem_graph.resources.workflows.profiles import MEDIUM_PROFILE
-    from mem_graph.resources.workflows.selector import select_all
+    from mem_graph.resources.workflows.selection.selector import select_all
 
     sel = select_all("remediation", file_count=6)
 
@@ -327,7 +328,7 @@ def test_profile_sandbox_policy_defaults_propagate():
 
 
 def test_select_all_marks_override_when_key_given():
-    from mem_graph.resources.workflows.selector import select_all
+    from mem_graph.resources.workflows.selection.selector import select_all
 
     sel = select_all("bug_fix", preferred_key="autopilot_graph")
     assert sel.overridden is True

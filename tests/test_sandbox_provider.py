@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import anyio
 import pytest
 
 from mem_graph.sandbox.models.errors import SandboxNotFoundError
@@ -9,6 +10,7 @@ from mem_graph.sandbox.provider import SessionSandboxProvider
 
 class FakeManager:
     async def run_in_session(self, session_id, request):
+        await anyio.sleep(0)
         return SandboxExecutionResult(stdout="ran", exit_code=0, session_id=session_id)
 
 

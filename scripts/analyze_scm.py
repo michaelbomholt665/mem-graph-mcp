@@ -29,61 +29,74 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-
 ################
 #   CONSTANTS
 ################
 
 # Mirror of _CAPTURE_KIND_MAP from scm.py
 CAPTURE_KIND_MAP: dict[str, str] = {
-    "name.definition.function":  "FUNCTION",
-    "name.definition.method":    "METHOD",
-    "name.definition.class":     "CLASS",
+    "name.definition.function": "FUNCTION",
+    "name.definition.method": "METHOD",
+    "name.definition.class": "CLASS",
     "name.definition.interface": "INTERFACE",
-    "name.definition.module":    "MODULE",
-    "name.definition.type":      "TYPE",
-    "name.definition.macro":     "FUNCTION",
-    "name.definition.constant":  "CONSTANT",
-    "name.definition.field":     "VARIABLE",
-    "name.definition.enum":      "ENUM",
-    "name.definition.struct":    "STRUCT",
+    "name.definition.module": "MODULE",
+    "name.definition.type": "TYPE",
+    "name.definition.macro": "FUNCTION",
+    "name.definition.constant": "CONSTANT",
+    "name.definition.field": "VARIABLE",
+    "name.definition.enum": "ENUM",
+    "name.definition.struct": "STRUCT",
     "name.definition.namespace": "MODULE",
-    "definition.function":       "FUNCTION",
-    "definition.method":         "METHOD",
-    "definition.class":          "CLASS",
-    "definition.interface":      "INTERFACE",
-    "definition.type":           "TYPE",
-    "definition.struct":         "STRUCT",
-    "definition.enum":           "ENUM",
+    "definition.function": "FUNCTION",
+    "definition.method": "METHOD",
+    "definition.class": "CLASS",
+    "definition.interface": "INTERFACE",
+    "definition.type": "TYPE",
+    "definition.struct": "STRUCT",
+    "definition.enum": "ENUM",
 }
 
 # Captures that produce semantic edges (calls, imports, type refs)
 SEMANTIC_EDGE_CAPTURES: set[str] = {
-    "call.site", "call.target", "call.receiver",
-    "import.statement", "import.module",
-    "reference.call", "reference.type", "reference.class",
+    "call.site",
+    "call.target",
+    "call.receiver",
+    "import.statement",
+    "import.module",
+    "reference.call",
+    "reference.type",
+    "reference.class",
 }
 
 # Captures that are pure noise (syntax highlighting, not graph-relevant)
 NOISE_CAPTURES: set[str] = {
-    "operator", "keyword", "string", "number", "comment",
-    "escape", "punctuation", "punctuation.bracket",
-    "punctuation.special", "constant.builtin", "type.builtin",
+    "operator",
+    "keyword",
+    "string",
+    "number",
+    "comment",
+    "escape",
+    "punctuation",
+    "punctuation.bracket",
+    "punctuation.special",
+    "constant.builtin",
+    "type.builtin",
     "embedded",
 }
 
-RESET  = "\033[0m"
-BOLD   = "\033[1m"
-CYAN   = "\033[36m"
-GREEN  = "\033[32m"
+RESET = "\033[0m"
+BOLD = "\033[1m"
+CYAN = "\033[36m"
+GREEN = "\033[32m"
 YELLOW = "\033[33m"
-RED    = "\033[31m"
-DIM    = "\033[2m"
+RED = "\033[31m"
+DIM = "\033[2m"
 
 
 ################
 #   PARSING
 ################
+
 
 def extract_captures(scm_text: str) -> list[str]:
     """
@@ -92,10 +105,7 @@ def extract_captures(scm_text: str) -> list[str]:
     Strips comments and returns the raw capture names in order,
     including duplicates (since the same name can appear many times).
     """
-    lines = [
-        line for line in scm_text.splitlines()
-        if not line.strip().startswith(";")
-    ]
+    lines = [line for line in scm_text.splitlines() if not line.strip().startswith(";")]
     clean = "\n".join(lines)
     return re.findall(r"@([\w.]+)", clean)
 
@@ -103,6 +113,7 @@ def extract_captures(scm_text: str) -> list[str]:
 ################
 #   CLASSIFICATION
 ################
+
 
 def kind_from_capture(capture_name: str) -> str:
     """
@@ -158,6 +169,7 @@ def classify_capture(capture_name: str) -> str:
 #   ANALYSIS
 ################
 
+
 def analyze_scm(path: Path) -> dict:
     """
     Analyze a single .scm file and return a structured result dict.
@@ -178,11 +190,13 @@ def analyze_scm(path: Path) -> dict:
         category = classify_capture(capture)
         kind_counts[kind] += 1
         category_counts[category] += 1
-        capture_details.append({
-            "capture": capture,
-            "kind": kind,
-            "category": category,
-        })
+        capture_details.append(
+            {
+                "capture": capture,
+                "kind": kind,
+                "category": category,
+            }
+        )
 
     symbol_captures = [c for c in capture_details if c["category"] == "symbol"]
     semantic_captures = [c for c in capture_details if c["category"] == "semantic_edge"]
@@ -210,10 +224,44 @@ def analyze_scm(path: Path) -> dict:
 #   DISPLAY
 ################
 
-def _col(text: str, width: int, color: str = "") -> str:
+
+def _col(text: object, width: int, color: str = "") -> str:
     """Left-pad a string to a fixed column width with optional color."""
     cell = str(text).ljust(width)
     return f"{color}{cell}{RESET}" if color else cell
+
+
+def _get_category_color(cat: str) -> str:
+    """Map category name to color code."""
+    color_map = {
+        "symbol": GREEN,
+        "semantic_edge": YELLOW,
+        "noise": RED,
+    }
+    return color_map.get(cat, DIM)
+
+
+def _get_ratio_color(ratio: float) -> str:
+    """Map ratio value to color code."""
+    if ratio >= 2:
+        return GREEN
+    if ratio >= 1:
+        return YELLOW
+    return RED
+
+
+def _print_captures(
+    title: str, captures: list, prefix_color: str, item_color: str
+) -> None:
+    """Print a list of captures with title."""
+    print(f"\n  {BOLD}{title}{RESET}")
+    if captures:
+        for c in captures:
+            print(
+                f"  {prefix_color}@{_col(c['capture'], 42)}{RESET} -> {item_color}{c.get('kind', 'edge')}{RESET}"
+            )
+    else:
+        print(f"  {DIM}(none){RESET}")
 
 
 def print_language_report(result: dict) -> None:
@@ -230,35 +278,31 @@ def print_language_report(result: dict) -> None:
     print(f"\n  {BOLD}Category breakdown{RESET}")
     cats = result["category_counts"]
     for cat, count in sorted(cats.items(), key=lambda x: -x[1]):
-        color = GREEN if cat == "symbol" else YELLOW if cat == "semantic_edge" else RED if cat == "noise" else DIM
+        color = _get_category_color(cat)
         bar = "█" * count
         print(f"  {_col(cat, 18, color)} {count:>3}  {color}{bar}{RESET}")
 
-    print(f"\n  {BOLD}Symbol captures -> NodeKind{RESET}")
-    if result["symbol_captures"]:
-        for c in result["symbol_captures"]:
-            print(f"  {DIM}@{_col(c['capture'], 42)}{RESET} -> {GREEN}{c['kind']}{RESET}")
-    else:
-        print(f"  {DIM}(none){RESET}")
-
-    print(f"\n  {BOLD}Semantic edge captures{RESET}")
-    if result["semantic_captures"]:
-        for c in result["semantic_captures"]:
-            print(f"  {DIM}@{_col(c['capture'], 42)}{RESET} -> {YELLOW}edge{RESET}")
-    else:
-        print(f"  {DIM}(none){RESET}")
+    _print_captures(
+        "Symbol captures -> NodeKind", result["symbol_captures"], DIM, GREEN
+    )
+    _print_captures("Semantic edge captures", result["semantic_captures"], DIM, YELLOW)
 
     print(f"\n  {BOLD}Estimates (per average file){RESET}")
     print(f"  {'Nodes (symbol captures + file)':<38} ~{result['estimated_nodes']}")
-    print(f"  {'Structural edges (file->sym + contains)':<38} ~{result['estimated_structural_edges']}")
-    print(f"  {'Semantic edges (calls, imports, refs)':<38} ~{result['estimated_semantic_edges']}")
+    print(
+        f"  {'Structural edges (file->sym + contains)':<38} ~{result['estimated_structural_edges']}"
+    )
+    print(
+        f"  {'Semantic edges (calls, imports, refs)':<38} ~{result['estimated_semantic_edges']}"
+    )
     print(f"  {BOLD}{'Total edges':<38} ~{result['estimated_total_edges']}{RESET}")
 
     ratio = (
         round(result["estimated_total_edges"] / result["estimated_nodes"], 1)
-        if result["estimated_nodes"] > 0 else 0
+        if result["estimated_nodes"] > 0
+        else 0
     )
-    color = GREEN if ratio >= 2 else YELLOW if ratio >= 1 else RED
+    color = _get_ratio_color(ratio)
     print(f"  {BOLD}{'Edge/node ratio':<38} {color}{ratio}x{RESET}")
 
 
@@ -283,11 +327,19 @@ def print_summary_table(results: list[dict]) -> None:
     for r in results:
         ratio = (
             round(r["estimated_total_edges"] / r["estimated_nodes"], 1)
-            if r["estimated_nodes"] > 0 else 0
+            if r["estimated_nodes"] > 0
+            else 0
         )
-        color = GREEN if ratio >= 2 else YELLOW if ratio >= 1 else RED
+        if ratio >= 2:
+            color = GREEN
+        elif ratio >= 1:
+            color = YELLOW
+        else:
+            color = RED
         noise = r["category_counts"].get("noise", 0)
-        noise_pct = round(noise / r["unique_captures"] * 100) if r["unique_captures"] else 0
+        noise_pct = (
+            round(noise / r["unique_captures"] * 100) if r["unique_captures"] else 0
+        )
 
         print(
             f"  {_col(r['language'].upper(), 14, BOLD)}"
@@ -300,13 +352,18 @@ def print_summary_table(results: list[dict]) -> None:
             f"{DIM}({noise_pct}% noise){RESET}"
         )
 
-    print(f"\n  {DIM}Noise = operators, keywords, strings, comments -- no graph value{RESET}")
-    print(f"  {DIM}Estimates assume each capture fires once per file (real files will be higher){RESET}\n")
+    print(
+        f"\n  {DIM}Noise = operators, keywords, strings, comments -- no graph value{RESET}"
+    )
+    print(
+        f"  {DIM}Estimates assume each capture fires once per file (real files will be higher){RESET}\n"
+    )
 
 
 ################
 #   PATH HELPERS
 ################
+
 
 def _grammar_root() -> Path:
     """
@@ -366,9 +423,7 @@ def _resolve_args(args: list[str]) -> tuple[list[Path], list[str]]:
             if canonical.exists():
                 valid.append(canonical)
             else:
-                errors.append(
-                    f"Language '{arg}' not found -- expected: {canonical}"
-                )
+                errors.append(f"Language '{arg}' not found -- expected: {canonical}")
 
     return valid, errors
 
@@ -376,6 +431,7 @@ def _resolve_args(args: list[str]) -> tuple[list[Path], list[str]]:
 ################
 #   ENTRYPOINT
 ################
+
 
 def main() -> None:
     """

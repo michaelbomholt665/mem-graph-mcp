@@ -24,6 +24,9 @@ from .persist import (
     UPSERT_CODE_FILE,
     UPSERT_CODE_SYMBOL,
     CypherBatch,
+    EdgeBatch,
+    FileBatch,
+    NodeBatch,
     get_rel_template,
 )
 from .types import PersistenceResult
@@ -92,6 +95,16 @@ def ingest_batch(
     return result
 
 
+def ingest_batch_data(
+    db: Any,
+    batch_data: dict[str, Any],
+    *,
+    max_retries: int = 2,
+) -> PersistenceResult:
+    """Reconstruct a CypherBatch from serialized data and ingest it."""
+    return ingest_batch(db, batch_from_dict(batch_data), max_retries=max_retries)
+
+
 # ---------------------------------------------------------------------------
 # Internal execution
 # ---------------------------------------------------------------------------
@@ -99,6 +112,24 @@ def ingest_batch(
 
 class IngestError(Exception):
     """Internal exception to trigger batch rollback."""
+
+
+def batch_from_dict(batch_data: dict[str, Any]) -> CypherBatch:
+    """Restore a CypherBatch from the JSON-safe staging representation."""
+    edge_batches = {
+        kind: EdgeBatch(
+            kind=str(payload.get("kind") or kind),
+            records=list(payload.get("records", [])),
+        )
+        for kind, payload in batch_data.get("edge_batches", {}).items()
+    }
+    return CypherBatch(
+        file_batch=FileBatch(record=dict(batch_data.get("file_batch", {}).get("record", {}))),
+        symbol_batch=NodeBatch(records=list(batch_data.get("symbol_batch", {}).get("records", []))),
+        edge_batches=edge_batches,
+        stale_cleanup_ids=list(batch_data.get("stale_cleanup_ids", [])),
+        embedding_updates=list(batch_data.get("embedding_updates", [])),
+    )
 
 
 def _suspend_parser_fts_indexes(

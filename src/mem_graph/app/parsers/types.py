@@ -251,6 +251,30 @@ class ResolutionResult:
 
 
 # ---------------------------------------------------------------------------
+# Prepared index batch
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class PreparedIndexBatch:
+    """Serializable parser output that can be staged before DB ingest."""
+
+    root: str
+    path: str
+    relative_path: str
+    language_key: str
+    parse_result: ParseResult
+    node_count: int = 0
+    edge_count: int = 0
+    resolved_edge_count: int = 0
+    file_size: int = 0
+    content_hash: str = ""
+    batch_data: dict[str, Any] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+    limit_hit: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # Persistence result
 # ---------------------------------------------------------------------------
 

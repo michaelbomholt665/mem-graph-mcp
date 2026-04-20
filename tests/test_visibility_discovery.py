@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from fastmcp.server.context import Context
 
 
 @pytest.mark.asyncio
@@ -54,7 +56,7 @@ async def test_system_inspect_summarizes_catalog():
     from mem_graph import server as server_mod
     from mem_graph.app.tools import system_inspect
 
-    payload = await system_inspect(SimpleNamespace(fastmcp=server_mod.mcp))
+    payload = await system_inspect(cast(Context, SimpleNamespace(fastmcp=server_mod.mcp)))
 
     assert payload["tools"]["count"] >= 45
     assert payload["prompts"]["count"] >= 1

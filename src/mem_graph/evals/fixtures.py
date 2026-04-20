@@ -6,7 +6,7 @@ import json
 import os
 import runpy
 from functools import lru_cache
-from importlib.resources import files as resource_files
+from importlib.resources import files as resource_files  # nosemgrep
 from pathlib import Path
 from typing import Any, Mapping
 

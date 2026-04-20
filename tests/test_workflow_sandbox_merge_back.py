@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from mem_graph.sandbox.errors import SandboxMergeConflictError
-from mem_graph.sandbox.snapshots import (
+from mem_graph.sandbox.filesystem.snapshots import (
     create_repo_snapshot,
     create_session_layout,
     initialize_workspace,
     merge_workspace_back,
 )
+from mem_graph.sandbox.models.errors import SandboxMergeConflictError
 
 
 def test_merge_back_blocks_host_conflict(tmp_path):

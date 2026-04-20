@@ -18,12 +18,14 @@ class FakePodman:
         self.stops = 0
 
     async def start(self, session, *, repo_root):
+        await anyio.sleep(0)
         self.starts += 1
         session.container_id = "container-1"
         session.compose_project = "project-1"
         return session
 
     async def exec(self, session, request):
+        await anyio.sleep(0)
         return SandboxExecutionResult(
             stdout="ok",
             exit_code=0,
@@ -33,6 +35,7 @@ class FakePodman:
         )
 
     async def stop(self, session, *, repo_root):
+        await anyio.sleep(0)
         self.stops += 1
 
 

@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from .models import ProfileSize
+from ..models import ProfileSize
 
 ################
 #   TASK-TYPE → PROFILE MAP

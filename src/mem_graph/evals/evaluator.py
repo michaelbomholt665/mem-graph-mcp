@@ -463,6 +463,41 @@ def render_eval_report(report: EvalReport) -> str:
     return "\n".join(lines)
 
 
+def resolve_eval_gate(gate: str) -> tuple[EvalMode, int | None]:
+    """Map a named gate to evaluator mode and default run count."""
+    normalized = gate.strip().lower()
+    if normalized in {"fixture", "ci"}:
+        return "fixture", 1
+    if normalized == "live":
+        return "live", 1
+    if normalized == "release":
+        return "live", None
+    raise ValueError(
+        f"Unknown eval gate: {gate!r}. Expected fixture, ci, live, or release."
+    )
+
+
+async def run_named_eval_gate(
+    gate: str,
+    *,
+    selected_suites: Sequence[str] | None = None,
+    suite_pass_threshold: float | None = None,
+    runs_override: int | None = None,
+) -> EvalReport:
+    """Run a named eval gate using the maintained suite registry."""
+    from . import build_suite_registry
+
+    mode, gate_runs = resolve_eval_gate(gate)
+    evaluator = Evaluator()
+    return await evaluator.run_report(
+        build_suite_registry(mode=mode),
+        mode=mode,
+        selected_suites=selected_suites,
+        suite_pass_threshold=suite_pass_threshold,
+        runs_override=runs_override if runs_override is not None else gate_runs,
+    )
+
+
 def _resolve_case_run_count(
     case: EvalCase,
     *,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from starlette.requests import Request
@@ -108,7 +109,7 @@ async def test_dashboard_routes_respond(db):
     )
 
     assert dashboard.status_code == 200
-    assert dashboard.path.name == "dashboard.html"
+    assert Path(dashboard.path).name == "dashboard.html"
     assert system.status_code == 200
     assert _json(system)["telemetry"]["node_count"] >= 2
     assert styles.status_code == 200

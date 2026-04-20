@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from starlette.requests import Request
@@ -128,7 +129,7 @@ async def test_file_tree_routes_respond(db, tmp_path):
     )
 
     assert tree_page.status_code == 200
-    assert tree_page.path.name == "file-tree.html"
+    assert Path(tree_page.path).name == "file-tree.html"
     assert tree_api.status_code == 200
     assert _json(tree_api)["children"]
     assert detail_api.status_code == 200

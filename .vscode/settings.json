@@ -21,11 +21,11 @@
   // This hides files from the Explorer sidebar to keep it clean
   "files.exclude": {
     "**/.git": true,
-    "**/.venv": false, // Keep visible if you like, set to true to hide
-    "**/__pycache__": false,
+    "**/.venv": true, // Keep visible if you like, set to true to hide
+    "**/__pycache__": true,
     "**/.pytest_cache": true,
-    "**/.ruff_cache": false,
-    "**/.mypy_cache": false,
+    "**/.ruff_cache": true,
+    "**/.mypy_cache": true,
     "**/.DS_Store": true,
     "**/build": true,
     "**/dist": true,
@@ -37,6 +37,17 @@
     ".logfire/": true,
     ".qodo/": true,
     ".kilo": true,
+    "logs": true,
+    "scratch": true,
+    ".codex": true,
+    "tests": true,
+    "LICENSE": true,
+    ".python-version": true,
+    "pytest.ini": true,
+    "uv.lock": true,
+    "pyrightconfig.json": true,
+    ".geminiignore": true,
+    "sonar-project.properties": true,
   },
   // --- Search & Watcher Exclusions ---
   // Prevents VS Code from indexing/searching inside these folders (Performance boost)
@@ -54,20 +65,7 @@
   },
   // --- Pylance (Analysis) Settings ---
   // Optimized for src-layout and strict type checking
-  "python.analysis.typeCheckingMode": "strict",
   "python.analysis.autoImportCompletions": true,
-  "python.analysis.include": [
-    "src"
-  ],
-  "python.analysis.exclude": [
-    "**/.*",
-    "**/node_modules",
-    "**/__pycache__",
-    ".git",
-    "**/.venv",
-    "**/build",
-    "**/dist"
-  ],
   // --- General Editor Polish ---
   "editor.ruleIndex": [
     88,

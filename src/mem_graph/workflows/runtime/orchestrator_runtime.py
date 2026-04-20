@@ -27,7 +27,7 @@ from ...agents.orchestrator_graph import (
     autopilot_graph_run,
 )
 from ...config import ModelTier
-from ...resources.workflows.selector import WorkflowSelection, select_all
+from ...resources.workflows.selection.selector import WorkflowSelection, select_all
 from .workflow_sandbox import (
     abort_workflow_sandbox,
     ensure_workflow_sandbox,

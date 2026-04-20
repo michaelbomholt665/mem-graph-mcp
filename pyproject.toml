@@ -10,6 +10,7 @@ dependencies = [
     "hindsight-pydantic-ai>=0.4.19",
     "httpx>=0.28.1",
     "logfire[datasets]>=4.32.0",
+    "nicegui>=3.10.0",
     "ollama>=0.6.1",
     "opentelemetry-api>=1.20.0",
     "opentelemetry-exporter-otlp>=1.20.0",
@@ -32,6 +33,7 @@ dependencies = [
     "tree-sitter>=0.25.2",
     "uuid-utils>=0.14.1",
     "uvicorn>=0.29.0",
+    "watchdog>=6.0.0",
     #   "pydantic-ai-slim[logfire,fastmcp,evals]"
 ]
 

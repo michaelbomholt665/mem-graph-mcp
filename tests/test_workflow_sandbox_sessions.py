@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import anyio
 import pytest
 
-from mem_graph.resources.workflows.selector import select_all
-from mem_graph.sandbox.config import SandboxSettings
+from mem_graph.resources.workflows.selection.selector import select_all
 from mem_graph.sandbox.manager import SessionSandboxManager
 from mem_graph.sandbox.models import SandboxStatus
+from mem_graph.sandbox.models.config import SandboxSettings
 from mem_graph.workflows.runtime.workflow_sandbox import (
     ensure_workflow_sandbox,
     finalize_workflow_sandbox,
@@ -14,11 +15,13 @@ from mem_graph.workflows.runtime.workflow_sandbox import (
 
 class FakePodman:
     async def start(self, session, *, repo_root):
+        await anyio.sleep(0)
         session.container_id = "container-1"
         session.compose_project = "project-1"
         return session
 
     async def stop(self, session, *, repo_root):
+        await anyio.sleep(0)
         return None
 
 

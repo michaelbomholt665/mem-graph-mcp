@@ -25,7 +25,7 @@ from ...agents.workflow_graph import (
     run_managed_workflow,
 )
 from ...models.agent_outputs import WorkflowPlan
-from ...resources.workflows.selector import WorkflowSelection, select_all
+from ...resources.workflows.selection.selector import WorkflowSelection, select_all
 from .workflow_sandbox import (
     abort_workflow_sandbox,
     ensure_workflow_sandbox,

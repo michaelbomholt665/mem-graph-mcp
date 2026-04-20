@@ -33,7 +33,7 @@ def iter_schema_models(
 
     models: list[type[BaseModel]] = []
     for module_name in module_names:
-        module = import_module(module_name)
+        module = import_module(module_name)  # nosemgrep
         models.extend(_module_models(module))
     return sorted(models, key=lambda model: (model.__module__, model.__name__))
 

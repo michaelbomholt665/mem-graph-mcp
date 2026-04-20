@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai.usage import RunUsage
 from pydantic_graph import BaseNode, End, Graph, GraphRunContext
 
-from ...resources.workflows.selector import select_all
+from ...resources.workflows.selection.selector import select_all
 from .workflow_sandbox import (
     abort_workflow_sandbox,
     ensure_workflow_sandbox,
@@ -332,13 +332,9 @@ class DiscoverNode(BaseNode[PackageAuditState, None, PackageAuditReport]):
             )
             if files:
                 ctx.state.discovered_files[pkg_path] = files
-                logger.info(
-                    "[DISCOVER] %s: %d file(s) found.", pkg_path, len(files)
-                )
+                logger.info("[DISCOVER] %s: %d file(s) found.", pkg_path, len(files))
             else:
-                logger.info(
-                    "[DISCOVER] %s: no files found — skipping.", pkg_path
-                )
+                logger.info("[DISCOVER] %s: no files found — skipping.", pkg_path)
         return ChunkNode()
 
 

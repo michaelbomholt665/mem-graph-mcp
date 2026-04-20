@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import re
 
-from mem_graph.resources.personas import (
-    BigFiveTraits,
-    Persona,
+from mem_graph.resources.prompts.personas import (
     PERSONA_REGISTRY,
+    BigFiveTraits,
     LLMParams,
+    Persona,
     render_ocean_trait,
 )
 
@@ -38,7 +38,13 @@ class TestRenderOceanTrait:
         assert len(desc) > 0
 
     def test_all_traits_return_strings(self) -> None:
-        for trait in ["openness", "conscientiousness", "extraversion", "agreeableness", "neuroticism"]:
+        for trait in [
+            "openness",
+            "conscientiousness",
+            "extraversion",
+            "agreeableness",
+            "neuroticism",
+        ]:
             for value in [0.0, 0.25, 0.5, 0.75, 1.0]:
                 result = render_ocean_trait(value, trait)
                 assert isinstance(result, str), f"Expected str for {trait}={value}"
@@ -54,22 +60,37 @@ class TestBigFiveToNaturalLanguage:
     """Tests for BigFiveTraits.to_natural_language()."""
 
     def test_returns_string(self) -> None:
-        traits = BigFiveTraits(openness=0.7, conscientiousness=0.9, extraversion=0.3,
-                               agreeableness=0.4, neuroticism=0.2)
+        traits = BigFiveTraits(
+            openness=0.7,
+            conscientiousness=0.9,
+            extraversion=0.3,
+            agreeableness=0.4,
+            neuroticism=0.2,
+        )
         result = traits.to_natural_language()
         assert isinstance(result, str)
         assert len(result) > 0
 
     def test_contains_no_floats(self) -> None:
-        traits = BigFiveTraits(openness=0.7, conscientiousness=0.9, extraversion=0.3,
-                               agreeableness=0.4, neuroticism=0.2)
+        traits = BigFiveTraits(
+            openness=0.7,
+            conscientiousness=0.9,
+            extraversion=0.3,
+            agreeableness=0.4,
+            neuroticism=0.2,
+        )
         result = traits.to_natural_language()
         # Should not contain raw float numbers in OCEAN= format
         assert not _FLOAT_PATTERN.search(result)
 
     def test_reproducible(self) -> None:
-        traits = BigFiveTraits(openness=0.8, conscientiousness=0.8, extraversion=0.5,
-                               agreeableness=0.7, neuroticism=0.1)
+        traits = BigFiveTraits(
+            openness=0.8,
+            conscientiousness=0.8,
+            extraversion=0.5,
+            agreeableness=0.7,
+            neuroticism=0.1,
+        )
         first = traits.to_natural_language()
         second = traits.to_natural_language()
         assert first == second, "Natural language rendering must be deterministic"
@@ -92,8 +113,13 @@ class TestPersonaGetSystemInstructions:
             name="TestBot",
             role="Test Role",
             description="A test persona.",
-            traits=BigFiveTraits(openness=0.7, conscientiousness=0.8,
-                                 extraversion=0.5, agreeableness=0.6, neuroticism=0.2),
+            traits=BigFiveTraits(
+                openness=0.7,
+                conscientiousness=0.8,
+                extraversion=0.5,
+                agreeableness=0.6,
+                neuroticism=0.2,
+            ),
             params=LLMParams(temperature=0.5),
             base_instructions="Do the test.",
         )
@@ -114,7 +140,8 @@ class TestPersonaGetSystemInstructions:
 
     def test_persona_preamble_is_stable(self) -> None:
         """Same persona must produce identical output on every call (cache-safe)."""
-        from mem_graph.resources.personas import AUDITOR_PERSONA
+        from mem_graph.resources.prompts.personas import AUDITOR_PERSONA
+
         first = AUDITOR_PERSONA.get_system_instructions()
         second = AUDITOR_PERSONA.get_system_instructions()
         assert first == second

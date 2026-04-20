@@ -64,7 +64,7 @@ async def test_dashboard_metadata_routes_return_catalogs():
     tools = await server_mod._dashboard_tools(_request("/dashboard/api/tools"))
 
     assert force_graph.status_code == 200
-    assert "ForceGraph" in force_graph.body.decode()
+    assert "ForceGraph" in bytes(force_graph.body).decode()
     assert agents.status_code == 200
     assert _json(agents)["count"] > 0
     assert workflows.status_code == 200

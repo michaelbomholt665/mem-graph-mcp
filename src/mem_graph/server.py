@@ -142,8 +142,7 @@ register_tools(mcp)
 register_resources(mcp)
 register_prompts(mcp)
 _sandbox_manager = configure_sandbox_manager(repo_root=Path.cwd())
-if _sandbox_manager.enabled:
-    mcp.add_transform(build_session_code_mode(sandbox_manager()))
+mcp.add_transform(build_session_code_mode(sandbox_manager(), repo_root=Path.cwd()))
 mcp.add_transform(ResourcesAsTools(mcp))
 mcp.add_transform(PromptsAsTools(mcp))
 mcp.add_transform(

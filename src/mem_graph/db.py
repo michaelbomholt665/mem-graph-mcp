@@ -64,6 +64,7 @@ SCHEMA_PATH = (
 )
 DB_PATH = os.getenv("LADYBUG_DB_PATH", "./data/syntx_memory.lbug")
 SCHEMA_VERSION = "1.2"
+_SHOW_INDEXES_QUERY = "CALL SHOW_INDEXES() RETURN *;"
 
 _KNOWN_EMBED_PROVIDERS = (
     "ollama",
@@ -217,6 +218,12 @@ def _instrument_result(raw_result: Any) -> tuple[Any, int | None]:
     return raw_result, None
 
 
+def _result_rows(result: Any) -> list[list[Any]]:
+    if hasattr(result, "get_all"):
+        return cast(list[list[Any]], result.get_all())
+    return cast(list[list[Any]], result)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -249,6 +256,44 @@ def db_close_engine() -> None:
     _conn = None
     _conn_proxy = None
     _db = None
+
+
+def db_bootstrap_status() -> dict[str, Any]:
+    """Return a compact bootstrap and schema status summary for the active DB."""
+    conn = db_get_connection()
+    schema_rows = _result_rows(
+        conn.execute(
+            """
+            MATCH (s:SchemaMeta)
+            RETURN s.version, s.text_embed_dim, s.code_embed_dim, s.initialized_at
+            LIMIT 1
+            """
+        )
+    )
+    schema_row = schema_rows[0] if schema_rows else [None, None, None, None]
+    index_rows = _result_rows(conn.execute(_SHOW_INDEXES_QUERY))
+    return {
+        "db_path": DB_PATH,
+        "schema_version": schema_row[0],
+        "text_embed_dim": schema_row[1],
+        "code_embed_dim": schema_row[2],
+        "initialized_at": schema_row[3],
+        "index_count": len(index_rows),
+        "index_names": [str(row[1]) for row in index_rows if len(row) > 1],
+    }
+
+
+def db_run_migrations() -> dict[str, Any]:
+    """Re-run idempotent DB bootstrap and return the resulting status summary."""
+    global _conn, _conn_proxy
+
+    if _conn is None or _conn_proxy is None:
+        db_init_engine()
+    if _conn is None:
+        raise RuntimeError("DB connection is unavailable after initialization.")
+
+    _bootstrap(_conn)
+    return db_bootstrap_status()
 
 
 async def db_update_embedding(
@@ -475,7 +520,7 @@ def _run_schema(conn: lb.Connection) -> None:
 
 def _ensure_vector_indexes(conn: lb.Connection) -> None:
     # Fetch existing index names — index name is column[1]
-    result = cast(list[list[str]], conn.execute("CALL SHOW_INDEXES() RETURN *;"))
+    result = cast(list[list[str]], conn.execute(_SHOW_INDEXES_QUERY))
     existing = {row[1] for row in result}
 
     indexes = [
@@ -510,7 +555,7 @@ def _ensure_vector_indexes(conn: lb.Connection) -> None:
 
 def _ensure_fts_indexes(conn: lb.Connection) -> None:
     # Fetch existing index names — same SHOW_INDEXES() call used for vectors.
-    result = cast(list[list[str]], conn.execute("CALL SHOW_INDEXES() RETURN *;"))
+    result = cast(list[list[str]], conn.execute(_SHOW_INDEXES_QUERY))
     existing = {row[1] for row in result}
 
     fts_indexes = [
